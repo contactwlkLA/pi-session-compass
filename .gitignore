@@ -3,3 +3,6 @@ dist/
 
 .worktrees/
 .pi
+
+fixtures/
+outputs/
