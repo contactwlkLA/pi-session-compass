@@ -1,6 +1,6 @@
 # pi-session-compass — Project initialization
 
-Revision: **0.1.0** · State: **Stage 1 not started**
+Revision: **0.2.0** · State: **Stage 1 not started**
 
 Date: **2026-10-11**
 
@@ -27,6 +27,7 @@ checkout root/
 | [stage-1-task.md](stage-1-task.md) | Stage 1 execution checklist |
 | [architecture.md](architecture.md) | Technical contracts |
 | [plan.md](plan.md) | Stage sequence, tasks, verification and estimates |
+| [timing.md](timing.md) | Estimate vs actual hours per stage; filled in by the user, not read at session start |
 | [project-init.md](project-init.md) | This file |
 
 Directories under `scripts/`, `fixtures/`, and `outputs/` are created as the stage that needs them runs; names inside them are chosen by S1.T2 and recorded in architecture.md. The `stage-N-task.md` files for later stages are added to `md/` when written.
@@ -59,3 +60,4 @@ Expected Stage 1 evidence: source/runtime inventory, isolated selector/harness c
 | Revision | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-11 | Initial committed draft. |
+| 0.2.0 | 2026-10-12 | Added timing.md to the file table. |
