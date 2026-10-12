@@ -1,6 +1,6 @@
 # pi-session-compass
 
-Revision: **0.1.0** · Planning ready; implementation not started.
+Revision: **0.2.0** · Planning ready; implementation not started.
 
 pi-session-compass improves session-to-behavioral-rule collection with explicit session-file selection, recoverable work, and a Jev gate before expensive extraction. The gate writes no rules; the existing extractor and builder do that work. Features and performance gains remain unverified.
 
@@ -25,6 +25,7 @@ Every live run needs finite, user-confirmed limits; there is no unlimited mode. 
 | `smoke` | S1.T4 | **5** | **900000** (15 min) | Confirm the harness runs end to end and show sample output. |
 | `baseline` | S1.T5 | **UNSET** | **UNSET** | Measured run of the current pipeline on the selected file. |
 | `compare` | S2.T3 | **UNSET** | **UNSET** | Repaired-pipeline comparison on the same file and settings. |
+| `probe` | S2.T4 (optional) | **UNSET** | **UNSET** | Optional Jev latency and rejection-share probe on the fixture trios. |
 | `evaluate` | S5.T3 | **UNSET** | **UNSET** | Shadow evaluation on the frozen set. |
 | `collect` | Normal use after handoff | **UNSET** | **UNSET** | Routine collection. |
 
@@ -49,3 +50,4 @@ See [architecture.md](architecture.md) and [plan.md](plan.md) as needed. Based o
 | Revision | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-11 | Initial committed draft. |
+| 0.2.0 | 2026-10-12 | Added the optional `probe` run type. |

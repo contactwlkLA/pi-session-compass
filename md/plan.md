@@ -1,6 +1,6 @@
 # pi-session-compass — Development Plan
 
-Revision: **0.1.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
+Revision: **0.2.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
 
 Contract: [Architecture specification](architecture.md)
 
@@ -12,9 +12,9 @@ Build order is linear by intent: a measured foundation first (S1–S2), then rec
 
 Execute one stage per Pi session using [stage.md](stage.md) as the continuation index. Each stage has a task checklist; partial or blocked work resumes in the next session. Mark a stage complete only after milestone verification, then stop that session’s work. Missing task files are blockers, not permission to invent instructions. Milestones are verification checkpoints within the complete scope, not separate rewrites. No implementation, installation, live model call, or project mutation has been performed while drafting these documents.
 
-Live-run limits are set per run type (`smoke`, `baseline`, `compare`, `evaluate`, `collect`). Every live run takes finite limits through harness switches and the user’s start-of-run confirmation; the compass.md run-type table supplies the suggested values. This plan names run types, not numbers.
+Live-run limits are set per run type (`smoke`, `baseline`, `compare`, `probe`, `evaluate`, `collect`). Every live run takes finite limits through harness switches and the user’s start-of-run confirmation; the compass.md run-type table supplies the suggested values. This plan names run types, not numbers.
 
-Working estimate: **16–27 active AI-assisted implementation and verification hours**, excluding waiting for credentials, user labeling, or missing package access. This assumes the full package can be made runnable and its existing tests can be recovered. The source-only archive is enough for design but insufficient for a clean package build. These are planning allowances, not measured durations. Labeling effort for Stage 5 is not included and is not yet estimated.
+Working estimate: **16–27 active AI-assisted implementation and verification hours**, excluding waiting for credentials, user labeling, or missing package access. This assumes the full package can be made runnable and its existing tests can be recovered. The source-only archive is enough for design but insufficient for a clean package build. These are planning allowances, not measured durations. Labeling effort for Stage 5 is not included and is not yet estimated. The optional S2.T4 probe is not included either.
 
 ## 2. Stage sequence
 
@@ -23,12 +23,12 @@ A **stage** groups related work toward one outcome. A **task** is a checkable un
 | Stage | Work | Observable result | Allowance |
 |---|---|---|---|
 | S1 | Verify runtime, implement file selection with isolated output, instrument requests and limit controls, smoke-test, then measure the baseline | Passed smoke test with results sheet, baseline receipt with running table, and isolated selector/harness | 2–4 h |
-| S2 | Correct return-tool termination and retry semantics, then check in with the user | Request trace showing successful tool calls end; retry-zero works; user continue/stop decision | 1–2 h |
+| S2 | Correct return-tool termination and retry semantics, then check in with the user | Request trace showing successful tool calls end; retry-zero works; user continue/stop decision | 1–2 h (+0.5–1 h if the optional S2.T4 probe is taken) |
 | S3 | Implement snapshot-and-restore recovery, trio-boundary scan position, locking, and migration | Interrupted or failed work restores the last snapshot and redoes the step without losing candidates | 4–6 h |
 | S4 | Add TypeSafe adapter, policy, modes, and bounded execution | Mocked off/shadow/enforce behavior and fail-open routing pass | 3–5 h |
 | S5 | Build the evaluation set and run shadow comparisons | Held-out quality/cost report with raw counts and observed outputs | 3–5 h |
 | S6 | Settings/diagnostics, operating instructions, acceptance, and handoff | Reviewable release candidate, rollback instructions, and evidence | 3–5 h |
-| **Total** | | | **16–27 h** |
+| **Total** | | | **16–27 h** (+0.5–1 h with the optional probe) |
 
 Proceed S1 → S2 → S3 → S4 → S5 → S6. Policy development can use the seed sample without waiting for broader history, but enforce mode cannot pass Stage 5 on that sample alone.
 
@@ -60,7 +60,8 @@ Deferred and outside this plan: workspace/all-scope selection, public selection 
 
 - [ ] **S2.T3 — Verify repairs and measure their effect.** Use controlled model/stream fixtures to verify successful termination, invalid-tool repair, missing-tool response, timeout after capture, and retry-zero behavior. Run one bounded live comparison (run type `compare`) on the same corpus and settings, under limits the user confirms at launch. Preserve before/after traces.
 
-- [ ] **S2.T4 — Checkpoint with the user.** Report the repaired baseline’s measured productive rate and requests per trio, and whether the run covered the whole file. Ask the user to choose: raise the limit and rerun for fuller coverage, proceed to S3, or stop. Record the decision in stage.md. Do not start S3 without it.
+- [ ] **S2.T4 — Optional: Jev latency and rejection-share probe (run type `probe`).** Skippable; nothing else in the plan depends on it, and S4 is built against mocks either way. A standalone script in `scripts/`, outside the pipeline, sends each eligible trio of the S1 fixture to Jev once in the four-question format of architecture.md §4 and records latency, the four probabilities, and errors. It needs `TYPESAFE_API_KEY` and user-confirmed `probe` limits (see compass.md). Present the question wording to the user for approval before use, and keep the drafts for S4. Report the median and spread of G, the share of trios at or below the 0.10 rejection rule, and an indicative break-even using E and p from S1. It makes no safety claim: missed lessons need the Stage 5 labels.
+- [ ] **S2.T5 — Checkpoint with the user.** Report the repaired baseline’s measured productive rate and requests per trio, and whether the run covered the whole file. If the probe was run, include its G and rejection share. Ask the user to choose: raise the limit and rerun for fuller coverage, proceed to S3, or stop. Record the decision in stage.md. Do not start S3 without it.
 
 **Milestone M2:** the repaired ungated baseline is established and the user’s continue/stop decision is recorded. All later savings compare primarily against this version, not the original wasteful loop.
 
@@ -162,3 +163,4 @@ Handoff contents: implementation diff/commit, exact dependency versions, test re
 | Revision | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-11 | Initial committed draft. |
+| 0.2.0 | 2026-10-12 | Added optional S2.T4 Jev probe and the `probe` run type; checkpoint renumbered to S2.T5. |

@@ -1,6 +1,6 @@
 # pi-session-compass — Architecture Specification
 
-Revision: **0.1.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
+Revision: **0.3.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
 
 Companion: [Development plan](plan.md)
 
@@ -24,6 +24,14 @@ Required outcomes:
 - Explicit session-file selection, with isolated test output and no fallback to a wider scope.
 
 Excluded from this change: a search index, BM25, vector storage, model training, a new agent framework, parallel extraction/building, and a broader session-analytics product. Builder batching across trios is a later optimization. No speedup target is promised.
+
+### Expected benefit and break-even
+
+Each eligible trio gets one Jev call, at serial cost G bounded by the five-second gate deadline. Each trio the gate rejects skips one extraction request, at cost E. The saving per trio is r × E − G, where r is the fraction rejected, so the gate pays for itself when r > G/E. That holds when G is much smaller than E, which is plausible for a small model against extraction at high thinking; neither is measured yet.
+
+The saving is capped: r cannot exceed the share of trios that yield no rule, so the maximum is (1 − p) × E per trio, where p is the productive rate. A baseline in which most trios are productive leaves little to gain, and the result is reported as such.
+
+Stage 1 measures E and p on its fixture; the shadow runs measure G and r. If G/E or the ceiling is unfavorable, the gate stays in shadow mode.
 
 ## 2. Evidence and current behavior
 
@@ -148,7 +156,7 @@ Keep the reviewed upstream `/portrait:collect N` semantics as a productive-trio 
 
 ### Run-type limits and confirmation
 
-Limits are per-run settings, not design constants. Every live run has a declared run type (`smoke`, `baseline`, `compare`, `evaluate`, or `collect`) and finite limits `maxModelRequests` and `maxRunMs`. The [compass.md](compass.md) run-type table holds stored defaults that serve as suggestions; the initial `smoke` row is **5 model requests and 900,000 ms (15 minutes)**, and the other rows start UNSET. There is no unlimited mode.
+Limits are per-run settings, not design constants. Every live run has a declared run type (`smoke`, `baseline`, `compare`, `probe`, `evaluate`, or `collect`) and finite limits `maxModelRequests` and `maxRunMs`. The [compass.md](compass.md) run-type table holds stored defaults that serve as suggestions; the initial `smoke` row is **5 model requests and 900,000 ms (15 minutes)**, and the other rows start UNSET. There is no unlimited mode.
 
 - Limits reach the code as required harness switches: `--run-type`, `--max-model-requests`, and `--max-run-ms`. The harness has no built-in defaults and refuses to start without them. It accepts only finite positive integers.
 - The suggested value is the run type’s compass.md row if set; if the row is UNSET, the agent suggests values from the trio count and states its basis and assumptions.
@@ -272,3 +280,5 @@ Official Jev documentation: the API reference, models and version-pinning, and N
 | Revision | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-11 | Initial committed draft. |
+| 0.2.0 | 2026-10-12 | Added expected-benefit and break-even reasoning to the outcomes section. |
+| 0.3.0 | 2026-10-12 | Added the `probe` run type to the run-type list. |
