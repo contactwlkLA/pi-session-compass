@@ -24,7 +24,7 @@ Once approved, text can be applied directly during implementation. Any subsequen
 
 # pi-session-compass — Agent operating rules
 
-Revision: **0.1.0** · 2026-10-11
+Revision: **0.2.0** · 2026-10-12
 
 These rules apply in addition to the repository rules above; they do not replace them. Where they would conflict, follow the repository rules and ask the user.
 
@@ -39,6 +39,7 @@ These rules apply in addition to the repository rules above; they do not replace
 ## Execute and stop
 
 - Check tasks only after verification; preserve user changes and evidence. Use at most two diagnosis → targeted repair → verification cycles per distinct problem, then report the failure; application model-retry semantics are separate.
+- **Verification is reported only from a full run.** Before reporting a code change verified, or asking to commit it, run `npm test` and `npm run test:compass` in full and quote the raw result of every run; a partial run is reported as partial. A failure of a test listed as known-intermittent in the T1.6 baseline in md/stage-1-task.md, with the same failure message recorded there, is rerun once; if the rerun passes, report it as the known flake. A failure with any other message or duration is a real failure.
 - **Limits are user-confirmed for every live run.** The row for the run type in md/compass.md is the suggested default; if it is UNSET, suggest values with their basis and assumptions. Pass `--run-type`, `--max-model-requests`, and `--max-run-ms` to the harness (it has no defaults). Show the user the run type, limits, selected file with its trio count, and output directory, and pass `--confirmed` only after the user approves them in this session. Accept only finite positive values. Unattended runs never self-confirm. Count inference attempts across all models, including retries and follow-ups; several questions in one Jev request count once. Never raise a ceiling on your own, edit the md/compass.md table unless asked, or evade a cap by automatic restart. Record the run type, suggested and final limits, and their source in every run manifest.
 - Verify isolation and limit controls offline before live calls.
 - A `smoke` run that ends by completion or by a cap, with its checks met, is a successful smoke result with no measurement claims. A capped run of any other type is incomplete: leave the task and stage unchecked and preserve partial evidence.
@@ -50,7 +51,7 @@ These rules apply in addition to the repository rules above; they do not replace
 
 - **Protected text:** the Text Review rule above covers any user-facing string this project adds or changes in `src/` or the harness, including the start-of-run confirmation prompt and its cost notes, diagnostics, and errors. The stage task names those strings first; present the exact text and wait for approval before applying.
 - **Product docs:** the README.md and CONFIGURATION rule above applies to upstream's product docs, not to the planning documents in `md/` or this file, which are design documents. At the settings and handoff stage, update README.md and CONFIGURATION for new behavior in product-doc style, with no design-doc references or historical framing.
-- **Tests:** `npm test` runs the full suite and `npx vitest run` runs specific tests. S1.T1.6 records their baseline results before any edit; update tests when behavior changes.
+- **Tests:** `npm test` runs the repository's suite (it excludes `tests/compass`), `npm run test:compass` runs the harness's own tests, and `npx vitest run` runs specific tests. S1.T1.6 records their baseline results before any edit; update tests when behavior changes.
 - **Approval markers:** `<!-- approved -->` markers belong in design documents only. The planning documents here are not named `-design` and need none.
 
 ## Revision numbering
@@ -67,4 +68,5 @@ Each document carries MAJOR.MINOR.PATCH in its header and history table. All sta
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.2.0 | 2026-10-12 | Added the verification-reporting rule; Tests bullet names test:compass. |
 | 0.1.0 | 2026-10-11 | Initial committed draft. |
