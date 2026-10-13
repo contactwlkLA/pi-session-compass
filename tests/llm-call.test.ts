@@ -23,7 +23,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
 });
 
 import { agentLoop } from "@earendil-works/pi-agent-core";
-import { attemptWithRetries, countWords, retryDelayMs } from "../src/llm-call.js";
+import { attemptWithRetries, countWords, NO_STAGE_TAG, retryDelayMs } from "../src/llm-call.js";
 
 const mockAgentLoop = agentLoop as unknown as ReturnType<typeof vi.fn>;
 
@@ -142,6 +142,7 @@ describe("attemptWithRetries backoff", () => {
       3,
       () => undefined, // tool never called → always "tool not called"
       NO_TOOL_CALLED_CONTEXT,
+      NO_STAGE_TAG,
     );
 
     await vi.runAllTimersAsync();
@@ -168,6 +169,7 @@ describe("attemptWithRetries backoff", () => {
       2, // 2 attempts → 1 nudge after the first
       () => undefined,
       NO_TOOL_CALLED_CONTEXT,
+      NO_STAGE_TAG,
     );
     await vi.runAllTimersAsync();
     await promise;
