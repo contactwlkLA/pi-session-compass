@@ -4,10 +4,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 
-/**
- * State dir override for isolated harness runs (compass Stage 1).
- * When unset, behavior is identical to the historical hard-coded path.
- */
+/** Overrides the state directory when PI_PORTRAIT_STATE_DIR is set. */
 const STATE_DIR = process.env.PI_PORTRAIT_STATE_DIR || path.join(os.homedir(), ".pi", "portrait");
 
 export function getPortraitDir(): string {

@@ -112,9 +112,9 @@ export function setDebugStreamSink(sink: ((event: DebugStreamEvent) => void) | n
 export const NO_DEBUG_STREAM_SINK: ((event: DebugStreamEvent) => void) | null = null;
 
 /**
- * Harness instrumentation: one event per inference attempt at the agentLoop stream
- * boundary. Each retry attempt and each tool-follow-up turn re-enters the stream
- * boundary, so every real model request produces exactly one event.
+ * Harness instrumentation: one event per attempt (one agentLoop run). A single
+ * attempt may contain several model requests (tool-follow-up turns), which the
+ * harness counts separately at the streamFn boundary.
  */
 export interface LlmAttemptEvent {
   /** Pipeline stage tag ("extraction" | "post_extraction" | "building" | "maintenance" | "unknown"). */
@@ -144,15 +144,60 @@ export const NO_LLM_ATTEMPT_SINK: ((event: LlmAttemptEvent) => void) | null = nu
 /** Sentinel: no instrumentation stage tag (sink records "unknown"). */
 export const NO_STAGE_TAG: string | null = null;
 
-/** Extract provider-reported usage from an assistant message, defensively. */
-function extractUsage(message: unknown): { input?: number; output?: number } | undefined {
-  if (!message || typeof message !== "object") return undefined;
-  const usage = (message as { usage?: Record<string, unknown> }).usage;
-  if (!usage || typeof usage !== "object") return undefined;
-  const out: { input?: number; output?: number } = {};
-  if (typeof usage.input === "number") out.input = usage.input;
-  if (typeof usage.output === "number") out.output = usage.output;
-  return out.input !== undefined || out.output !== undefined ? out : undefined;
+/** Required inputs for one attempt event. `error`/`usage` keys are omitted when null. */
+export interface AttemptEventInput {
+  stage: string | null;
+  attempt: number;
+  model: string;
+  provider: string;
+  startedAtMs: number;
+  endedAtMs: number;
+  ok: boolean;
+  error: string | null;
+  usage: { input?: number; output?: number } | null;
+}
+
+/** Build one attempt event and emit it without letting a sink exception escape into the pipeline. */
+function emitAttempt(input: AttemptEventInput): void {
+  const event: LlmAttemptEvent = {
+    stage: input.stage ?? "unknown",
+    attempt: input.attempt,
+    model: input.model,
+    provider: input.provider,
+    startedAtMs: input.startedAtMs,
+    endedAtMs: input.endedAtMs,
+    ok: input.ok,
+    ...(input.error === null ? {} : { error: input.error }),
+    ...(input.usage === null ? {} : { usage: input.usage }),
+  };
+  try {
+    _attemptSink?.(event);
+  } catch {
+    // Instrumentation must never break the call it observes.
+  }
+}
+
+/** Sum provider-reported usage over an attempt's messages, skipping non-numeric values. */
+function extractUsage(messages: unknown): { input?: number; output?: number } | undefined {
+  if (!Array.isArray(messages)) return undefined;
+  let input = 0;
+  let output = 0;
+  let found = false;
+  for (const message of messages) {
+    if (!message || typeof message !== "object") continue;
+    const usage = (message as { usage?: Record<string, unknown> }).usage;
+    if (!usage || typeof usage !== "object") continue;
+    if (typeof usage.input === "number") {
+      input += usage.input;
+      found = true;
+    }
+    if (typeof usage.output === "number") {
+      output += usage.output;
+      found = true;
+    }
+  }
+  if (!found) return undefined;
+  return { input, output };
 }
 
 /** Wrap a prompt into a single-user-message array for callPortraitLlm. */
@@ -356,13 +401,12 @@ export async function attemptWithRetries<T>(
         _progressSink({ tokens: tokensSoFar, words: wordsSoFar });
       }
     };
+    const attemptStartedAt = Date.now();
     try {
-      const attemptStartedAt = Date.now();
       // pi 0.84.1 made streamFn a required agentLoop arg; pass undefined (cast to
       // StreamFn) so pi-agent-core falls back to the host-installed default streamFn,
       // which pi-coding-agent sets at startup and dispatches through the model runtime.
       const stream = agentLoop(messages, context, config, signal, undefined as unknown as StreamFn);
-      let attemptUsage: { input?: number; output?: number } | undefined;
       for await (const event of stream) {
         if (event.type === "message_update") {
           const sub = event.assistantMessageEvent;
@@ -381,52 +425,46 @@ export async function attemptWithRetries<T>(
           fireProgress(PROGRESS_NO_FORCE);
         }
       }
-      const assistantMessage = await stream.result();
-      attemptUsage = extractUsage(assistantMessage);
+      const assistantMessages = await stream.result();
+      const attemptUsage = extractUsage(assistantMessages);
       // Final flush so callers see the complete count
       fireProgress(true);
 
       const res = resultExtractor();
+      const endedAtMs = Date.now();
+      const attemptError = res === undefined ? "LLM did not call the required extraction tool" : null;
       if (res !== undefined) {
         _debugStreamSink?.({ type: "end", ok: true });
-        _attemptSink?.({
-          stage: stageTag ?? "unknown",
-          attempt: attempt + 1,
-          model: config.model.id,
-          provider: config.model.provider,
-          startedAtMs: attemptStartedAt,
-          endedAtMs: Date.now(),
-          ok: true,
-          ...(attemptUsage ? { usage: attemptUsage } : {}),
-        });
-        return { result: res };
+      } else {
+        // Tool was never called — treat as an error (not an exception)
+        _debugStreamSink?.({ type: "end", ok: false, error: attemptError ?? "unknown" });
       }
-      // Tool was never called — treat as an error (not an exception)
-      lastError = "LLM did not call the required extraction tool";
-      _debugStreamSink?.({ type: "end", ok: false, error: lastError });
-      _attemptSink?.({
-        stage: stageTag ?? "unknown",
+      if (attemptError !== null) lastError = attemptError;
+      emitAttempt({
+        stage: stageTag,
         attempt: attempt + 1,
-        model: config.model.id,
-        provider: config.model.provider,
+        model: config.model?.id ?? "unknown",
+        provider: config.model?.provider ?? "unknown",
+        startedAtMs: attemptStartedAt,
+        endedAtMs,
+        ok: attemptError === null,
+        error: attemptError,
+        usage: attemptUsage ?? null,
+      });
+      if (res !== undefined) return { result: res };
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+      _debugStreamSink?.({ type: "end", ok: false, error: lastError });
+      emitAttempt({
+        stage: stageTag,
+        attempt: attempt + 1,
+        model: config.model?.id ?? "unknown",
+        provider: config.model?.provider ?? "unknown",
         startedAtMs: attemptStartedAt,
         endedAtMs: Date.now(),
         ok: false,
         error: lastError,
-        ...(attemptUsage ? { usage: attemptUsage } : {}),
-      });
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
-      _debugStreamSink?.({ type: "end", ok: false, error: lastError });
-      _attemptSink?.({
-        stage: stageTag ?? "unknown",
-        attempt: attempt + 1,
-        model: config.model.id,
-        provider: config.model.provider,
-        startedAtMs: Date.now(),
-        endedAtMs: Date.now(),
-        ok: false,
-        error: lastError,
+        usage: null,
       });
     }
 

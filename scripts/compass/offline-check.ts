@@ -73,12 +73,21 @@ interface CheckResult {
   lastError?: string;
   stopKind?: string;
   stoppedEarly?: boolean;
+  /** Per-turn boundary usages (input/output) in call order — present for usage scenarios. */
+  boundaryUsages?: Array<{ input?: number; output?: number }>;
 }
 
 async function scenarioFollowup(): Promise<CheckResult> {
   const { attemptWithRetries, setLlmAttemptSink } = await import("../../src/llm-call.js");
+  const { RequestCounter } = await import("./counter.js");
   const events: unknown[] = [];
   setLlmAttemptSink((event) => events.push(event));
+  const counter = new RequestCounter({
+    runType: "smoke",
+    maxModelRequests: 100,
+    maxRunMs: 600_000,
+    source: "compass-table",
+  });
   let streamCalls = 0;
   const script = [TOOL_MESSAGE, TEXT_MESSAGE];
   const probe = {
@@ -99,11 +108,12 @@ async function scenarioFollowup(): Promise<CheckResult> {
     reasoning: "low",
   };
   const { setDefaultStreamFn } = await import("@earendil-works/pi-agent-core");
-  setDefaultStreamFn((() => {
+  const countedStreamFn = counter.wrapStreamFn(() => {
     const turn = script[streamCalls] ?? TEXT_MESSAGE;
     streamCalls++;
     return makeStream(turn);
-  }) as never);
+  });
+  setDefaultStreamFn(countedStreamFn as never);
 
   const out = await attemptWithRetries<unknown>(
     [{ role: "user", content: [{ type: "text", text: "go" }], timestamp: 0 }],
@@ -123,6 +133,7 @@ async function scenarioFollowup(): Promise<CheckResult> {
     failuresRecorded: 0,
     result: out.result,
     lastError: out.lastError,
+    boundaryUsages: counter.traces.map((trace) => trace.usage ?? {}),
   };
 }
 

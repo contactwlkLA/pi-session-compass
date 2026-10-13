@@ -33,11 +33,18 @@ const DEFAULT_SCENARIO_TIMEOUT_MS: number | null = 30_000;
 interface CheckOutput {
   scenario: string;
   streamCalls: number;
-  attempts: Array<{ stage: string; attempt: number; ok: boolean; error?: string }>;
+  attempts: Array<{
+    stage: string;
+    attempt: number;
+    ok: boolean;
+    error?: string;
+    usage?: { input?: number; output?: number };
+  }>;
   result?: unknown;
   lastError?: string;
   stopKind?: string;
   stoppedEarly?: boolean;
+  boundaryUsages?: Array<{ input?: number; output?: number }>;
 }
 
 interface ExecScenarioOptions {
@@ -66,6 +73,20 @@ describe("offline boundary checks", () => {
     expect(out.attempts[0]).toMatchObject({ stage: "offline-check", attempt: 1, ok: true });
     expect(out.result).toBeDefined();
     expect(out.lastError).toBeUndefined();
+    // Two-turn usage: tool-call turn (7 in / 3 out) + text turn (9 in / 2 out).
+    expect(out.boundaryUsages).toEqual([
+      { input: 7, output: 3 },
+      { input: 9, output: 2 },
+    ]);
+    expect(out.attempts[0].usage).toEqual({ input: 16, output: 5 });
+    const boundarySums = (out.boundaryUsages ?? []).reduce<{ input: number; output: number }>(
+      (sums, turn) => ({
+        input: sums.input + (turn.input ?? 0),
+        output: sums.output + (turn.output ?? 0),
+      }),
+      { input: 0, output: 0 },
+    );
+    expect(out.attempts[0].usage).toEqual(boundarySums);
   });
 
   it("counts retry attempts and their tool-follow-up turns", { timeout: 180_000 }, async () => {
