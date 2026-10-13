@@ -24,7 +24,7 @@ Once approved, text can be applied directly during implementation. Any subsequen
 
 # pi-session-compass — Agent operating rules
 
-Revision: **0.2.0** · 2026-10-12
+Revision: **0.3.0** · 2026-10-12
 
 These rules apply in addition to the repository rules above; they do not replace them. Where they would conflict, follow the repository rules and ask the user.
 
@@ -35,6 +35,7 @@ These rules apply in addition to the repository rules above; they do not replace
 - One session targets one stage. Follow explicit user/repository instructions; resolve material conflicts before dependent execution. Briefly state the authorized outcome, allowed edits, and completion evidence.
 - **Unclear goal, requirement, scope, acceptance criterion, or authorization: ask one focused question and wait. Do not substitute an assumption.** Silence, a reversible action, or a written proposal is not approval. Routine choices may proceed within clear scope; verify facts and mark unknown evidence honestly.
 - Continue independent work only when its goal and authorization are clear. If the overall goal is unclear, pause implementation. Discover accessible checkout/runtime facts before asking the user to supply them.
+- Do not enter directory "./private"
 
 ## Execute and stop
 
@@ -46,6 +47,12 @@ These rules apply in addition to the repository rules above; they do not replace
 - Stop on user instruction, reached limits, loss of isolation/control, or the stage boundary. Complete clearly authorized independent work when prerequisites are missing.
 - At exit, synchronize task checkboxes and stage.md: outcome, stage status, next unfinished task, blocker, and evidence path. Check the stage only after its milestone is verified. Never check a stage because the session merely ended.
 - On re-entry, verify source/settings/fixture revisions and invalidate affected evidence if changed. Resume the first unfinished stage after its prerequisite or clarification is resolved. Keep secrets out of artifacts/messages; give brief task-transition/blocker updates.
+
+## Reporting to the user
+
+- **Status board first.** Every reply that reports progress begins with three one-line items, using task IDs from md/stage.md: **Done**, **Now**, **Next**.
+- **One instruction set per message.** Ask the user for one action at a time: one command block, one paste, or one decision, ending with the check that confirms it. Name the next step without giving its commands.
+- **No repeated asks.** Do not ask for an output already received; if it is needed again, say what changed and why.
 
 ## Compatibility with the repository rules
 
@@ -68,5 +75,6 @@ Each document carries MAJOR.MINOR.PATCH in its header and history table. All sta
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.3.0 | 2026-10-12 | Added the Reporting to the user section: status board, one instruction set per message, no repeated asks. Added a rule not to enter ./private (the user's scratch directory) |
 | 0.2.0 | 2026-10-12 | Added the verification-reporting rule; Tests bullet names test:compass. |
 | 0.1.0 | 2026-10-11 | Initial committed draft. |
