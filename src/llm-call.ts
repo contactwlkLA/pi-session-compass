@@ -111,6 +111,50 @@ export function setDebugStreamSink(sink: ((event: DebugStreamEvent) => void) | n
 /** Sentinel for setDebugStreamSink — clear the installed debug stream sink. */
 export const NO_DEBUG_STREAM_SINK: ((event: DebugStreamEvent) => void) | null = null;
 
+/**
+ * Harness instrumentation: one event per inference attempt at the agentLoop stream
+ * boundary. Each retry attempt and each tool-follow-up turn re-enters the stream
+ * boundary, so every real model request produces exactly one event.
+ */
+export interface LlmAttemptEvent {
+  /** Pipeline stage tag ("extraction" | "post_extraction" | "building" | "maintenance" | "unknown"). */
+  stage: string;
+  /** 1-based attempt number within this call's retry sequence. */
+  attempt: number;
+  model: string;
+  provider: string;
+  startedAtMs: number;
+  endedAtMs: number;
+  ok: boolean;
+  error?: string;
+  /** Provider-reported usage for the attempt (absent = unknown). */
+  usage?: { input?: number; output?: number };
+}
+
+let _attemptSink: ((event: LlmAttemptEvent) => void) | null = null;
+
+/** Install/clear the per-attempt instrumentation sink (compass harness counter). */
+export function setLlmAttemptSink(sink: ((event: LlmAttemptEvent) => void) | null): void {
+  _attemptSink = sink;
+}
+
+/** Sentinel for setLlmAttemptSink — clear the installed attempt sink. */
+export const NO_LLM_ATTEMPT_SINK: ((event: LlmAttemptEvent) => void) | null = null;
+
+/** Sentinel: no instrumentation stage tag (sink records "unknown"). */
+export const NO_STAGE_TAG: string | null = null;
+
+/** Extract provider-reported usage from an assistant message, defensively. */
+function extractUsage(message: unknown): { input?: number; output?: number } | undefined {
+  if (!message || typeof message !== "object") return undefined;
+  const usage = (message as { usage?: Record<string, unknown> }).usage;
+  if (!usage || typeof usage !== "object") return undefined;
+  const out: { input?: number; output?: number } = {};
+  if (typeof usage.input === "number") out.input = usage.input;
+  if (typeof usage.output === "number") out.output = usage.output;
+  return out.input !== undefined || out.output !== undefined ? out : undefined;
+}
+
 /** Wrap a prompt into a single-user-message array for callPortraitLlm. */
 export function buildSingleUserMessage(prompt: string): AgentMessage[] {
   return [
@@ -161,6 +205,7 @@ export async function callPortraitLlm<T>(
   modelOverride: string | undefined,
   maxTokensOverride: number | null | undefined,
   timeoutOverride: number | null | undefined,
+  stageTag: string | null,
 ): Promise<T | typeof PAUSED | undefined> {
   const settings = getPortraitSettings();
 
@@ -217,6 +262,7 @@ export async function callPortraitLlm<T>(
     maxRetries,
     resultExtractor,
     errorContext,
+    stageTag,
   );
   if (result !== undefined) return result;
 
@@ -242,6 +288,7 @@ export async function callPortraitLlm<T>(
         maxRetries,
         resultExtractor,
         errorContext,
+        stageTag,
       ));
       if (result !== undefined) return result;
       // Loop continues, re-offering dialog
@@ -284,6 +331,7 @@ export async function attemptWithRetries<T>(
   maxRetries: number,
   resultExtractor: () => T | undefined,
   errorContext: string,
+  stageTag: string | null,
 ): Promise<{ result?: T; lastError?: string }> {
   let lastError: string | undefined;
   const maxMessages = 20; // Cap to prevent unbounded growth
@@ -309,10 +357,12 @@ export async function attemptWithRetries<T>(
       }
     };
     try {
+      const attemptStartedAt = Date.now();
       // pi 0.84.1 made streamFn a required agentLoop arg; pass undefined (cast to
       // StreamFn) so pi-agent-core falls back to the host-installed default streamFn,
       // which pi-coding-agent sets at startup and dispatches through the model runtime.
       const stream = agentLoop(messages, context, config, signal, undefined as unknown as StreamFn);
+      let attemptUsage: { input?: number; output?: number } | undefined;
       for await (const event of stream) {
         if (event.type === "message_update") {
           const sub = event.assistantMessageEvent;
@@ -331,21 +381,53 @@ export async function attemptWithRetries<T>(
           fireProgress(PROGRESS_NO_FORCE);
         }
       }
-      await stream.result();
+      const assistantMessage = await stream.result();
+      attemptUsage = extractUsage(assistantMessage);
       // Final flush so callers see the complete count
       fireProgress(true);
 
       const res = resultExtractor();
       if (res !== undefined) {
         _debugStreamSink?.({ type: "end", ok: true });
+        _attemptSink?.({
+          stage: stageTag ?? "unknown",
+          attempt: attempt + 1,
+          model: config.model.id,
+          provider: config.model.provider,
+          startedAtMs: attemptStartedAt,
+          endedAtMs: Date.now(),
+          ok: true,
+          ...(attemptUsage ? { usage: attemptUsage } : {}),
+        });
         return { result: res };
       }
       // Tool was never called — treat as an error (not an exception)
       lastError = "LLM did not call the required extraction tool";
       _debugStreamSink?.({ type: "end", ok: false, error: lastError });
+      _attemptSink?.({
+        stage: stageTag ?? "unknown",
+        attempt: attempt + 1,
+        model: config.model.id,
+        provider: config.model.provider,
+        startedAtMs: attemptStartedAt,
+        endedAtMs: Date.now(),
+        ok: false,
+        error: lastError,
+        ...(attemptUsage ? { usage: attemptUsage } : {}),
+      });
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
       _debugStreamSink?.({ type: "end", ok: false, error: lastError });
+      _attemptSink?.({
+        stage: stageTag ?? "unknown",
+        attempt: attempt + 1,
+        model: config.model.id,
+        provider: config.model.provider,
+        startedAtMs: Date.now(),
+        endedAtMs: Date.now(),
+        ok: false,
+        error: lastError,
+      });
     }
 
     // Prepare for the next attempt (applies to BOTH failure paths: thrown errors AND

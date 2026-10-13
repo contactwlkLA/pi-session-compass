@@ -6,6 +6,7 @@ import { Type } from "typebox";
 import { appendDebug } from "./debug.js";
 import { reportError } from "./error.js";
 import { commitPortrait } from "./git.js";
+import { emitBuild } from "./instrument.js";
 import {
   buildSingleUserMessage,
   callPortraitLlm,
@@ -120,6 +121,7 @@ export async function buildPortrait(
         options?.modelOverride,
         options?.maxTokensOverride,
         options?.timeoutOverride,
+        "building",
       );
 
       if (response === PAUSED) throw new Error("PAUSED"); // propagate pause (caller catches "PAUSED")
@@ -142,10 +144,20 @@ export async function buildPortrait(
             `\n=== Backfill Output (${response.decisions.length} decisions) ===\n${decisionsSummary}\n`,
           );
         }
-        return applyDecisions(portraitDir, existingRules, candidates, response.decisions, {
+        const applied = applyDecisions(portraitDir, existingRules, candidates, response.decisions, {
           ruleLimit: settings.ruleLimit,
           skipPersist: options?.skipPersist,
         });
+        emitBuild({
+          decisions: response.decisions.map((d) => ({
+            action: d.action,
+            ...(d.candidate ? { candidate: d.candidate } : {}),
+            ...(d.text ? { text: d.text } : {}),
+          })),
+          inserted: applied.inserted,
+          evicted: applied.evicted,
+        });
+        return applied;
       }
 
       // Validation failed — re-call LLM with error context

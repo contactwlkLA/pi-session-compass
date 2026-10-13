@@ -1,0 +1,15 @@
+{
+  "$schema": "https://www.schemastore.org/tsconfig.json",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": false,
+    "sourceMap": true,
+    "outDir": "outputs/s1-build",
+    "incremental": true,
+    "tsBuildInfoFile": "outputs/s1-build/.tsbuildinfo",
+    "allowImportingTsExtensions": false,
+    "rewriteRelativeImportExtensions": true
+  },
+  "include": ["src/**/*.ts", "scripts/compass/**/*.ts"]
+}

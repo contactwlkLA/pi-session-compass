@@ -7,6 +7,7 @@ import { countPendingTrios, discoverFiles, scanSessions } from "./collector.js";
 import { getPortraitDir, getSessionDirs } from "./config.js";
 import { reportError } from "./error.js";
 import { setCachedPipelineState } from "./footer.js";
+import { emitCooldown } from "./instrument.js";
 import { type LlmProgressInfo, NO_LLM_PROGRESS_SINK, setLlmProgressSink } from "./llm-call.js";
 import { NO_CANCEL_CHECK, runMaintenance } from "./maintenance-core.js";
 import type { PortraitSettings } from "./schema.js";
@@ -125,6 +126,7 @@ export async function runPipelineLoop(
 
       // Cooldown after extraction LLM calls
       if (rateLimitMs > 0) {
+        emitCooldown({ kind: "extraction", ms: rateLimitMs });
         await new Promise((resolve) => setTimeout(resolve, rateLimitMs));
       }
 
@@ -152,6 +154,7 @@ export async function runPipelineLoop(
         }
         // Cooldown after builder LLM calls
         if (rateLimitMs > 0) {
+          emitCooldown({ kind: "building", ms: rateLimitMs });
           await new Promise((resolve) => setTimeout(resolve, rateLimitMs));
         }
       }

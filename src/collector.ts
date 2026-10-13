@@ -11,6 +11,7 @@ import { getBgScanCheckpointsPath, getPortraitDir, getSessionDirs } from "./conf
 import { appendDebug, openDebugDump } from "./debug.js";
 import { extractContent } from "./filtering.js";
 import { setCachedPipelineState } from "./footer.js";
+import { emitTrioExamined } from "./instrument.js";
 import { buildSingleUserMessage, callPortraitLlm, PAUSED } from "./llm-call.js";
 import { EXTRACTION_PROMPT, POST_EXTRACTION_PROMPT } from "./prompts.js";
 import { getPortraitSettings } from "./settings-ui.js";
@@ -371,6 +372,7 @@ async function streamAndExtract(
     const validated = settings.postExtractionEnabled
       ? await postExtractRules(notes, summary, dumpPath, settings.postExtractionModel || undefined)
       : notes;
+    emitTrioExamined({ sessionPath: sessionFile, notes: validated.length, notesText: validated });
     if (validated.length > 0) {
       const result: ExtractionResult = { behaviorNotes: validated, sessionPath: sessionFile, source };
       await onTrio(result);
@@ -665,6 +667,7 @@ ${userText}
     undefined,
     undefined,
     undefined,
+    "extraction",
   );
 
   if (result === PAUSED) throw new Error("PAUSED");
@@ -755,6 +758,7 @@ ${interactionBlock}
     modelOverride,
     undefined,
     undefined,
+    "post_extraction",
   );
 
   if (result === PAUSED) throw new Error("PAUSED");

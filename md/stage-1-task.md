@@ -1,6 +1,6 @@
 # Stage 1 — Establish the baseline
 
-Project: **pi-session-compass** · Revision: **0.1.0** · Status: **Not started**
+Project: **pi-session-compass** · Revision: **0.1.1** · Status: **Not started**
 
 Date: **2026-10-11**
 
@@ -19,7 +19,7 @@ Initial review uses one unbranched conversation path. Branch support is deferred
 - [ ] **3.** Verify and record Node, Pi, Portrait, and agent-core versions.
 - [ ] **4.** Hash the supplied archive and installed source; explain pipeline-relevant differences.
 - [ ] **5.** Save sanitized normalized settings: models, thinking, retries, batch size, cooldown, scan window, review, and maintenance.
-- [ ] **6.** Run applicable existing build/tests; record missing dependencies and pre-existing failures.
+- [ ] **6.** Run applicable existing build/tests; record missing dependencies and pre-existing failures. Verification runs both `npm test` (upstream suite; `vitest.config.ts` excludes `tests/compass/**`) and `npm run test:compass` (harness suite, `vitest.compass.config.ts`, isolated).
 
 ## T2 — Create the file-selecting, isolated fixture harness
 
@@ -75,4 +75,5 @@ Discover package/runtime details from the Pi checkout before asking for uploads.
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.1.1 | 2026-10-13 | S1 verification runs both `npm test` and `npm run test:compass` (harness suite split out of the default run). |
 | 0.1.0 | 2026-10-11 | Initial committed draft. |
