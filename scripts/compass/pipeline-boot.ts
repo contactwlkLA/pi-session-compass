@@ -20,6 +20,39 @@ import { emptyStats, RequestCounter } from "./counter.js";
 import { strings } from "./strings.js";
 import type { CensusResult, Limits, RunSelection } from "./types.js";
 
+export interface SinkError {
+  hook: string;
+  error: string;
+}
+
+/** Wrap instrumentation callbacks so a throwing sink is recorded instead of breaking the run. */
+export function createSinkGuard(): {
+  sinkErrors: SinkError[];
+  guardSink: (hook: string, fn: () => void) => void;
+} {
+  const sinkErrors: SinkError[] = [];
+  const guardSink = (hook: string, fn: () => void): void => {
+    try {
+      fn();
+    } catch (error) {
+      sinkErrors.push({ hook, error: error instanceof Error ? error.message : String(error) });
+    }
+  };
+  return { sinkErrors, guardSink };
+}
+
+/** Fail the run when instrumentation sinks recorded errors. Returns the process exit code: 1 when sinkErrors is non-empty, 0 otherwise. Writes the receipt in both cases. */
+export function failOnSinkErrors(
+  write: (stop: "completed" | "capped" | "error", error: string | null) => void,
+  sinkErrors: SinkError[],
+): number {
+  if (sinkErrors.length === 0) return 0;
+  const sinkError = `instrumentation sink errors: ${sinkErrors.map((s) => `${s.hook}: ${s.error}`).join("; ")}`;
+  write("error", sinkError);
+  process.stderr.write(`compass harness: run failed: ${sinkError}\n`);
+  return 1;
+}
+
 export interface BootOptions {
   limits: Limits;
   prepared: { selection: RunSelection; census: CensusResult | null };
@@ -96,7 +129,7 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
       const found = slash > 0 ? registry.find(modelString.slice(0, slash), modelString.slice(slash + 1)) : undefined;
       if (!found) {
         const accessError = `model '${modelString}' unavailable: not found in the model registry`;
-        writeReceipt(opts, counter, stats, "error", accessError, attemptEvents, cooldowns);
+        writeReceipt(opts, counter, stats, "error", accessError, attemptEvents, cooldowns, null);
         process.stderr.write(`compass harness: ${accessError}\n`);
         return 1;
       }
@@ -108,7 +141,7 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
         host.defaultProvider && host.defaultModel ? registry.find(host.defaultProvider, host.defaultModel) : undefined;
       if (!found) {
         const accessError = "no portrait model override and no resolvable host default model";
-        writeReceipt(opts, counter, stats, "error", accessError, attemptEvents, cooldowns);
+        writeReceipt(opts, counter, stats, "error", accessError, attemptEvents, cooldowns, null);
         process.stderr.write(`compass harness: ${accessError}\n`);
         return 1;
       }
@@ -128,40 +161,49 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
     setDefaultStreamFn(wrapped as never);
 
     const llmCall = await import("../../src/llm-call.js");
+    const { sinkErrors, guardSink } = createSinkGuard();
     llmCall.setLlmAttemptSink((event: LlmAttemptEvent) => {
-      attemptEvents.push(event);
-      if (!event.ok) stats.failures++;
+      guardSink("attempt", () => {
+        attemptEvents.push(event);
+        if (!event.ok) stats.failures++;
+      });
     });
     llmCall.setCapturedModel(model as never, registry as never);
 
     const { setInstrumentHooks } = await import("../../src/instrument.js");
     setInstrumentHooks({
       onTrioExamined: (event: TrioExaminedEvent) => {
-        stats.triosExamined++;
-        if (event.notes > 0) stats.triosProductive++;
-        stats.candidates += event.notes;
-        trioExamined.push(event);
+        guardSink("trioExamined", () => {
+          stats.triosExamined++;
+          if (event.notes > 0) stats.triosProductive++;
+          stats.candidates += event.notes;
+          trioExamined.push(event);
+        });
       },
       onBuild: (event: BuildEvent) => {
-        buildIndex++;
-        for (const decision of event.decisions) {
-          if (decision.action === "insert") stats.inserted++;
-          else if (decision.action === "merge") stats.merged++;
-          else stats.skipped++;
-        }
-        stats.evicted += event.evicted;
-        const rulesAfter = readRules(portraitDir);
-        builds.push({
-          index: buildIndex,
-          decisions: event.decisions,
-          inserted: event.inserted,
-          evicted: event.evicted,
-          rulesAfter,
+        guardSink("build", () => {
+          buildIndex++;
+          for (const decision of event.decisions) {
+            if (decision.action === "insert") stats.inserted++;
+            else if (decision.action === "merge") stats.merged++;
+            else stats.skipped++;
+          }
+          stats.evicted += event.evicted;
+          const rulesAfter = readRules(portraitDir);
+          builds.push({
+            index: buildIndex,
+            decisions: event.decisions,
+            inserted: event.inserted,
+            evicted: event.evicted,
+            rulesAfter,
+          });
         });
       },
       onCooldown: (event: CooldownEvent) => {
-        stats.cooldownMs += event.ms;
-        cooldowns.push(event);
+        guardSink("cooldown", () => {
+          stats.cooldownMs += event.ms;
+          cooldowns.push(event);
+        });
       },
     });
 
@@ -175,12 +217,27 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
     const pipelineStats = await runPipelineLoop(runSettings, Number.POSITIVE_INFINITY, () => counter.exhausted());
 
     const capped = counter.stopReason !== null;
-    writeReceipt(opts, counter, stats, capped ? "capped" : "completed", null, attemptEvents, cooldowns, pipelineStats);
+    const sinkExit = failOnSinkErrors(
+      (stop, error) => writeReceipt(opts, counter, stats, stop, error, attemptEvents, cooldowns, sinkErrors),
+      sinkErrors,
+    );
+    if (sinkExit !== 0) return sinkExit;
+    writeReceipt(
+      opts,
+      counter,
+      stats,
+      capped ? "capped" : "completed",
+      null,
+      attemptEvents,
+      cooldowns,
+      null,
+      pipelineStats,
+    );
     writeSheet(opts, limits.runType, trioExamined, builds, rulesBeforeRun, readRules(portraitDir));
     return capped ? 3 : 0;
   } catch (error) {
     const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
-    writeReceipt(opts, counter, stats, "error", message, attemptEvents, cooldowns);
+    writeReceipt(opts, counter, stats, "error", message, attemptEvents, cooldowns, null);
     process.stderr.write(`compass harness: run failed: ${message}\n`);
     return 1;
   } finally {
@@ -212,6 +269,7 @@ function writeReceipt(
   error: string | null,
   attempts: LlmAttemptEvent[],
   cooldowns: CooldownEvent[],
+  sinkErrors: Array<{ hook: string; error: string }> | null,
   pipelineStats?: { totalSequences: number; totalInserted: number; totalEvicted: number },
 ): void {
   const snapshot = counter.snapshot();
@@ -238,6 +296,7 @@ function writeReceipt(
       ...(pipelineStats ? { pipeline: pipelineStats } : {}),
     },
     cooldownDetail: cooldowns,
+    ...(sinkErrors === null ? {} : { sinkErrors }),
     selection: opts.prepared.selection,
     census: opts.prepared.census
       ? { file: opts.prepared.census.file, totalTrios: opts.prepared.census.totalTrios }

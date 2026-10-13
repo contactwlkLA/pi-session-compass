@@ -203,3 +203,58 @@ describe("resolveConfirmation", () => {
     expect(no.proceed).toBe(false);
   });
 });
+
+describe("createSinkGuard", () => {
+  it("runs callbacks normally and records throwing sinks with their hook name", async () => {
+    const { createSinkGuard } = await import("../../scripts/compass/pipeline-boot.js");
+    const { sinkErrors, guardSink } = createSinkGuard();
+    let ran = 0;
+    guardSink("attempt", () => {
+      ran++;
+    });
+    guardSink("build", () => {
+      throw new Error("boom");
+    });
+    guardSink("cooldown", () => {
+      throw "plain string failure";
+    });
+    expect(ran).toBe(1);
+    expect(sinkErrors).toEqual([
+      { hook: "build", error: "boom" },
+      { hook: "cooldown", error: "plain string failure" },
+    ]);
+  });
+});
+
+describe("failOnSinkErrors", () => {
+  it("writes an error receipt with the sink errors and returns exit code 1", async () => {
+    const { failOnSinkErrors } = await import("../../scripts/compass/pipeline-boot.js");
+    const calls: Array<{ stop: string; error: string | null }> = [];
+    const exitCode = failOnSinkErrors(
+      (stop, error) => {
+        calls.push({ stop, error });
+      },
+      [
+        { hook: "build", error: "boom" },
+        { hook: "cooldown", error: "plain string failure" },
+      ],
+    );
+    expect(exitCode).toBe(1);
+    expect(calls).toEqual([
+      {
+        stop: "error",
+        error: "instrumentation sink errors: build: boom; cooldown: plain string failure",
+      },
+    ]);
+  });
+
+  it("writes nothing and returns exit code 0 when no sink errors were recorded", async () => {
+    const { failOnSinkErrors } = await import("../../scripts/compass/pipeline-boot.js");
+    let writes = 0;
+    const exitCode = failOnSinkErrors(() => {
+      writes++;
+    }, []);
+    expect(exitCode).toBe(0);
+    expect(writes).toBe(0);
+  });
+});

@@ -96,6 +96,26 @@ describe("offline boundary checks", () => {
     expect(out.attempts[0]).toMatchObject({ attempt: 1, ok: false });
     expect(out.attempts[1]).toMatchObject({ attempt: 2, ok: true });
     expect(out.result).toBeDefined();
+    // Attempt 1 is one request (5 in / 1 out). Attempt 2 is two requests
+    // (7 in / 3 out + 9 in / 2 out). Per-attempt usage must not leak across attempts.
+    expect(out.boundaryUsages).toEqual([
+      { input: 5, output: 1 },
+      { input: 7, output: 3 },
+      { input: 9, output: 2 },
+    ]);
+    expect(out.attempts[0].usage).toEqual({ input: 5, output: 1 });
+    expect(out.attempts[1].usage).toEqual({ input: 16, output: 5 });
+    const sumAll = (usages: Array<{ input?: number; output?: number }>): { input: number; output: number } =>
+      usages.reduce<{ input: number; output: number }>(
+        (sums, turn) => ({
+          input: sums.input + (turn.input ?? 0),
+          output: sums.output + (turn.output ?? 0),
+        }),
+        { input: 0, output: 0 },
+      );
+    const attemptSum = sumAll(out.attempts.map((attempt) => attempt.usage ?? {}));
+    expect(attemptSum).toEqual({ input: 21, output: 6 });
+    expect(attemptSum).toEqual(sumAll(out.boundaryUsages ?? []));
   });
 
   it("stops at the request ceiling with no automatic restart", async () => {
