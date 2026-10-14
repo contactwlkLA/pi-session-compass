@@ -24,58 +24,60 @@ Once approved, text can be applied directly during implementation. Any subsequen
 
 # pi-session-compass — Agent operating rules
 
-Revision: **0.4.0** · 2026-10-14
+Revision: **0.5.0** · 2026-10-14
 
-These rules apply in addition to the repository rules above; they do not replace them. Where they would conflict, follow the repository rules and ask the user.
+Adds to the repository rules above. On conflict, follow the repository rules and ask the user.
 
 ## Start and scope
 
-- Read md/stage.md at session start, then the first unfinished stage’s task file, before the first reply, whatever the first request is. Handoffs and summaries do not replace these files; where they disagree, the files win. Read the run-type table in md/compass.md; consult other documents only as needed. Report a missing task file and stop rather than inventing instructions or skipping a blocked stage.
-- Layout: planning docs live in `md/`; harness and check code in `scripts/`; frozen inputs in `fixtures/`; every generated run artifact (portrait copies, snapshots, receipts, traces, results sheets) only under `outputs/`, one subdirectory per run. Edit `src/` only for the instrumentation and repairs a stage calls for.
-- One session targets one stage. Follow explicit user/repository instructions; resolve material conflicts before dependent execution. Briefly state the authorized outcome, allowed edits, and completion evidence.
-- **Unclear goal, requirement, scope, acceptance criterion, or authorization: ask one focused question and wait. Do not substitute an assumption.** Silence, a reversible action, or a written proposal is not approval. Routine choices may proceed within clear scope; verify facts and mark unknown evidence honestly.
-- Continue independent work only when its goal and authorization are clear. If the overall goal is unclear, pause implementation. Discover accessible checkout/runtime facts before asking the user to supply them.
-- Do not enter directory "./private"
+- **Before the first reply,** read md/stage.md and the first unfinished stage’s task file; they override handoffs. Read the md/compass.md run-type table; other documents as needed. If the task file is missing, report it and stop; never invent instructions or skip a blocked stage.
+- **Handoffs are written only after the gates pass** (full test runs green, work committed and pushed, stage docs synced). On re-entry, run `git status`: if HEAD differs from the handoff’s commit or the tree is not clean, review what changed and invalidate affected evidence before new work. Resume the first unfinished stage once its prerequisite or clarification is resolved.
+- **Layout:** `md/` planning docs; `scripts/` harness and checks; `fixtures/` frozen inputs; `outputs/<run>/` every generated artifact (portrait copies, snapshots, receipts, traces, results sheets). Edit `src/` only for instrumentation and repairs a stage calls for.
+- One session, one stage. State the authorized outcome, allowed edits, and completion evidence. Resolve material conflicts before dependent work.
+- **Unclear goal, scope, acceptance criterion, or authorization: ask one focused question and wait; never substitute an assumption.** Silence, a reversible action, or a proposal is not approval. Routine choices within clear scope may proceed. If the overall goal is unclear, pause implementation. Discover checkout and runtime facts before asking the user; mark unknown evidence as unknown.
+- Do not enter `./private`.
 
 ## Execute and stop
 
-- Check tasks only after verification; preserve user changes and evidence. Use at most two diagnosis → targeted repair → verification cycles per distinct problem, then report the failure; application model-retry semantics are separate.
-- **Verification is reported only from a full run.** Before reporting a code change verified, or asking to commit it, run `npm test` and `npm run test:compass` in full and quote the raw result of every run; a partial run is reported as partial. A failure of a test listed as known-intermittent in the T1.6 baseline in md/stage-1-task.md, with the same failure message recorded there, is rerun once; if the rerun passes, report it as the known flake. A failure with any other message or duration is a real failure.
-- **Order-dependent failures need repeated runs.** When a change touches a test file with a recorded intermittent failure, or shared test setup or mocks, verify it with at least 20 default-order runs of the affected suite and report the failure count; one passing run is not evidence.
-- **Limits are user-confirmed for every live run.** The row for the run type in md/compass.md is the suggested default; if it is UNSET, suggest values with their basis and assumptions. Pass `--run-type`, `--max-model-requests`, and `--max-run-ms` to the harness (it has no defaults). Show the user the run type, limits, selected file with its trio count, and output directory, and pass `--confirmed` only after the user approves them in this session. Accept only finite positive values. Unattended runs never self-confirm. Count inference attempts across all models, including retries and follow-ups; several questions in one Jev request count once. Never raise a ceiling on your own, edit the md/compass.md table unless asked, or evade a cap by automatic restart. Record the run type, suggested and final limits, and their source in every run manifest.
+- Check a task only after verification; preserve user changes and evidence.
+- **Repairs:** at most two diagnose → repair → verify cycles per problem, then report the failure. Application model-retry semantics are separate.
+- **Verify with full runs.** Before reporting a change verified or asking to commit, run `npm test` and `npm run test:compass` in full and quote each raw result; label partial runs as partial. A test listed as known-intermittent in the T1.6 record (md/stage-1-task.md) that fails with the recorded message is rerun once; if the rerun passes, report the known flake. Any other failure is real.
+- **Flaky test files or shared test setup/mocks:** verify a change with 20 default-order runs and report the failure count.
+- **Live-run limits are user-confirmed every time.** Suggest the md/compass.md row; if UNSET, suggest values with their basis and assumptions. Pass `--run-type`, `--max-model-requests`, `--max-run-ms` (no defaults; finite positive values only). Show the run type, limits, file with trio count, and output directory; pass `--confirmed` only after the user approves them in this session. Unattended runs never self-confirm. Count every inference attempt across models, including retries and follow-ups; one multi-question Jev request counts once. Never raise a ceiling, edit the compass.md table unasked, or restart to evade a cap. Record run type, suggested and final limits, and their source in each manifest.
 - Verify isolation and limit controls offline before live calls.
-- A `smoke` run that ends by completion or by a cap, with its checks met, is a successful smoke result with no measurement claims. A capped run of any other type is incomplete: leave the task and stage unchecked and preserve partial evidence.
-- Stop on user instruction, reached limits, loss of isolation/control, or the stage boundary. Complete clearly authorized independent work when prerequisites are missing.
-- At exit, synchronize task checkboxes and stage.md: outcome, stage status, next unfinished task, blocker, and evidence path. Check the stage only after its milestone is verified. Never check a stage because the session merely ended.
-- On re-entry, verify source/settings/fixture revisions and invalidate affected evidence if changed. Resume the first unfinished stage after its prerequisite or clarification is resolved. Keep secrets out of artifacts/messages; give brief task-transition/blocker updates.
+- A `smoke` run ending by completion or cap with its checks met is a success with no measurement claims. Any other capped run is incomplete: leave its task and stage unchecked and keep partial evidence.
+- Stop on user instruction, reached limits, lost isolation or control, or the stage boundary. Finish clearly authorized independent work when prerequisites are missing.
+- **At exit,** sync task checkboxes and stage.md (outcome, status, next task, blocker, evidence path). Check a stage only after its milestone is verified, never because the session ended.
+- Keep secrets out of artifacts and messages. Give brief updates at task transitions and blockers.
 
 ## Reporting to the user
 
-- **Status board first.** Every reply that reports progress begins with three one-line items, using task IDs from md/stage.md: **Done**, **Now**, **Next**.
-- **One instruction set per message.** Ask the user for one action at a time: one command block, one paste, or one decision, ending with the check that confirms it. Name the next step without giving its commands.
-- **No repeated asks.** Do not ask for an output already received; if it is needed again, say what changed and why.
+- **Status board first:** a progress reply opens with one-line **Done**, **Now**, **Next**, using md/stage.md task IDs.
+- **One ask per message:** one command block, paste, or decision, ending with the check that confirms it. Name the next step without its commands.
+- **No repeated asks:** never re-request output already received; if it is needed again, say what changed and why.
 
 ## Compatibility with the repository rules
 
-- **Protected text:** the Text Review rule above covers any user-facing string this project adds or changes in `src/` or the harness, including the start-of-run confirmation prompt and its cost notes, diagnostics, and errors. The stage task names those strings first; present the exact text and wait for approval before applying.
-- **Product docs:** the README.md and CONFIGURATION rule above applies to upstream's product docs, not to the planning documents in `md/` or this file, which are design documents. At the settings and handoff stage, update README.md and CONFIGURATION for new behavior in product-doc style, with no design-doc references or historical framing.
-- **Tests:** `npm test` runs the repository's suite (it excludes `tests/compass`), `npm run test:compass` runs the harness's own tests, and `npx vitest run` runs specific tests. S1.T1.6 records their baseline results before any edit; update tests when behavior changes.
-- **Approval markers:** `<!-- approved -->` markers belong in design documents only. The planning documents here are not named `-design` and need none.
+- **Protected text** includes every user-facing string this project adds or changes in `src/` or the harness: the confirmation prompt, cost notes, diagnostics, errors. The stage task lists them; present the exact text and wait for approval before applying.
+- **Product docs:** the README/CONFIGURATION rule covers upstream’s product docs, not `md/` or this file, which are design documents. At the settings-and-handoff stage, update README and CONFIGURATION for new behavior in product-doc style.
+- **Tests:** `npm test` runs the repository suite (excludes `tests/compass`); `npm run test:compass` runs the harness suite; `npx vitest run` runs specific tests. S1.T1.6 records their baselines. Update tests when behavior changes.
+- **Approval markers** belong only in `-design` docs; the `md/` planning docs need none.
 
 ## Revision numbering
 
-Each document carries MAJOR.MINOR.PATCH in its header and history table. All start at 0.1.0 at the first commit and stay pre-1.0 while planning.
+Each document carries MAJOR.MINOR.PATCH in its header and history table, starting at 0.1.0 and staying pre-1.0 while planning.
 
-- **Minor (0.X.0):** meaning, scope, behavior, contract, or structure changes, including adding, removing, or reordering a stage, task, rule, or limit.
-- **Patch (0.X.Y):** wording, typos, formatting, or other changes with no change in meaning.
-- **1.0.0:** set by the user when the document set is approved for implementation. Afterward the same rules apply, and a major bump is the user’s call.
-- Documents refer to each other by file name only, never by revision number, so a bump touches only the file that changed.
-- At session exit, bump each changed document by these rules and add a history row. Never bump a document that did not change.
+- **Minor:** meaning, scope, behavior, contract, or structure changes, including adding, removing, or reordering a stage, task, rule, or limit.
+- **Patch:** wording, typos, or formatting, with no change in meaning.
+- **1.0.0** (document set approved for implementation) and any later major bump are the user’s call.
+- Documents refer to each other by file name, never by revision.
+- At exit, bump each changed document and add a history row; never bump an unchanged one.
 
 ## Revision history
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.5.0 | 2026-10-14 | Handoffs are written only after the gates pass; re-entry runs a git status drift check. Condensed the project rules' wording with no other change in meaning. |
 | 0.4.0 | 2026-10-14 | Session start reads stage.md and the task file before the first reply; handoffs do not replace them. Added the repeated-runs rule for order-dependent failures. |
 | 0.3.0 | 2026-10-12 | Added the Reporting to the user section: status board, one instruction set per message, no repeated asks. Added a rule not to enter ./private (the user's scratch directory) |
 | 0.2.0 | 2026-10-12 | Added the verification-reporting rule; Tests bullet names test:compass. |
