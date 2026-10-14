@@ -30,6 +30,8 @@ export async function buildPortrait(
         maxTokensOverride?: number | null;
         timeoutOverride?: number | null;
         debugDumpPath?: string;
+        /** Attempt-event stage tag; maintenance backfill passes "maintenance". */
+        stageTag?: "building" | "maintenance";
       }
     | undefined,
 ): Promise<BuildResult | undefined> {
@@ -121,7 +123,7 @@ export async function buildPortrait(
         options?.modelOverride,
         options?.maxTokensOverride,
         options?.timeoutOverride,
-        "building",
+        options?.stageTag ?? "building",
         validationAttempts + 1,
       );
 

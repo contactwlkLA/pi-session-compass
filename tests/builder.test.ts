@@ -3,7 +3,8 @@
 
 /**
  * buildPortrait's validation loop tags each call with validationRound=1 on the
- * first try and +1 after every failed validation, all stage "building".
+ * first try and +1 after every failed validation, stage "building" unless the
+ * caller passes stageTag (maintenance backfill passes "maintenance").
  * llm-call is mocked centrally, so this observes the arguments
  * that produce the attempt events.
  */
@@ -52,5 +53,14 @@ describe("buildPortrait validationRound", () => {
     const rounds = mockCallPortraitLlm.mock.calls.map((call) => call[9]);
     expect(stages).toEqual(["building", "building"]);
     expect(rounds).toEqual([1, 2]);
+  });
+
+  it("tags attempts with the stageTag option when given", async () => {
+    writeTestPortrait(portraitDir, ["rule 1"]);
+    mockCallPortraitLlm.mockResolvedValueOnce({ decisions: [{ action: "skip", candidate: "candidate one" }] });
+
+    await buildPortrait(portraitDir, ["candidate one"], { skipPersist: true, stageTag: "maintenance" });
+
+    expect(mockCallPortraitLlm.mock.calls.map((call) => call[8])).toEqual(["maintenance"]);
   });
 });

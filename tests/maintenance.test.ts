@@ -507,6 +507,8 @@ describe("runMaintenance", () => {
     expect(buildOpts?.maxTokensOverride).toBeNull();
     // ...and maintenanceTimeout (default '1h' → 60*60*1000 ms)
     expect(buildOpts?.timeoutOverride).toBe(60 * 60 * 1000);
+    // ...and tagged as maintenance, not building
+    expect(buildOpts?.stageTag).toBe("maintenance");
   });
 
   it("resets footer phase to idle on completion", async () => {

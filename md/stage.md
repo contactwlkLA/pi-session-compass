@@ -1,6 +1,6 @@
 # pi-session-compass — Stage continuation
 
-Revision: **0.2.5** · Updated: **2026-10-14**
+Revision: **0.2.6** · Updated: **2026-10-14**
 
 Select the first unchecked stage. A checked stage requires verified milestone evidence. Unchecked means not started, partial, or blocked; use the continuation fields below. Stop after that stage’s completion or a documented stopping condition.
 
@@ -18,7 +18,7 @@ Select the first unchecked stage. A checked stage requires verified milestone ev
 - Last completed step: **S1.T1.1–T1.6, S1.T2.1–T2.2, S1.T2.3, S1.T2.4–T2.6, S1.T3.1–T3.8**
 - Outcome: **IN PROGRESS: S1 harness code and tests committed on branch s1/harness**
 - Blocker: **user decisions**
-- Pending user inputs: **maintenance backfill stage tag (its buildPortrait calls are tagged "building", not "maintenance"); smoke limits; the smoke run; jiti dependency decision (deferred)**
+- Pending user inputs: **permission rule for the harness launch command; the smoke run (limits approved 2026-10-14: 5 requests, 900000 ms, compass.md row)**
 - Limits: **suggested at launch from the [compass.md](compass.md) run-type table; confirmed by the user for every live run**
 - Smoke result (S1.T4): **pending**
 - Baseline result (S1.T5): **pending**
@@ -34,6 +34,7 @@ Stage meanings and dependencies: [plan.md](plan.md). Operating rules: [AGENTS.md
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.2.6 | 2026-10-14 | Decisions recorded: maintenance backfill calls are tagged "maintenance"; the harness launches with `node --import jiti/register` (installed jiti, no package change); smoke limits approved. |
 | 0.2.5 | 2026-10-14 | T3.7 completed (running table; strings approved); next step T4. |
 | 0.2.4 | 2026-10-14 | Pending inputs: added the maintenance backfill stage-tag decision. |
 | 0.2.3 | 2026-10-14 | T3.6 completed (harness strings approved and applied); next step T3.7. |

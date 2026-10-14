@@ -300,6 +300,7 @@ export async function runMaintenance(shouldCancel: (() => boolean) | undefined):
             maxTokensOverride: maintenanceMaxTokens, // token cap for maintenance (null = model limit)
             timeoutOverride: maintenanceTimeoutMs, // timeout for maintenance (null = no timeout)
             debugDumpPath: backfillDumpPath ?? undefined,
+            stageTag: "maintenance",
           });
         } catch (err) {
           if (getErrorMessage(err) === "PAUSED") {
