@@ -10,22 +10,13 @@
  * end-to-end (agentLoop is a real dependency).
  */
 import type { AgentContext, AgentLoopConfig, AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
+// agentLoop is the shared test-setup mock (a forwarder to the real loop); each test drives it
+// with mockReturnValue so attemptWithRetries runs without a real LLM.
+import { agentLoop } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai/compat";
 import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-// Mock agentLoop so attemptWithRetries can be exercised without a real LLM. The mock is set
-// per-test via vi.mocked(agentLoop).mockImplementation(...).
-vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
-  const orig = await importOriginal<typeof import("@earendil-works/pi-agent-core")>();
-  return {
-    ...orig,
-    agentLoop: vi.fn(),
-  };
-});
-
-import { agentLoop } from "@earendil-works/pi-agent-core";
 import { attemptWithRetries, countWords, NO_STAGE_TAG, retryDelayMs, setLlmAttemptSink } from "../src/llm-call.js";
 import type { PortraitState } from "../src/types.js";
 import { setupTestSettings, teardownTestSettings } from "./settings-helpers.js";

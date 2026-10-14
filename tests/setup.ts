@@ -213,6 +213,20 @@ vi.mock("../src/llm-call.js", async (importOriginal) => {
   };
 });
 
+// pi-agent-core: agentLoop forwards to the real loop and is re-armed after each test, so
+// llm-call.test.ts can drive it with mockReturnValue while every other file keeps the real loop.
+// It must be mocked here, not per file: src/llm-call.js binds agentLoop when it first loads, and
+// under isolate:false that can happen in any file before a per-file mock is registered. The fn is
+// kept on globalThis so its identity survives vi.resetModules (which re-runs this factory).
+vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("@earendil-works/pi-agent-core")>();
+  if (!globalThis.__portraitAgentLoop) {
+    const impl = orig.agentLoop as unknown as ForwarderImpl;
+    globalThis.__portraitAgentLoop = { fn: vi.fn(impl), impl };
+  }
+  return { ...orig, agentLoop: globalThis.__portraitAgentLoop.fn };
+});
+
 // builder: real applyDecisions/validateDecisions are always available (portrait.test.ts exercises
 // them); buildPortrait is stubbed only when the `builder` flag is on (maintenance/pipeline).
 vi.mock("../src/builder.js", async (importOriginal) => {
@@ -334,6 +348,12 @@ afterEach(() => {
     fn.mockReset();
     fn.mockImplementation(impl);
   }
+  // Re-arm the shared agentLoop forwarder (a test's mockReturnValue would otherwise leak).
+  const loop = globalThis.__portraitAgentLoop;
+  if (loop) {
+    loop.fn.mockReset();
+    loop.fn.mockImplementation(loop.impl);
+  }
   // Reset the shared llm-call bag stubs (queued returns would otherwise leak across files).
   const bag = globalThis.__portraitTestBag;
   if (bag) {
@@ -368,4 +388,6 @@ declare global {
   var __portraitMockFlags: PortraitStubFlags | undefined;
   // eslint-disable-next-line no-var
   var __portraitTestBag: TestMockBag | undefined;
+  // eslint-disable-next-line no-var
+  var __portraitAgentLoop: { fn: ReturnType<typeof vi.fn>; impl: ForwarderImpl } | undefined;
 }
