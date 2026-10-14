@@ -15,7 +15,13 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderConfirmation } from "../../scripts/compass/confirmation.js";
 import { executeRun, prepareRun } from "../../scripts/compass/run.js";
-import { SnapshotError, snapshotPortraitState, treeDigest, verifySnapshot } from "../../scripts/compass/snapshot.js";
+import {
+  restoreSnapshot,
+  SnapshotError,
+  snapshotPortraitState,
+  treeDigest,
+  verifySnapshot,
+} from "../../scripts/compass/snapshot.js";
 import { strings } from "../../scripts/compass/strings.js";
 import type { Limits } from "../../scripts/compass/types.js";
 
@@ -253,5 +259,27 @@ describe("confirmation block", () => {
       startPortrait: { source: "live", dir: "/tmp/live-dir", digest: "d" },
     });
     expect(liveBlock).toContain(strings.confirmStartLive("/tmp/live-dir"));
+  });
+});
+
+describe("restoreSnapshot", () => {
+  it("restores over an earlier attempt's portrait dir, read-only git objects and leftovers included", () => {
+    const live = path.join(TEST_TMP, "live-again");
+    makePortraitDir(live);
+    commitAll(live);
+    const snap = path.join(TEST_TMP, "snap-again");
+    snapshotPortraitState(live, snap);
+    const dest = path.join(TEST_TMP, "run-again", "portrait");
+
+    restoreSnapshot(snap, dest);
+    fs.writeFileSync(path.join(dest, "leftover.md"), "from an earlier attempt\n", "utf-8");
+    fs.writeFileSync(path.join(dest, "portrait.md"), "# Changed\n", "utf-8");
+    restoreSnapshot(snap, dest);
+
+    expect(fs.existsSync(path.join(dest, "leftover.md"))).toBe(false);
+    expect(fs.readFileSync(path.join(dest, "portrait.md"), "utf-8")).toBe("# Portrait\n");
+    expect(execSync("git rev-parse HEAD", { cwd: dest, encoding: "utf-8" }).trim()).toBe(
+      verifySnapshot(snap)[".git/HEAD"],
+    );
   });
 });

@@ -59,8 +59,13 @@ export function snapshotPortraitState(
   return { hashesPath, hashes };
 }
 
-/** Restore a snapshot into a (possibly fresh) portrait dir — the run's starting state. */
+/**
+ * Restore a snapshot into a run's portrait dir — the run's starting state.
+ * The dir is cleared first: leftovers from an earlier attempt would survive the
+ * copy, and read-only git objects cannot be overwritten in place.
+ */
 export function restoreSnapshot(snapshotDir: string, destDir: string): void {
+  fs.rmSync(destDir, { recursive: true, force: true });
   fs.mkdirSync(destDir, { recursive: true });
   for (const name of SNAPSHOT_FILES) {
     const src = path.join(snapshotDir, name);
