@@ -103,6 +103,8 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
   const onShutdown: Array<() => void> = [];
   process.once("SIGINT", () => counter.abort());
   onShutdown.push(() => process.removeAllListeners("SIGINT"));
+  // Created before the try so sink errors recorded before a crash still reach the error receipt.
+  const { sinkErrors, guardSink } = createSinkGuard();
 
   try {
     // 1. Settings: the frozen, sanitized run snapshot (never live global files at run time).
@@ -161,7 +163,6 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
     setDefaultStreamFn(wrapped as never);
 
     const llmCall = await import("../../src/llm-call.js");
-    const { sinkErrors, guardSink } = createSinkGuard();
     llmCall.setLlmAttemptSink((event: LlmAttemptEvent) => {
       guardSink("attempt", () => {
         attemptEvents.push(event);
@@ -237,7 +238,16 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
     return capped ? 3 : 0;
   } catch (error) {
     const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
-    writeReceipt(opts, counter, stats, "error", message, attemptEvents, cooldowns, null);
+    writeReceipt(
+      opts,
+      counter,
+      stats,
+      "error",
+      message,
+      attemptEvents,
+      cooldowns,
+      sinkErrors.length > 0 ? sinkErrors : null,
+    );
     process.stderr.write(`compass harness: run failed: ${message}\n`);
     return 1;
   } finally {
