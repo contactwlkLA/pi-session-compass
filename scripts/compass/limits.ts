@@ -63,7 +63,7 @@ export function parseLimits(args: Record<string, string | string[]>): Limits {
   const sourceRaw = str("limits-source");
   if (!sourceRaw) throw new LimitError(strings.missingSwitch("limits-source"));
   if (!(LIMIT_SOURCES as readonly string[]).includes(sourceRaw)) {
-    throw new LimitError(strings.invalidLimit("limits-source", sourceRaw));
+    throw new LimitError(strings.invalidLimitSource(sourceRaw));
   }
   return {
     runType: parseRunType(str("run-type")),

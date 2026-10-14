@@ -10,25 +10,48 @@ export interface ConfirmationInput {
   scope: "all" | "file";
   /** Selected file path (scope=file) or a scope description (scope=all). */
   selectionLabel: string;
-  trioCount: number;
+  /** Eligible trio count, or null when no census is known (scope=all). */
+  trioCount: number | null;
   outputDir: string;
   startPortrait: StartPortrait;
+  model: string;
+  thinking: string;
+}
+
+/** Resolve the confirmation model line from a settings snapshot (unknown when absent). */
+export function confirmationModel(snapshot: unknown): { model: string; thinking: string } {
+  const record = (snapshot ?? {}) as {
+    portraitSettings?: { model?: unknown; thinkingLevel?: unknown };
+    hostPiSettings?: { defaultProvider?: unknown; defaultModel?: unknown };
+  };
+  const portraitModel = typeof record.portraitSettings?.model === "string" ? record.portraitSettings.model : "";
+  const provider =
+    typeof record.hostPiSettings?.defaultProvider === "string" ? record.hostPiSettings.defaultProvider : undefined;
+  const hostModel =
+    typeof record.hostPiSettings?.defaultModel === "string" ? record.hostPiSettings.defaultModel : undefined;
+  const fallback = provider && hostModel ? `${provider}/${hostModel}` : "";
+  const model = portraitModel || fallback || "unknown";
+  const thinking =
+    typeof record.portraitSettings?.thinkingLevel === "string" ? record.portraitSettings.thinkingLevel : "unknown";
+  return { model, thinking };
 }
 
 /** Render the start-of-run confirmation block (compass.md rule 4). */
 export function renderConfirmation(input: ConfirmationInput): string {
   const { limits } = input;
+  const trios = input.trioCount;
   const lines = [
     strings.confirmHeader,
     strings.confirmRunType(limits.runType),
-    limits.source === "compass-table"
-      ? strings.confirmSuggested(limits.maxModelRequests, limits.maxRunMs, "compass.md table")
-      : limits.source === "agent-suggestion"
-        ? strings.confirmSuggested(limits.maxModelRequests, limits.maxRunMs, "agent suggestion")
-        : strings.confirmLimits(limits.maxModelRequests, limits.maxRunMs),
+    strings.confirmLimits(limits.maxModelRequests, limits.maxRunMs),
+    strings.confirmLimitSource(limits.source),
+    strings.confirmModel(input.model, input.thinking),
     input.scope === "all"
-      ? strings.confirmSelectionAll(input.trioCount)
-      : strings.confirmSelection(input.selectionLabel, input.trioCount),
+      ? strings.confirmSelectionAll(trios ?? 0)
+      : strings.confirmSelection(input.selectionLabel, trios ?? 0),
+    ...(trios !== null && limits.maxModelRequests < trios
+      ? [strings.confirmCapped(limits.maxModelRequests, trios)]
+      : []),
     strings.confirmOutputDir(input.outputDir),
     input.startPortrait.source === "snapshot"
       ? strings.confirmStartSnapshot(input.startPortrait.dir)
@@ -36,7 +59,7 @@ export function renderConfirmation(input: ConfirmationInput): string {
     "",
     strings.costNoteLowerBound,
     strings.costNoteSpend,
-    strings.costNoteThinking,
+    strings.costNoteThinking(input.thinking),
     strings.costNoteCapped,
   ];
   return lines.join("\n");
@@ -69,6 +92,7 @@ export async function resolveConfirmation(block: string, opts: ConfirmOptions): 
     return { proceed: false, mode: "non-tty", reason: strings.refuseNoConfirm };
   }
   process.stdout.write(`${block}\n`);
+  process.stdout.write(`${strings.askOwnLimits}\n`);
   const ask =
     opts.ask ??
     ((question: string) => {

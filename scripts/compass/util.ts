@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { strings } from "./strings.js";
 
 /**
  * Locate the workspace root by walking up from this module until a directory
@@ -21,7 +22,7 @@ export function findWorkspaceRoot(startDir?: string): string {
     if (parent === dir) break;
     dir = parent;
   }
-  throw new Error("compass harness: workspace root not found (md/compass.md + biome.json)");
+  throw new Error(strings.workspaceRootNotFound);
 }
 
 /** Read a `--flag value` / `--flag=value` argv into a map; positional args land under `_`. */

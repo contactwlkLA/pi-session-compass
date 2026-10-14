@@ -27,7 +27,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { censusFile } from "./census.js";
-import { renderConfirmation, resolveConfirmation } from "./confirmation.js";
+import { confirmationModel, renderConfirmation, resolveConfirmation } from "./confirmation.js";
 import { LimitError, LimitReached, parseLimits, suggestedLimits } from "./limits.js";
 import { buildManifestData, freezeManifest } from "./manifest.js";
 import { freezeSelection, parseScope, SelectionError, writeSelection } from "./selection.js";
@@ -175,13 +175,17 @@ export async function executeRun(
     process.env.PI_PORTRAIT_SESSION_DIRS = prepared.selection.isolatedSessionDir;
   }
 
+  const settingsSnapshot = JSON.parse(fs.readFileSync(prepared.settingsSnapshotPath, "utf-8")) as unknown;
+  const { model, thinking } = confirmationModel(settingsSnapshot);
   const block = renderConfirmation({
     limits,
     scope: prepared.selection.scope,
     selectionLabel: selectionLabel(prepared.selection, prepared.census),
-    trioCount: prepared.census?.totalTrios ?? 0,
+    trioCount: prepared.census?.totalTrios ?? null,
     outputDir,
     startPortrait: prepared.startPortrait,
+    model,
+    thinking,
   });
   const confirmation = await resolveConfirmation(block, { confirmed: opts.confirmed, isTTY: opts.isTTY });
   if (!confirmation.proceed) return 2;
@@ -226,12 +230,13 @@ export async function main(argv: string[]): Promise<number> {
         limits: null,
         suggested: null,
       });
+      const frozen = prepared.selection.scope === "file" ? prepared.selection.frozen : undefined;
       const summary = [
-        `output: ${outputDir}`,
-        prepared.selection.scope === "file" && prepared.selection.frozen
-          ? `selected: ${prepared.selection.frozen.sourcePath} (sha256 ${prepared.selection.frozen.sha256.slice(0, 12)}…, ${prepared.census?.totalTrios ?? 0} trios)`
-          : "selection: all session files (today's behavior)",
-        `manifest: ${prepared.manifestPath}`,
+        strings.prepareOutput(outputDir),
+        frozen
+          ? strings.prepareSelected(frozen.sourcePath, frozen.sha256.slice(0, 12), prepared.census?.totalTrios ?? 0)
+          : strings.prepareSelectionAll,
+        strings.prepareManifest(prepared.manifestPath),
       ];
       process.stdout.write(`${summary.join("\n")}\n`);
       return 0;
@@ -248,7 +253,7 @@ export async function main(argv: string[]): Promise<number> {
       return await executeRun(args, { confirmed });
     } catch (error) {
       if (error instanceof LimitReached) {
-        process.stderr.write(`compass harness: limit reached (${error.kind}) — run incomplete, evidence preserved.\n`);
+        process.stderr.write(`${strings.limitReached(error.kind)}\n`);
         return 3;
       }
       process.stderr.write(`${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
@@ -256,11 +261,7 @@ export async function main(argv: string[]): Promise<number> {
     }
   }
 
-  process.stderr.write(
-    `compass harness: expected 'prepare' or 'execute'.\n` +
-      "  prepare  --session <jsonl> [--scope file|all] [--output <dir>]\n" +
-      "  execute  --session <jsonl> --run-type <t> --max-model-requests N --max-run-ms N --limits-source <s> [--confirmed] [--start-snapshot <dir>]\n",
-  );
+  process.stderr.write(`${strings.usageHeader}\n${strings.usagePrepare}\n${strings.usageExecute}\n`);
   return 2;
 }
 

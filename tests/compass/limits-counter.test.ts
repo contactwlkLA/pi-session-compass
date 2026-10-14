@@ -17,6 +17,7 @@ import {
   parsePositiveInt,
   suggestedLimits,
 } from "../../scripts/compass/limits.js";
+import { strings } from "../../scripts/compass/strings.js";
 import type { Limits } from "../../scripts/compass/types.js";
 
 const SMOKE: Limits = { runType: "smoke", maxModelRequests: 2, maxRunMs: 60_000, source: "compass-table" };
@@ -175,15 +176,18 @@ describe("resolveConfirmation", () => {
     trioCount: 3,
     outputDir: "/tmp/out",
     startPortrait: { source: "live", dir: "/tmp/portrait", digest: "0" },
+    model: "meta/test-model",
+    thinking: "high",
   });
 
-  it("renders run type, limits, selection, output dir, and cost notes", () => {
-    expect(block).toContain("Run type: smoke");
-    expect(block).toContain("5 requests".replace("5", "2"));
-    expect(block).toContain("/tmp/session.jsonl");
-    expect(block).toContain("3 eligible trios");
-    expect(block).toContain("/tmp/out");
-    expect(block).toContain("not spend");
+  it("renders run type, limits, source, model, selection, output dir, and cost notes", () => {
+    expect(block).toContain(strings.confirmRunType("smoke"));
+    expect(block).toContain(strings.confirmLimits(2, 60_000));
+    expect(block).toContain(strings.confirmLimitSource("compass-table"));
+    expect(block).toContain(strings.confirmModel("meta/test-model", "high"));
+    expect(block).toContain(strings.confirmSelection("/tmp/session.jsonl", 3));
+    expect(block).toContain(strings.confirmOutputDir("/tmp/out"));
+    expect(block).toContain(strings.costNoteSpend);
   });
 
   it("proceeds on --confirmed without prompting", async () => {

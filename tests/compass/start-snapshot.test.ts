@@ -240,6 +240,8 @@ describe("confirmation block", () => {
       selectionLabel: "all",
       trioCount: 0,
       outputDir: "/tmp/out",
+      model: "meta/test-model",
+      thinking: "high",
     };
     const snapshotBlock = renderConfirmation({
       ...common,

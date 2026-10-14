@@ -49,7 +49,7 @@ export function failOnSinkErrors(
   if (sinkErrors.length === 0) return 0;
   const sinkError = `instrumentation sink errors: ${sinkErrors.map((s) => `${s.hook}: ${s.error}`).join("; ")}`;
   write("error", sinkError);
-  process.stderr.write(`compass harness: run failed: ${sinkError}\n`);
+  process.stderr.write(`${strings.runFailed(sinkError)}\n`);
   return 1;
 }
 
@@ -130,7 +130,7 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
       const slash = modelString.indexOf("/");
       const found = slash > 0 ? registry.find(modelString.slice(0, slash), modelString.slice(slash + 1)) : undefined;
       if (!found) {
-        const accessError = `model '${modelString}' unavailable: not found in the model registry`;
+        const accessError = strings.modelUnavailable(modelString);
         writeReceipt(opts, counter, stats, "error", accessError, attemptEvents, cooldowns, null);
         process.stderr.write(`compass harness: ${accessError}\n`);
         return 1;
@@ -142,7 +142,7 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
       const found =
         host.defaultProvider && host.defaultModel ? registry.find(host.defaultProvider, host.defaultModel) : undefined;
       if (!found) {
-        const accessError = "no portrait model override and no resolvable host default model";
+        const accessError = strings.noModelOverride;
         writeReceipt(opts, counter, stats, "error", accessError, attemptEvents, cooldowns, null);
         process.stderr.write(`compass harness: ${accessError}\n`);
         return 1;
@@ -248,7 +248,7 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
       cooldowns,
       sinkErrors.length > 0 ? sinkErrors : null,
     );
-    process.stderr.write(`compass harness: run failed: ${message}\n`);
+    process.stderr.write(`${strings.runFailed(message)}\n`);
     return 1;
   } finally {
     for (const release of onShutdown) release();
@@ -263,9 +263,9 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
   }
 }
 
-function stopLine(stop: "completed" | "capped" | "error", counter: RequestCounter): string {
-  if (stop === "completed") return strings.stopCompleted(1);
-  if (stop === "error") return "error — see receipt for details";
+function stopLine(stop: "completed" | "capped" | "error", counter: RequestCounter, sequences: number): string {
+  if (stop === "completed") return strings.stopCompleted(sequences);
+  if (stop === "error") return strings.errorSeeReceipt;
   if (counter.stopReason === "requests") return strings.stopRequestLimit(counter.snapshot().requestCount);
   if (counter.stopReason === "deadline") return strings.stopDeadline(counter.snapshot().elapsedMs);
   return strings.stopCancelled;
@@ -286,7 +286,7 @@ function writeReceipt(
   const receipt = {
     runType: opts.limits.runType,
     limits: { final: opts.limits, source: opts.limits.source },
-    stop: { kind: stop, reason: stopLine(stop, counter) },
+    stop: { kind: stop, reason: stopLine(stop, counter, pipelineStats?.totalSequences ?? 0) },
     ...(error ? { error } : {}),
     requests: { count: snapshot.requestCount, elapsedMs: snapshot.elapsedMs, usageTotals: snapshot.usageTotals },
     stages: attempts.reduce<Record<string, number>>((acc, event) => {
@@ -349,31 +349,32 @@ function writeSheet(
   const lines: string[] = [
     runType === "smoke" ? strings.smokeSheetTitle : strings.baselineSheetTitle,
     "",
-    `Selected scope: ${opts.prepared.selection.scope}${
-      opts.prepared.selection.frozen ? ` — ${opts.prepared.selection.frozen.sourcePath}` : ""
-    }`,
-    `Trios examined: ${trios.length} · builds: ${builds.length} · portrait rules: ${rulesBefore.length} → ${rulesAfter.length}`,
+    strings.sheetSelectedScope(
+      opts.prepared.selection.scope,
+      opts.prepared.selection.frozen ? opts.prepared.selection.frozen.sourcePath : null,
+    ),
+    strings.sheetTriosExamined(trios.length, builds.length, rulesBefore.length, rulesAfter.length),
     "",
   ];
   trios.forEach((trio, i) => {
     const ref = `${path.basename(trio.sessionPath)}`;
     const extractor =
-      trio.notes > 0 ? trio.notesText.map((note) => `  - ${note}`).join("\n") : "  - (none — non-productive trio)";
-    lines.push(`## Trio ${i + 1} (${ref})`, `${strings.sheetColExtractor}:`, extractor, "");
+      trio.notes > 0 ? trio.notesText.map((note) => `  - ${note}`).join("\n") : `  - ${strings.sheetNoneProductive}`;
+    lines.push(strings.sheetTrioHeader(i + 1, ref), `${strings.sheetColExtractor}:`, extractor, "");
   });
   builds.forEach((build) => {
-    lines.push(`## Build ${build.index}`, `${strings.sheetColBuilder}:`);
+    lines.push(strings.sheetBuildHeader(build.index), `${strings.sheetColBuilder}:`);
     for (const decision of build.decisions) {
-      const label = decision.text ?? decision.candidate ?? "(no text)";
+      const label = decision.text ?? decision.candidate ?? strings.sheetNoText;
       lines.push(`  - [${decision.action}] ${label}`);
     }
-    lines.push(`${strings.sheetColPortrait}: +${build.inserted} inserted · ${build.evicted} evicted`, "");
+    lines.push(`${strings.sheetColPortrait}: ${strings.sheetPortraitDiff(build.inserted, build.evicted)}`, "");
   });
   lines.push(
-    "## Final portrait diff",
-    `Added (${added.length}):`,
+    strings.sheetFinalDiffHeader,
+    strings.sheetAdded(added.length),
     ...added.map((r) => `  + ${r}`),
-    `Removed (${removed.length}):`,
+    strings.sheetRemoved(removed.length),
     ...removed.map((r) => `  - ${r}`),
   );
   fs.writeFileSync(path.join(opts.outputDir, "results-sheet.md"), `${lines.join("\n")}\n`, "utf-8");

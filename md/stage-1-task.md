@@ -1,6 +1,6 @@
 # Stage 1 — Establish the baseline
 
-Project: **pi-session-compass** · Revision: **0.2.2** · Status: **In progress**
+Project: **pi-session-compass** · Revision: **0.3.0** · Status: **In progress**
 
 Date: **2026-10-14**
 
@@ -23,7 +23,7 @@ Initial review uses one unbranched conversation path. Branch support is deferred
 
   T1.6 baseline record:
   - Baseline environment: native WSL filesystem (~/compass-ext4). npm test: 15 files, 376 tests. npm run test:compass: 3 files, 45 tests.
-  - Known intermittent: tests/llm-call.test.ts > attemptWithRetries backoff, the two tests "pauses with exponential backoff between attempts when the tool is not called" and "pushes an error-context nudge after a tool-not-called failure". Signature: each hits the 30 s test timeout, about 63 s total wall time. Observed on the unmodified fork base in 1 of 10 runs, and on the S1 tree without tests/compass in 2 of 10. Rule: rerun once.
+  - Known intermittent: tests/llm-call.test.ts > attemptWithRetries backoff, the two tests "pauses with exponential backoff between attempts when the tool is not called" and "pushes an error-context nudge after a tool-not-called failure". Signature: each hits the 30 s test timeout, about 63 s total wall time. Observed on the unmodified fork base in 1 of 10 runs, and on the S1 tree without tests/compass in 2 of 10. Rule: rerun once. Fixed 2026-10-14: the agentLoop mock is shared from tests/setup.ts instead of mocked per file; the same failure (these two plus the two T3.2 validationRound tests in that file) occurred in 5 of 20 default-order runs before the fix and 0 of 20 after.
   - On /mnt/i the suite also failed extension-idempotency (suite), cache-refresh and reload-lifecycle; these disappeared on the native filesystem and are not part of the baseline.
 
 ## T2 — Create the file-selecting, isolated fixture harness
@@ -42,7 +42,7 @@ Initial review uses one unbranched conversation path. Branch support is deferred
 - [x] **3.** Capture start/end, model/provider, outcome, elapsed time, and reported usage; mark unavailable usage unknown. *(evidence: attempt events + counter.ts boundary traces; usage summed over attempt messages)*
 - [x] **4.** Count examined/productive trios, candidates, insert/merge/skip decisions, failures, and cooldown time separately. *(evidence: src/instrument.ts hooks; counter.ts RunStats)*
 - [x] **5.** Take limits from required switches (`--run-type`, `--max-model-requests`, `--max-run-ms`) with no built-in defaults; accept only finite positive values and refuse to start without them. Enforce cancellation and the ceilings at each inference boundary; the run deadline is wall-clock time and includes cooldowns. *(evidence: scripts/compass/limits.ts + counter.ts guard; refusal tests)*
-- [ ] **6.** Implement the start-of-run confirmation: after offline selection and trio count and before any model request, show the run type, limits, selected file with its trio count, output directory, and the cost notes in the compass.md (rule 4). The user accepts the suggested limits, enters their own, or cancels. On a terminal the harness asks; when an agent launches it, the harness refuses without `--confirmed`, which the agent passes only after the user approves in the session. Record suggested and final values and their source in the manifest.
+- [x] **6.** Implement the start-of-run confirmation: after offline selection and trio count and before any model request, show the run type, limits, selected file with its trio count, output directory, and the cost notes in the compass.md (rule 4). The user accepts the suggested limits, enters their own, or cancels. On a terminal the harness asks; when an agent launches it, the harness refuses without `--confirmed`, which the agent passes only after the user approves in the session. Record suggested and final values and their source in the manifest. *(evidence: scripts/compass/confirmation.ts + strings.ts, all harness strings user-approved 2026-10-14 and the DRAFT header removed; tests/compass/strings.test.ts, limits-counter.test.ts)*
 - [ ] **7.** Implement the readable outputs from the request traces and pipeline results: the smoke results sheet (T4.5) and the baseline running table (T5.4). *(only the smoke sheet exists: pipeline-boot.ts:323 writeSheet writes results-sheet.md trio/decision/diff rows; no cumulative per-trio running-table columns — examined-so-far, productive rate, cumulative candidates, portrait size — are implemented anywhere; the strings.ts:57 title is unused by any writer)*
 - [x] **8.** Verify counting, limit stops, no automatic restart, and refusal to start without the switches, without confirmation, or with non-finite or non-positive values, using offline follow-up/retry fixtures; keep credentials out of receipts. *(evidence: tests/compass/limits-counter.test.ts + offline-boundary.test.ts, T3.8)*
 
@@ -80,6 +80,7 @@ Discover package/runtime details from the Pi checkout before asking for uploads.
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.3.0 | 2026-10-14 | T3.6 checked with evidence; T1.6 known-intermittent record marks the llm-call timeouts fixed (rerun rule no longer expected to apply). |
 | 0.2.2 | 2026-10-14 | T3.2 checked with evidence. |
 | 0.2.1 | 2026-10-14 | T2.3 checked with evidence. |
 | 0.2.0  | 2026-10-12 | Status set to In progress; completed tasks checked with evidence references (T2.3, T3.2, T3.6, T3.7 left open with reasons); added the T1.6 baseline record (native-filesystem environment, suite sizes, known-intermittent llm-call backoff signature and rerun rule). |

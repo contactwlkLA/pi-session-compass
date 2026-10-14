@@ -19,7 +19,7 @@ export class SelectionError extends Error {
 export function parseScope(raw: string | undefined): Scope {
   if (raw === undefined || raw === "all") return "all";
   if (raw === "file") return "file";
-  throw new SelectionError(`unknown scope '${raw}' — valid scopes: all, file`);
+  throw new SelectionError(strings.unknownScope(raw));
 }
 
 /** Validate the user-selected session file. Throws SelectionError; never widens scope. */
@@ -58,7 +58,7 @@ export function freezeSelection(opts: FreezeOptions): RunSelection {
     return { scope: "all", runId: opts.runId, outputDir: opts.outputDir, createdAt };
   }
   const sourcePath = opts.sourcePath;
-  if (!sourcePath) throw new SelectionError("scope=file requires --session <path>");
+  if (!sourcePath) throw new SelectionError(strings.scopeFileNeedsSession);
   validateSessionFile(sourcePath);
 
   const sha256 = sha256File(sourcePath);
@@ -79,7 +79,7 @@ export function freezeSelection(opts: FreezeOptions): RunSelection {
   const isolatedFile = path.join(isolatedSessionDir, baseName);
   fs.copyFileSync(storedPath, isolatedFile);
   if (sha256File(isolatedFile) !== sha256) {
-    throw new SelectionError(`frozen copy hash mismatch for ${isolatedFile}`);
+    throw new SelectionError(strings.frozenCopyMismatch(isolatedFile));
   }
 
   const frozen: FrozenFile = { sourcePath, storedPath, sha256, sizeBytes: fs.statSync(sourcePath).size };

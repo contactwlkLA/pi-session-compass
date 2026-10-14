@@ -12,6 +12,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runPipeline } from "../../scripts/compass/pipeline-boot.js";
+import { strings } from "../../scripts/compass/strings.js";
 import type { Limits, RunSelection } from "../../scripts/compass/types.js";
 
 const ROOT = process.cwd();
@@ -22,6 +23,7 @@ const LIMITS: Limits = { runType: "smoke", maxModelRequests: 5, maxRunMs: 900_00
 const state = vi.hoisted(() => ({
   sink: null as ((event: unknown) => void) | null,
   events: [] as Record<string, unknown>[],
+  sequences: 0,
 }));
 
 vi.mock("../../src/settings-ui.js", () => ({
@@ -56,7 +58,7 @@ vi.mock("../../src/instrument.js", () => ({
 vi.mock("../../src/pipeline.js", () => ({
   runPipelineLoop: async () => {
     for (const event of state.events) state.sink?.(event);
-    return { totalSequences: 0, totalInserted: 0, totalEvicted: 0 };
+    return { totalSequences: state.sequences, totalInserted: 0, totalEvicted: 0 };
   },
 }));
 
@@ -89,6 +91,7 @@ function writeSettingsSnapshot(outputDir: string): void {
 beforeEach(() => {
   state.sink = null;
   state.events = [];
+  state.sequences = 0;
   fs.rmSync(TEST_TMP, { recursive: true, force: true });
 });
 
@@ -123,5 +126,27 @@ describe("receipt validationRounds", () => {
     };
     expect(receipt.validationRounds).toEqual({ building: { "1": 4, "2": 1 }, maintenance: { "1": 1 } });
     expect(receipt.stages).toEqual({ building: 5, maintenance: 1 });
+  });
+});
+
+describe("receipt completion stop reason", () => {
+  it("reports the pipeline's real processed-sequence count", async () => {
+    state.events = [];
+    state.sequences = 3;
+    const outputDir = path.join(TEST_TMP, "run-seq");
+    writeSettingsSnapshot(outputDir);
+
+    const exitCode = await runPipeline({
+      limits: LIMITS,
+      prepared: { selection: selectionFor(outputDir), census: null },
+      outputDir,
+      confirmMode: "flag",
+    });
+
+    expect(exitCode).toBe(0);
+    const receipt = JSON.parse(fs.readFileSync(path.join(outputDir, "receipt.json"), "utf-8")) as {
+      stop: { reason: string };
+    };
+    expect(receipt.stop.reason).toBe(strings.stopCompleted(3));
   });
 });
