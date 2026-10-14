@@ -68,6 +68,46 @@ interface BuildRecord {
   rulesAfter: string[];
 }
 
+/** Cumulative state captured when one trio is examined (one running-table row). */
+export interface RunningRow {
+  file: string;
+  examined: number;
+  productive: number;
+  candidates: number;
+  inserted: number;
+  merged: number;
+  skipped: number;
+  portraitRules: number;
+}
+
+/** Render the running table: one row per examined trio, cumulative counts as of that trio. */
+export function renderRunningTable(runType: Limits["runType"], rows: RunningRow[], eligible: number | null): string {
+  const header = [
+    strings.sheetColTrio,
+    strings.sheetColExamined,
+    strings.sheetColProductiveRate,
+    strings.sheetColCandidates,
+    strings.sheetColInsertMergeSkip,
+    strings.sheetColPortraitSize,
+  ];
+  const lastExamined = rows.length > 0 ? rows[rows.length - 1].examined : 0;
+  const lines: string[] = [strings.runningTableTitle(runType), ""];
+  if (eligible !== null) lines.push(strings.runningTableCovered(lastExamined, eligible));
+  lines.push(strings.runningTableNote, "", `| ${header.join(" | ")} |`, `|${header.map(() => "---|").join("")}`);
+  rows.forEach((row, i) => {
+    const cells = [
+      strings.runningTableTrioRef(i + 1, row.file),
+      String(row.examined),
+      strings.runningTableRate(row.productive, row.examined),
+      String(row.candidates),
+      strings.runningTableImS(row.inserted, row.merged, row.skipped),
+      strings.runningTablePortraitSize(row.portraitRules),
+    ];
+    lines.push(`| ${cells.join(" | ")} |`);
+  });
+  return `${lines.join("\n")}\n`;
+}
+
 function readRules(portraitDir: string): string[] {
   try {
     const raw = fs.readFileSync(path.join(portraitDir, "portrait.md"), "utf-8");
@@ -96,6 +136,7 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
   const stats = emptyStats();
   const attemptEvents: LlmAttemptEvent[] = [];
   const trioExamined: TrioExaminedEvent[] = [];
+  const runningRows: RunningRow[] = [];
   const builds: BuildRecord[] = [];
   const cooldowns: CooldownEvent[] = [];
   let buildIndex = 0;
@@ -179,6 +220,16 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
           if (event.notes > 0) stats.triosProductive++;
           stats.candidates += event.notes;
           trioExamined.push(event);
+          runningRows.push({
+            file: path.basename(event.sessionPath),
+            examined: stats.triosExamined,
+            productive: stats.triosProductive,
+            candidates: stats.candidates,
+            inserted: stats.inserted,
+            merged: stats.merged,
+            skipped: stats.skipped,
+            portraitRules: readRules(portraitDir).length,
+          });
         });
       },
       onBuild: (event: BuildEvent) => {
@@ -235,6 +286,11 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
       pipelineStats,
     );
     writeSheet(opts, limits.runType, trioExamined, builds, rulesBeforeRun, readRules(portraitDir));
+    fs.writeFileSync(
+      path.join(outputDir, "running-table.md"),
+      renderRunningTable(limits.runType, runningRows, opts.prepared.census?.totalTrios ?? null),
+      "utf-8",
+    );
     return capped ? 3 : 0;
   } catch (error) {
     const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
@@ -347,7 +403,7 @@ function writeSheet(
 ): void {
   const { added, removed } = diffRules(rulesBefore, rulesAfter);
   const lines: string[] = [
-    runType === "smoke" ? strings.smokeSheetTitle : strings.baselineSheetTitle,
+    strings.resultsSheetTitle(runType),
     "",
     strings.sheetSelectedScope(
       opts.prepared.selection.scope,

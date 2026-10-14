@@ -96,8 +96,17 @@ export const strings = {
     "  execute  --session <jsonl> --run-type <t> --max-model-requests N --max-run-ms N --limits-source <s> [--confirmed] [--start-snapshot <dir>]",
 
   // ── Sheets ──
-  smokeSheetTitle: "compass smoke results — samples, not a measurement",
-  baselineSheetTitle: "compass baseline — running table",
+  resultsSheetTitle: (runType: string) => `compass ${runType} results — samples, not a measurement`,
+  runningTableTitle: (runType: string) => `compass ${runType} — running table`,
+  runningTableCovered: (examined: number, eligible: number) => `Covered: ${examined} of ${eligible} eligible trios`,
+  runningTableNote:
+    "Insert / merge / skip and portrait size reflect the builds completed when the trio was examined; " +
+    "builds run in batches, so they trail the extraction counts.",
+  runningTableTrioRef: (index: number, file: string) => `${index} (${file})`,
+  runningTableRate: (productive: number, examined: number) =>
+    `${productive}/${examined} (${examined === 0 ? 0 : Math.round((productive / examined) * 100)}%)`,
+  runningTableImS: (inserted: number, merged: number, skipped: number) => `${inserted} / ${merged} / ${skipped}`,
+  runningTablePortraitSize: (rules: number) => `${rules} rules`,
   sheetColTrio: "Trio ref",
   sheetColExtractor: "Extractor output",
   sheetColBuilder: "Builder decision",

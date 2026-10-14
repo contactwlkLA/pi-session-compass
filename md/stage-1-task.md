@@ -1,6 +1,6 @@
 # Stage 1 — Establish the baseline
 
-Project: **pi-session-compass** · Revision: **0.3.0** · Status: **In progress**
+Project: **pi-session-compass** · Revision: **0.3.1** · Status: **In progress**
 
 Date: **2026-10-14**
 
@@ -43,7 +43,7 @@ Initial review uses one unbranched conversation path. Branch support is deferred
 - [x] **4.** Count examined/productive trios, candidates, insert/merge/skip decisions, failures, and cooldown time separately. *(evidence: src/instrument.ts hooks; counter.ts RunStats)*
 - [x] **5.** Take limits from required switches (`--run-type`, `--max-model-requests`, `--max-run-ms`) with no built-in defaults; accept only finite positive values and refuse to start without them. Enforce cancellation and the ceilings at each inference boundary; the run deadline is wall-clock time and includes cooldowns. *(evidence: scripts/compass/limits.ts + counter.ts guard; refusal tests)*
 - [x] **6.** Implement the start-of-run confirmation: after offline selection and trio count and before any model request, show the run type, limits, selected file with its trio count, output directory, and the cost notes in the compass.md (rule 4). The user accepts the suggested limits, enters their own, or cancels. On a terminal the harness asks; when an agent launches it, the harness refuses without `--confirmed`, which the agent passes only after the user approves in the session. Record suggested and final values and their source in the manifest. *(evidence: scripts/compass/confirmation.ts + strings.ts, all harness strings user-approved 2026-10-14 and the DRAFT header removed; tests/compass/strings.test.ts, limits-counter.test.ts)*
-- [ ] **7.** Implement the readable outputs from the request traces and pipeline results: the smoke results sheet (T4.5) and the baseline running table (T5.4). *(only the smoke sheet exists: pipeline-boot.ts:323 writeSheet writes results-sheet.md trio/decision/diff rows; no cumulative per-trio running-table columns — examined-so-far, productive rate, cumulative candidates, portrait size — are implemented anywhere; the strings.ts:57 title is unused by any writer)*
+- [x] **7.** Implement the readable outputs from the request traces and pipeline results: the smoke results sheet (T4.5) and the baseline running table (T5.4). *(evidence: scripts/compass/pipeline-boot.ts writes results-sheet.md and running-table.md for every run type; renderRunningTable rows capture cumulative counts and portrait size when each trio is examined; strings user-approved 2026-10-14; tests/compass/running-table.test.ts)*
 - [x] **8.** Verify counting, limit stops, no automatic restart, and refusal to start without the switches, without confirmation, or with non-finite or non-positive values, using offline follow-up/retry fixtures; keep credentials out of receipts. *(evidence: tests/compass/limits-counter.test.ts + offline-boundary.test.ts, T3.8)*
 
 ## T4 — Smoke test (run type `smoke`)
@@ -80,6 +80,7 @@ Discover package/runtime details from the Pi checkout before asking for uploads.
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.3.1 | 2026-10-14 | T3.7 checked with evidence. |
 | 0.3.0 | 2026-10-14 | T3.6 checked with evidence; T1.6 known-intermittent record marks the llm-call timeouts fixed (rerun rule no longer expected to apply). |
 | 0.2.2 | 2026-10-14 | T3.2 checked with evidence. |
 | 0.2.1 | 2026-10-14 | T2.3 checked with evidence. |
