@@ -260,6 +260,33 @@ describe("enriched extraction summary", () => {
     expect(modelOverride).toBeUndefined();
   });
 
+  it("tags extraction and post_extraction calls with validationRound 1", async () => {
+    createSessionFile(sessionDir, "test.jsonl", [
+      {
+        assistant1: "I will search for existing patterns in the codebase.",
+        user: "Search first before creating new implementations.",
+        assistant2: "I searched and found an existing pattern to adapt.",
+      },
+    ]);
+    mockCallPortraitLlm.mockResolvedValueOnce({
+      notes: ["Search for and adapt established patterns across the codebase"],
+      summary: {
+        agentBefore: "Agent was about to create a new implementation",
+        userFeedback: "User told agent to search first",
+        agentAfter: "Agent searched and found existing pattern to adapt",
+      },
+    });
+    mockCallPortraitLlm.mockResolvedValueOnce(["Search for and adapt established patterns across the codebase"]);
+
+    await scanSessions(portraitDir, getDefaultState(), 10, 100);
+
+    const tags = mockCallPortraitLlm.mock.calls.map((call) => [call[8], call[9]]);
+    expect(tags).toEqual([
+      ["extraction", 1],
+      ["post_extraction", 1],
+    ]);
+  });
+
   it("writes summary to debug dump on successful extraction", async () => {
     createSessionFile(sessionDir, "test.jsonl", [
       {

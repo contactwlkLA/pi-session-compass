@@ -124,6 +124,7 @@ async function scenarioFollowup(): Promise<CheckResult> {
     () => captured ?? undefined,
     "offline check",
     "offline-check",
+    1,
   );
   setLlmAttemptSink(null);
   return {
@@ -184,6 +185,7 @@ async function scenarioRetry(): Promise<CheckResult> {
     () => captured ?? undefined,
     "offline check",
     "offline-check",
+    1,
   );
   setLlmAttemptSink(null);
   return {

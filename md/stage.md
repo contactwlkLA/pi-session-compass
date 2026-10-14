@@ -1,6 +1,6 @@
 # pi-session-compass — Stage continuation
 
-Revision: **0.2.1** · Updated: **2026-10-14**
+Revision: **0.2.2** · Updated: **2026-10-14**
 
 Select the first unchecked stage. A checked stage requires verified milestone evidence. Unchecked means not started, partial, or blocked; use the continuation fields below. Stop after that stage’s completion or a documented stopping condition.
 
@@ -14,8 +14,8 @@ Select the first unchecked stage. A checked stage requires verified milestone ev
 ## Continuation
 
 - Active stage: **S1**
-- Next unfinished step: **S1.T3.2 — validation-round tag**
-- Last completed step: **S1.T1.1–T1.6, S1.T2.1–T2.2, S1.T2.3, S1.T2.4–T2.6, S1.T3.1, S1.T3.3–T3.5, S1.T3.8**
+- Next unfinished step: **S1.T3.6 — start-of-run confirmation and harness strings (user approval pending)**
+- Last completed step: **S1.T1.1–T1.6, S1.T2.1–T2.2, S1.T2.3, S1.T2.4–T2.6, S1.T3.1–T3.5, S1.T3.8**
 - Outcome: **IN PROGRESS: S1 harness code and tests committed on branch s1/harness**
 - Blocker: **user decisions**
 - Pending user inputs: **approval of the confirmation prompt and the other harness strings (the sink-error strings are already approved); smoke limits; the smoke run; jiti dependency decision (deferred)**
@@ -34,6 +34,7 @@ Stage meanings and dependencies: [plan.md](plan.md). Operating rules: [AGENTS.md
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.2.2 | 2026-10-14 | T3.2 completed; next step T3.6. |
 | 0.2.1 | 2026-10-14 | T2.3 completed; next step T3.2. |
 | 0.2.0 | 2026-10-12 | S1 in progress on s1/harness; completed: T1.1–T1.6, T2.1–T2.2, T2.4–T2.6, T3.1, T3.3–T3.5, T3.8. Open: T2.3 (starting-portrait confirmation), T3.2 (validation-round tag), T3.6 (confirmation strings), T3.7 (baseline running table). Blocker: user decisions. |
 | 0.1.0 | 2026-10-11 | Initial committed draft. |

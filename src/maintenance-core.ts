@@ -178,6 +178,7 @@ export async function runMaintenance(shouldCancel: (() => boolean) | undefined):
             maintenanceMaxTokens, // token cap for maintenance (null = model limit)
             maintenanceTimeoutMs, // timeout for maintenance (null = no timeout)
             "maintenance",
+            validationAttempts + 1,
           );
 
           // callPortraitLlm returns undefined on failure, PAUSED on user pause

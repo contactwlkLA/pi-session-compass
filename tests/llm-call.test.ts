@@ -10,6 +10,9 @@
  * end-to-end (agentLoop is a real dependency).
  */
 import type { AgentContext, AgentLoopConfig, AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
+import type { Api, Model } from "@earendil-works/pi-ai/compat";
+import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock agentLoop so attemptWithRetries can be exercised without a real LLM. The mock is set
@@ -23,7 +26,9 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
 });
 
 import { agentLoop } from "@earendil-works/pi-agent-core";
-import { attemptWithRetries, countWords, NO_STAGE_TAG, retryDelayMs } from "../src/llm-call.js";
+import { attemptWithRetries, countWords, NO_STAGE_TAG, retryDelayMs, setLlmAttemptSink } from "../src/llm-call.js";
+import type { PortraitState } from "../src/types.js";
+import { setupTestSettings, teardownTestSettings } from "./settings-helpers.js";
 
 const mockAgentLoop = agentLoop as unknown as ReturnType<typeof vi.fn>;
 
@@ -143,6 +148,7 @@ describe("attemptWithRetries backoff", () => {
       () => undefined, // tool never called → always "tool not called"
       NO_TOOL_CALLED_CONTEXT,
       NO_STAGE_TAG,
+      1,
     );
 
     await vi.runAllTimersAsync();
@@ -170,6 +176,7 @@ describe("attemptWithRetries backoff", () => {
       () => undefined,
       NO_TOOL_CALLED_CONTEXT,
       NO_STAGE_TAG,
+      1,
     );
     await vi.runAllTimersAsync();
     await promise;
@@ -183,5 +190,95 @@ describe("attemptWithRetries backoff", () => {
       .filter((t) => t.includes(NO_TOOL_CALLED_CONTEXT));
     expect(nudgeTexts.length).toBe(1);
     expect(nudgeTexts[0]).toContain("LLM did not call the required extraction tool");
+  });
+});
+
+interface CapturedEvent {
+  stage: string;
+  attempt: number;
+  validationRound: number;
+  ok: boolean;
+}
+
+describe("attempt events carry validationRound", () => {
+  const context: AgentContext = {
+    messages: [{ role: "system", content: "s", timestamp: Date.now() }],
+    tools: [] as AgentTool[],
+  };
+  const config = {} as unknown as AgentLoopConfig;
+
+  beforeEach(() => {
+    mockAgentLoop.mockReset();
+  });
+
+  it("emits the validationRound it was given", async () => {
+    mockAgentLoop.mockReturnValue(emptyStream());
+    const events: CapturedEvent[] = [];
+    setLlmAttemptSink((event) => events.push(event));
+    try {
+      await attemptWithRetries<string>([], context, config, 5_000, 1, () => "ok", "ctx", "building", 2);
+    } finally {
+      setLlmAttemptSink(null);
+    }
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ stage: "building", attempt: 1, validationRound: 2, ok: true });
+  });
+});
+
+describe("callPortraitLlm continue-retrying", () => {
+  afterEach(() => {
+    teardownTestSettings();
+    delete globalThis.__piPortrait;
+  });
+
+  it("keeps the same validationRound across the Continue-retrying loop", async () => {
+    mockAgentLoop.mockReset();
+    mockAgentLoop.mockReturnValue(emptyStream());
+    setupTestSettings({ retries: 1, model: "test/test-model", timeoutMs: 5_000 });
+
+    const actual = await vi.importActual<typeof import("../src/llm-call.js")>("../src/llm-call.js");
+    const fakeModel = { id: "test-model", provider: "test", api: "test" } as unknown as Model<Api>;
+    const fakeRegistry = {
+      find: () => fakeModel,
+      getAvailable: () => [fakeModel],
+      getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "test-key", headers: {} }),
+    } as unknown as ModelRegistry;
+    actual.setCapturedModel(fakeModel, fakeRegistry);
+
+    const events: CapturedEvent[] = [];
+    actual.setLlmAttemptSink((event) => events.push(event));
+    globalThis.__piPortrait = { uiSelect: async () => "Continue retrying" } as unknown as PortraitState;
+
+    let extracted = 0;
+    const tool = {
+      name: "return_building",
+      description: "test tool",
+      parameters: Type.Object({}),
+      execute: async () => ({ content: [], details: undefined }),
+    } as unknown as AgentTool;
+
+    let result: string | symbol | undefined;
+    try {
+      result = await actual.callPortraitLlm<string>(
+        [{ role: "user", content: [{ type: "text", text: "go" }], timestamp: 0 }],
+        "system",
+        tool,
+        () => (++extracted >= 2 ? "done" : undefined),
+        "error context",
+        undefined,
+        undefined,
+        undefined,
+        "building",
+        2,
+      );
+    } finally {
+      actual.setLlmAttemptSink(null);
+    }
+
+    expect(result).toBe("done");
+    expect(events.map((e) => [e.stage, e.attempt, e.validationRound, e.ok])).toEqual([
+      ["building", 1, 2, false],
+      ["building", 1, 2, true],
+    ]);
   });
 });

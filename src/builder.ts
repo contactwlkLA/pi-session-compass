@@ -122,6 +122,7 @@ export async function buildPortrait(
         options?.maxTokensOverride,
         options?.timeoutOverride,
         "building",
+        validationAttempts + 1,
       );
 
       if (response === PAUSED) throw new Error("PAUSED"); // propagate pause (caller catches "PAUSED")

@@ -121,6 +121,8 @@ export interface LlmAttemptEvent {
   stage: string;
   /** 1-based attempt number within this call's retry sequence. */
   attempt: number;
+  /** 1 = first call; 2 and up = re-call after a failed validation. */
+  validationRound: number;
   model: string;
   provider: string;
   startedAtMs: number;
@@ -148,6 +150,7 @@ export const NO_STAGE_TAG: string | null = null;
 export interface AttemptEventInput {
   stage: string | null;
   attempt: number;
+  validationRound: number;
   model: string;
   provider: string;
   startedAtMs: number;
@@ -162,6 +165,7 @@ function emitAttempt(input: AttemptEventInput): void {
   const event: LlmAttemptEvent = {
     stage: input.stage ?? "unknown",
     attempt: input.attempt,
+    validationRound: input.validationRound,
     model: input.model,
     provider: input.provider,
     startedAtMs: input.startedAtMs,
@@ -251,6 +255,7 @@ export async function callPortraitLlm<T>(
   maxTokensOverride: number | null | undefined,
   timeoutOverride: number | null | undefined,
   stageTag: string | null,
+  validationRound: number,
 ): Promise<T | typeof PAUSED | undefined> {
   const settings = getPortraitSettings();
 
@@ -308,6 +313,7 @@ export async function callPortraitLlm<T>(
     resultExtractor,
     errorContext,
     stageTag,
+    validationRound,
   );
   if (result !== undefined) return result;
 
@@ -334,6 +340,7 @@ export async function callPortraitLlm<T>(
         resultExtractor,
         errorContext,
         stageTag,
+        validationRound,
       ));
       if (result !== undefined) return result;
       // Loop continues, re-offering dialog
@@ -377,6 +384,7 @@ export async function attemptWithRetries<T>(
   resultExtractor: () => T | undefined,
   errorContext: string,
   stageTag: string | null,
+  validationRound: number,
 ): Promise<{ result?: T; lastError?: string }> {
   let lastError: string | undefined;
   const maxMessages = 20; // Cap to prevent unbounded growth
@@ -443,6 +451,7 @@ export async function attemptWithRetries<T>(
       emitAttempt({
         stage: stageTag,
         attempt: attempt + 1,
+        validationRound,
         model: config.model?.id ?? "unknown",
         provider: config.model?.provider ?? "unknown",
         startedAtMs: attemptStartedAt,
@@ -458,6 +467,7 @@ export async function attemptWithRetries<T>(
       emitAttempt({
         stage: stageTag,
         attempt: attempt + 1,
+        validationRound,
         model: config.model?.id ?? "unknown",
         provider: config.model?.provider ?? "unknown",
         startedAtMs: attemptStartedAt,

@@ -1,6 +1,6 @@
 # Stage 1 — Establish the baseline
 
-Project: **pi-session-compass** · Revision: **0.2.1** · Status: **In progress**
+Project: **pi-session-compass** · Revision: **0.2.2** · Status: **In progress**
 
 Date: **2026-10-14**
 
@@ -38,7 +38,7 @@ Initial review uses one unbranched conversation path. Branch support is deferred
 ## T3 — Instrument actual model requests and limit controls
 
 - [x] **1.** Locate the installed agentLoop's actual request/stream boundary, including tool-follow-up turns, and determine whether the provider layer retries requests below that boundary; if it does, count at the lower layer or record the undercount risk. If the installed core exposes no usable hook, report that and stop; do not patch dependencies without approval. *(evidence: outputs/s1-t1/evidence.md, T3.1 addendum; provider retry default 0 for meta path)*
-- [ ] **2.** Add run/request IDs and stage, attempt, and validation-round tags. *(implemented: run ID in selection.json via types.ts:24; request seq in counter.ts:111; stage + attempt in llm-call.ts:444-445; MISSING: no validation-round tag exists anywhere in src/ or scripts/ — the maintenance validation loop in maintenance-core.ts emits no tag)*
+- [x] **2.** Add run/request IDs and stage, attempt, and validation-round tags. *(evidence: run ID in selection.json; request seq in counter.ts; stage, attempt and validationRound on attempt events in src/llm-call.ts, validationRound passed from the builder and maintenance validation loops and the extraction calls; receipt validationRounds in pipeline-boot.ts; tests/builder.test.ts, tests/maintenance.test.ts, tests/extraction.test.ts, tests/llm-call.test.ts, tests/compass/validation-rounds-receipt.test.ts)*
 - [x] **3.** Capture start/end, model/provider, outcome, elapsed time, and reported usage; mark unavailable usage unknown. *(evidence: attempt events + counter.ts boundary traces; usage summed over attempt messages)*
 - [x] **4.** Count examined/productive trios, candidates, insert/merge/skip decisions, failures, and cooldown time separately. *(evidence: src/instrument.ts hooks; counter.ts RunStats)*
 - [x] **5.** Take limits from required switches (`--run-type`, `--max-model-requests`, `--max-run-ms`) with no built-in defaults; accept only finite positive values and refuse to start without them. Enforce cancellation and the ceilings at each inference boundary; the run deadline is wall-clock time and includes cooldowns. *(evidence: scripts/compass/limits.ts + counter.ts guard; refusal tests)*
@@ -80,6 +80,7 @@ Discover package/runtime details from the Pi checkout before asking for uploads.
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.2.2 | 2026-10-14 | T3.2 checked with evidence. |
 | 0.2.1 | 2026-10-14 | T2.3 checked with evidence. |
 | 0.2.0  | 2026-10-12 | Status set to In progress; completed tasks checked with evidence references (T2.3, T3.2, T3.6, T3.7 left open with reasons); added the T1.6 baseline record (native-filesystem environment, suite sizes, known-intermittent llm-call backoff signature and rerun rule). |
 | 0.1.1 | 2026-10-12 | S1 verification runs both `npm test` and `npm run test:compass` (harness suite split out of the default run). |

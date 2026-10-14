@@ -668,6 +668,7 @@ ${userText}
     undefined,
     undefined,
     "extraction",
+    1,
   );
 
   if (result === PAUSED) throw new Error("PAUSED");
@@ -759,6 +760,7 @@ ${interactionBlock}
     undefined,
     undefined,
     "post_extraction",
+    1,
   );
 
   if (result === PAUSED) throw new Error("PAUSED");

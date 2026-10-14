@@ -127,6 +127,21 @@ describe("runMaintenance", () => {
     expect(mockCallPortraitLlm).toHaveBeenCalledTimes(2);
   });
 
+  it("tags validation retries as maintenance rounds 1 then 2", async () => {
+    writeTestPortrait(mockPortraitDir, ["rule 1", "rule 2"]);
+    mockCallPortraitLlm
+      .mockResolvedValueOnce({ portrait: [], dropped: [1, 2] })
+      .mockResolvedValueOnce({ portrait: ["rule 1"], dropped: [2] });
+
+    await runMaintenance(undefined);
+
+    expect(mockCallPortraitLlm).toHaveBeenCalledTimes(2);
+    const stages = mockCallPortraitLlm.mock.calls.map((call) => call[8]);
+    const rounds = mockCallPortraitLlm.mock.calls.map((call) => call[9]);
+    expect(stages).toEqual(["maintenance", "maintenance"]);
+    expect(rounds).toEqual([1, 2]);
+  });
+
   it("validates dropped rule numbers must be valid positions", async () => {
     writeTestPortrait(mockPortraitDir, ["rule 1", "rule 2"]);
     mockCallPortraitLlm

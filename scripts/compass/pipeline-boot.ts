@@ -293,6 +293,13 @@ function writeReceipt(
       acc[event.stage] = (acc[event.stage] ?? 0) + 1;
       return acc;
     }, {}),
+    validationRounds: attempts.reduce<Record<string, Record<string, number>>>((acc, event) => {
+      const stage = acc[event.stage] ?? {};
+      const round = String(event.validationRound);
+      stage[round] = (stage[round] ?? 0) + 1;
+      acc[event.stage] = stage;
+      return acc;
+    }, {}),
     counts: {
       triosExamined: stats.triosExamined,
       triosProductive: stats.triosProductive,
