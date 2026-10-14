@@ -267,7 +267,21 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
     }) as never;
 
     const { runPipelineLoop } = await import("../../src/pipeline.js");
-    const pipelineStats = await runPipelineLoop(runSettings, Number.POSITIVE_INFINITY, () => counter.exhausted());
+    // The extension runs the loop once per timer tick and each pass resumes from the saved scan
+    // checkpoint; a pass returns after its first productive sequence when that sequence came from
+    // the last discovered file. Re-run passes back to back, as the ticks would, until a pass
+    // examines no trio (the selected scope is exhausted) or a ceiling is reached. Timer gaps are
+    // not pipeline cost and are not reproduced.
+    const pipelineStats = { totalSequences: 0, totalInserted: 0, totalEvicted: 0, passes: 0 };
+    while (!counter.exhausted()) {
+      const examinedBefore = stats.triosExamined;
+      const pass = await runPipelineLoop(runSettings, Number.POSITIVE_INFINITY, () => counter.exhausted());
+      pipelineStats.passes++;
+      pipelineStats.totalSequences += pass.totalSequences;
+      pipelineStats.totalInserted += pass.totalInserted;
+      pipelineStats.totalEvicted += pass.totalEvicted;
+      if (stats.triosExamined === examinedBefore) break;
+    }
 
     const capped = counter.stopReason !== null;
     const sinkExit = failOnSinkErrors(
@@ -337,7 +351,7 @@ function writeReceipt(
   attempts: LlmAttemptEvent[],
   cooldowns: CooldownEvent[],
   sinkErrors: Array<{ hook: string; error: string }> | null,
-  pipelineStats?: { totalSequences: number; totalInserted: number; totalEvicted: number },
+  pipelineStats?: { totalSequences: number; totalInserted: number; totalEvicted: number; passes: number },
 ): void {
   const snapshot = counter.snapshot();
   const receipt = {

@@ -24,6 +24,9 @@ const LIMITS: Limits = { runType: "baseline", maxModelRequests: 50, maxRunMs: 90
 const loopState = vi.hoisted(() => ({
   hooks: null as Record<string, (event: unknown) => void> | null,
   portraitDir: "",
+  passes: 0,
+  /** Trios each pass emits, in pass order; later passes emit none (scope exhausted). */
+  passTrios: [] as number[],
 }));
 
 vi.mock("../../src/settings-ui.js", () => ({
@@ -66,8 +69,15 @@ function writePortrait(dir: string, rules: string[]): void {
 
 vi.mock("../../src/pipeline.js", () => ({
   runPipelineLoop: async () => {
+    loopState.passes++;
     const session = "/tmp/sessions/seed.jsonl";
     const emit = (hook: string, event: unknown) => loopState.hooks?.[hook]?.(event);
+    if (loopState.passTrios.length > 0) {
+      const count = loopState.passTrios[loopState.passes - 1] ?? 0;
+      for (let i = 0; i < count; i++) emit("onTrioExamined", { sessionPath: session, notes: 0, notesText: [] });
+      return { totalSequences: count > 0 ? 1 : 0, totalInserted: 0, totalEvicted: 0 };
+    }
+    if (loopState.passes > 1) return { totalSequences: 0, totalInserted: 0, totalEvicted: 0 };
     emit("onTrioExamined", { sessionPath: session, notes: 2, notesText: ["a", "b"] });
     emit("onTrioExamined", { sessionPath: session, notes: 0, notesText: [] });
     writePortrait(loopState.portraitDir, ["r1", "r2", "r3"]);
@@ -92,6 +102,8 @@ const CENSUS: CensusResult = { file: "seed.jsonl", sha256: "x", totalTrios: 26, 
 
 beforeEach(() => {
   loopState.hooks = null;
+  loopState.passes = 0;
+  loopState.passTrios = [];
   fs.rmSync(TEST_TMP, { recursive: true, force: true });
 });
 
@@ -176,5 +188,33 @@ describe("runPipeline running table", () => {
     ]);
     const sheet = fs.readFileSync(path.join(outputDir, "results-sheet.md"), "utf-8");
     expect(sheet.startsWith("compass baseline results — samples, not a measurement\n")).toBe(true);
+  });
+});
+
+describe("runPipeline passes", () => {
+  it("re-runs the loop as timer ticks would until a pass examines no trio", async () => {
+    loopState.passTrios = [2, 3];
+    const outputDir = path.join(TEST_TMP, "passes");
+    loopState.portraitDir = path.join(outputDir, "portrait");
+    writePortrait(loopState.portraitDir, ["r1"]);
+    fs.writeFileSync(
+      path.join(outputDir, "settings-snapshot.json"),
+      JSON.stringify({ portraitSettings: { model: "meta/test-model" }, hostPiSettings: {} }),
+      "utf-8",
+    );
+
+    const exitCode = await runPipeline({
+      limits: LIMITS,
+      prepared: { selection: selectionFor(outputDir), census: CENSUS },
+      outputDir,
+      confirmMode: "flag",
+    });
+
+    expect(exitCode).toBe(0);
+    expect(loopState.passes).toBe(3);
+    const receipt = JSON.parse(fs.readFileSync(path.join(outputDir, "receipt.json"), "utf-8"));
+    expect(receipt.counts.triosExamined).toBe(5);
+    expect(receipt.counts.pipeline).toEqual({ totalSequences: 2, totalInserted: 0, totalEvicted: 0, passes: 3 });
+    expect(receipt.stop.kind).toBe("completed");
   });
 });
