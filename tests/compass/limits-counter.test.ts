@@ -10,13 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { renderConfirmation, resolveConfirmation } from "../../scripts/compass/confirmation.js";
 import { RequestCounter } from "../../scripts/compass/counter.js";
-import {
-  LimitError,
-  LimitReached,
-  parseLimits,
-  parsePositiveInt,
-  suggestedLimits,
-} from "../../scripts/compass/limits.js";
+import { LimitError, parseLimits, parsePositiveInt, suggestedLimits } from "../../scripts/compass/limits.js";
 import { strings } from "../../scripts/compass/strings.js";
 import type { Limits } from "../../scripts/compass/types.js";
 
@@ -98,22 +92,21 @@ describe("RequestCounter", () => {
     const model = { id: "spark", provider: "meta" };
 
     let honored = 0;
-    let kind: string | undefined;
+    let refusal: { stopReason?: string; errorMessage?: string } | undefined;
     for (let i = 0; i < 5; i++) {
-      try {
-        const stream = await wrapped(model, {}, {});
-        await stream.result();
-        honored++;
-      } catch (error) {
-        kind = (error as { kind?: string }).kind;
-        break;
+      const message = (await (await wrapped(model, {}, {})).result()) as { stopReason?: string; errorMessage?: string };
+      if (message.stopReason === "error") {
+        refusal = message;
+        break; // pipeline loop stops — no automatic restart
       }
+      honored++;
     }
     expect(honored).toBe(2);
-    expect(kind).toBe("requests");
+    expect(refusal?.errorMessage).toBe(strings.limitReached("requests"));
     expect(counter.exhausted()).toBe(true);
     const snapshot = counter.snapshot();
     expect(snapshot.requestCount).toBe(2);
+    expect(snapshot.refusedCount).toBe(1);
     expect(snapshot.stopReason).toBe("requests");
     expect(snapshot.traces).toHaveLength(2);
     expect(snapshot.traces.every((t) => t.outcome === "ok")).toBe(true);
@@ -129,8 +122,12 @@ describe("RequestCounter", () => {
     const wrapped = counter.wrapStreamFn(() => simpleStream(async () => ({})));
     await (await wrapped({ id: "m", provider: "p" }, {}, {})).result();
     now += 60;
-    await expect(wrapped({ id: "m", provider: "p" }, {}, {})).rejects.toBeInstanceOf(LimitReached);
-    await expect(wrapped({ id: "m", provider: "p" }, {}, {})).rejects.toMatchObject({ kind: "deadline" });
+    const refused = await wrapped({ id: "m", provider: "p" }, {}, {});
+    const events: unknown[] = [];
+    for await (const event of refused) events.push(event);
+    expect(events).toMatchObject([{ type: "error", error: { stopReason: "error" } }]);
+    expect(await refused.result()).toMatchObject({ errorMessage: strings.limitReached("deadline") });
+    expect(counter.snapshot()).toMatchObject({ requestCount: 1, refusedCount: 1, stopReason: "deadline" });
     expect(counter.exhausted()).toBe(true);
   });
 
@@ -142,8 +139,12 @@ describe("RequestCounter", () => {
       return simpleStream(async () => ({}));
     });
     counter.abort();
-    await expect(wrapped({ id: "m", provider: "p" }, {}, {})).rejects.toMatchObject({ kind: "aborted" });
+    expect(await (await wrapped({ id: "m", provider: "p" }, {}, {})).result()).toMatchObject({
+      stopReason: "error",
+      errorMessage: strings.limitReached("aborted"),
+    });
     expect(calls).toBe(0);
+    expect(counter.snapshot().refusedCount).toBe(1);
     expect(counter.exhausted()).toBe(true);
   });
 

@@ -207,7 +207,8 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
     llmCall.setLlmAttemptSink((event: LlmAttemptEvent) => {
       guardSink("attempt", () => {
         attemptEvents.push(event);
-        if (!event.ok) stats.failures++;
+        // An attempt that ran into a ceiling is a refusal, not a model failure.
+        if (!event.ok && !counter.refusedDuring(event.startedAtMs, event.endedAtMs)) stats.failures++;
       });
     });
     llmCall.setCapturedModel(model as never, registry as never);
@@ -344,7 +345,12 @@ function writeReceipt(
     limits: { final: opts.limits, source: opts.limits.source },
     stop: { kind: stop, reason: stopLine(stop, counter, pipelineStats?.totalSequences ?? 0) },
     ...(error ? { error } : {}),
-    requests: { count: snapshot.requestCount, elapsedMs: snapshot.elapsedMs, usageTotals: snapshot.usageTotals },
+    requests: {
+      count: snapshot.requestCount,
+      refused: snapshot.refusedCount,
+      elapsedMs: snapshot.elapsedMs,
+      usageTotals: snapshot.usageTotals,
+    },
     stages: attempts.reduce<Record<string, number>>((acc, event) => {
       acc[event.stage] = (acc[event.stage] ?? 0) + 1;
       return acc;

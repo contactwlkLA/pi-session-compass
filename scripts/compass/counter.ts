@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2026 avtc <tarasenkov@gmail.com>
 
 import { LimitReached } from "./limits.js";
+import { strings } from "./strings.js";
 import type { CounterSnapshot, Limits, TraceEntry } from "./types.js";
 
 /** Run-level counters fed by the pipeline instrumentation hooks (src/instrument.ts). */
@@ -46,6 +47,8 @@ export class RequestCounter {
   readonly stats: RunStats = emptyStats();
   traces: TraceEntry[] = [];
   requestCount = 0;
+  /** Times of boundary calls refused at a ceiling; no request was issued for these. */
+  refusalTimes: number[] = [];
   stopReason: CounterSnapshot["stopReason"] = null;
   private aborted = false;
   private readonly startedAtMs: number;
@@ -98,14 +101,29 @@ export class RequestCounter {
     }
   }
 
+  /** True when a boundary call was refused between startedAtMs and endedAtMs (inclusive). */
+  refusedDuring(startedAtMs: number, endedAtMs: number): boolean {
+    return this.refusalTimes.some((t) => t >= startedAtMs && t <= endedAtMs);
+  }
+
   /**
    * Wrap a streamFn so every invocation:
    * passes the guard first (no request is issued over a ceiling),
    * and gets a trace entry with outcome/usage captured from result()/iterator errors.
+   *
+   * Over a ceiling the wrapper returns a stream that ends in an error message instead of
+   * throwing: the agent loop runs the stream function inside a detached promise, so a throw
+   * would surface as an unhandled rejection and end the process before the receipt is written.
    */
   wrapStreamFn(streamFn: (model: unknown, context: unknown, options: unknown) => unknown) {
     return async (model: unknown, context: unknown, options: unknown): Promise<StreamLike> => {
-      this.guard();
+      try {
+        this.guard();
+      } catch (error) {
+        if (!(error instanceof LimitReached)) throw error;
+        this.refusalTimes.push(this.now());
+        return refusedStream(model, strings.limitReached(error.kind));
+      }
       const m = model as { id?: string; provider?: string };
       const entry: TraceEntry = {
         seq: ++this.requestCount,
@@ -169,10 +187,40 @@ export class RequestCounter {
     }
     return {
       requestCount: this.requestCount,
+      refusedCount: this.refusalTimes.length,
       elapsedMs: this.elapsedMs(),
       stopReason: this.stopReason,
       traces: this.traces,
       usageTotals,
     };
   }
+}
+
+/** A stream that issues no request and ends in an assistant error message, as a failed provider call does. */
+function refusedStream(model: unknown, errorMessage: string): StreamLike {
+  const m = model as { id?: string; provider?: string; api?: string };
+  const message = {
+    role: "assistant",
+    content: [],
+    api: m.api ?? "unknown",
+    provider: m.provider ?? "unknown",
+    model: m.id ?? "unknown",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "error",
+    errorMessage,
+    timestamp: Date.now(),
+  };
+  return {
+    async *[Symbol.asyncIterator]() {
+      yield { type: "error", reason: "error", error: message };
+    },
+    result: async () => message,
+  };
 }

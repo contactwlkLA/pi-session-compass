@@ -6,7 +6,8 @@
  * mock streamFn in a child process (immune to vitest module mocks), verifying:
  * - attempts, retries, and tool-follow-up turns each cross the stream boundary
  *   and every crossing is counted, with usage and stage tags captured;
- * - the request ceiling and deadline stop the run with no automatic restart;
+ * - at the request ceiling or deadline the boundary refuses without a request, and
+ *   the real agent loop ends normally (no unhandled rejection), with no restart;
  * - refusal happens before any request when confirmation/limits are absent
  *   (covered by resolveConfirmation unit tests; this file covers the boundary).
  */
@@ -43,7 +44,8 @@ interface CheckOutput {
   result?: unknown;
   lastError?: string;
   stopKind?: string;
-  stoppedEarly?: boolean;
+  refused?: number;
+  requestCount?: number;
   boundaryUsages?: Array<{ input?: number; output?: number }>;
 }
 
@@ -118,19 +120,22 @@ describe("offline boundary checks", () => {
     expect(attemptSum).toEqual(sumAll(out.boundaryUsages ?? []));
   });
 
-  it("stops at the request ceiling with no automatic restart", async () => {
+  it("refuses at the request ceiling inside the real agent loop and ends normally", async () => {
     const out = await runScenario("cap");
     expect(out.stopKind).toBe("requests");
-    expect(out.result).toBe(1);
-    expect(out.stoppedEarly).toBe(true);
     expect(out.streamCalls).toBe(1);
+    expect(out.requestCount).toBe(1);
+    expect(out.refused).toBe(1);
+    expect(out.attempts.map((a) => a.ok)).toEqual([false, false]);
+    expect(out.result).toBeUndefined();
   });
 
-  it("stops at the run deadline", async () => {
+  it("refuses at the run deadline inside the real agent loop and ends normally", async () => {
     const out = await runScenario("deadline");
     expect(out.stopKind).toBe("deadline");
-    expect(out.result).toBe(1);
-    expect(out.stoppedEarly).toBe(true);
+    expect(out.streamCalls).toBe(1);
+    expect(out.refused).toBe(1);
+    expect(out.result).toBeUndefined();
   });
 
   it("run artifacts carry no credential-like strings", async () => {

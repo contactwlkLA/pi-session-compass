@@ -78,6 +78,8 @@ export interface TraceEntry {
 
 export interface CounterSnapshot {
   requestCount: number;
+  /** Boundary calls refused at a ceiling (no request issued). */
+  refusedCount: number;
   elapsedMs: number;
   stopReason: "requests" | "deadline" | "aborted" | null;
   traces: TraceEntry[];

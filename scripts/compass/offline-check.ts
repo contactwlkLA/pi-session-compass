@@ -13,9 +13,10 @@
  *   followup — one attempt: tool-call turn + text follow-up turn = 2 counted requests.
  *   retry    — first attempt returns no tool call (failure), second attempt succeeds
  *              after the backoff; requests = 1 + 2 = 3, attempts = 2.
- *   cap      — RequestCounter guard across 3 candidate calls with maxModelRequests=1:
- *              exactly 1 request issued, LimitReached(requests), loop stops, no restart.
- *   deadline — maxRunMs exceeded before the second request: LimitReached(deadline).
+ *   cap      — real agentLoop, maxModelRequests=1: the first attempt's request is issued,
+ *              the retry is refused at the ceiling (no request), the process ends normally.
+ *   deadline — real agentLoop, maxRunMs exceeded during the first request: the retry is
+ *              refused at the deadline.
  *
  * Usage: node offline-check.js --scenario <name>
  */
@@ -72,7 +73,9 @@ interface CheckResult {
   result?: unknown;
   lastError?: string;
   stopKind?: string;
-  stoppedEarly?: boolean;
+  /** Boundary calls refused at a ceiling (ceiling scenarios). */
+  refused?: number;
+  requestCount?: number;
   /** Per-turn boundary usages (input/output) in call order — present for usage scenarios. */
   boundaryUsages?: Array<{ input?: number; output?: number }>;
 }
@@ -199,76 +202,70 @@ async function scenarioRetry(): Promise<CheckResult> {
   };
 }
 
-async function scenarioCap(): Promise<CheckResult> {
+/**
+ * Drive the real agentLoop through attemptWithRetries until a ceiling refuses a request.
+ * The scripted turn never calls the tool, so every attempt fails and the retry reaches the
+ * ceiling; the process must finish normally (no unhandled rejection) with the refusal counted.
+ */
+async function scenarioCeiling(
+  scenario: "cap" | "deadline",
+  limits: { maxModelRequests: number; maxRunMs: number },
+  delayMs: number,
+): Promise<CheckResult> {
+  const { attemptWithRetries, setLlmAttemptSink } = await import("../../src/llm-call.js");
   const { RequestCounter } = await import("./counter.js");
-  const counter = new RequestCounter({
-    runType: "smoke",
-    maxModelRequests: 1,
-    maxRunMs: 60_000,
-    source: "compass-table",
-  });
-  const wrapped = counter.wrapStreamFn(() => makeStream(TEXT_MESSAGE));
-  let honored = 0;
-  let stopKind: string | undefined;
-  for (let i = 0; i < 3; i++) {
-    try {
-      const stream = (await wrapped({ id: "spark", provider: "meta" }, {}, {})) as {
-        result: () => Promise<unknown>;
-      };
-      await stream.result();
-      honored++;
-    } catch (error) {
-      stopKind = (error as { kind?: string }).kind ?? "unknown";
-      break; // pipeline loop breaks — no automatic restart
-    }
-  }
+  const events: unknown[] = [];
+  setLlmAttemptSink((event) => events.push(event));
+  const counter = new RequestCounter({ runType: "smoke", ...limits, source: "compass-table" });
+  let streamCalls = 0;
+  const context = { messages: [{ role: "system", content: "sys", timestamp: 0 }], tools: [] };
+  const config = {
+    model: { id: "spark", provider: "meta", api: "x" },
+    convertToLlm: (messages: unknown) => messages,
+    toolExecution: "sequential",
+    reasoning: "low",
+  };
+  const { setDefaultStreamFn } = await import("@earendil-works/pi-agent-core");
+  setDefaultStreamFn(
+    counter.wrapStreamFn(async () => {
+      streamCalls++;
+      if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+      return makeStream(NO_TOOL_MESSAGE);
+    }) as never,
+  );
+
+  const out = await attemptWithRetries<unknown>(
+    [{ role: "user", content: [{ type: "text", text: "go" }], timestamp: 0 }],
+    context as never,
+    config as never,
+    30_000,
+    2,
+    () => undefined,
+    "offline check",
+    "offline-check",
+    1,
+  );
+  setLlmAttemptSink(null);
+  const snapshot = counter.snapshot();
   return {
-    scenario: "cap",
-    streamCalls: counter.requestCount,
-    attempts: [],
+    scenario,
+    streamCalls,
+    attempts: events,
     failuresRecorded: 0,
-    result: honored,
-    stopKind,
-    stoppedEarly: honored === 1,
+    result: out.result,
+    lastError: out.lastError,
+    stopKind: snapshot.stopReason ?? undefined,
+    refused: snapshot.refusedCount,
+    requestCount: snapshot.requestCount,
   };
 }
 
+async function scenarioCap(): Promise<CheckResult> {
+  return scenarioCeiling("cap", { maxModelRequests: 1, maxRunMs: 60_000 }, 0);
+}
+
 async function scenarioDeadline(): Promise<CheckResult> {
-  const { RequestCounter } = await import("./counter.js");
-  const counter = new RequestCounter({
-    runType: "smoke",
-    maxModelRequests: 100,
-    maxRunMs: 40,
-    source: "compass-table",
-  });
-  const wrapped = counter.wrapStreamFn(() => makeStream(TEXT_MESSAGE));
-  let honored = 0;
-  let stopKind: string | undefined;
-  try {
-    const stream = (await wrapped({ id: "spark", provider: "meta" }, {}, {})) as {
-      result: () => Promise<unknown>;
-    };
-    await stream.result();
-    honored++;
-  } catch (error) {
-    stopKind = (error as { kind?: string }).kind ?? "unknown";
-  }
-  await new Promise((resolve) => setTimeout(resolve, 60));
-  try {
-    await wrapped({ id: "spark", provider: "meta" }, {}, {});
-    honored++;
-  } catch (error) {
-    stopKind = (error as { kind?: string }).kind ?? "unknown";
-  }
-  return {
-    scenario: "deadline",
-    streamCalls: counter.requestCount,
-    attempts: [],
-    failuresRecorded: 0,
-    result: honored,
-    stopKind,
-    stoppedEarly: honored === 1,
-  };
+  return scenarioCeiling("deadline", { maxModelRequests: 100, maxRunMs: 40 }, 60);
 }
 
 export async function main(argv: string[]): Promise<number> {
