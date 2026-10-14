@@ -24,13 +24,13 @@ Once approved, text can be applied directly during implementation. Any subsequen
 
 # pi-session-compass — Agent operating rules
 
-Revision: **0.3.0** · 2026-10-12
+Revision: **0.4.0** · 2026-10-14
 
 These rules apply in addition to the repository rules above; they do not replace them. Where they would conflict, follow the repository rules and ask the user.
 
 ## Start and scope
 
-- Read md/stage.md at session start, then the first unfinished stage’s task file. Read the run-type table in md/compass.md; consult other documents only as needed. Report a missing task file and stop rather than inventing instructions or skipping a blocked stage.
+- Read md/stage.md at session start, then the first unfinished stage’s task file, before the first reply, whatever the first request is. Handoffs and summaries do not replace these files; where they disagree, the files win. Read the run-type table in md/compass.md; consult other documents only as needed. Report a missing task file and stop rather than inventing instructions or skipping a blocked stage.
 - Layout: planning docs live in `md/`; harness and check code in `scripts/`; frozen inputs in `fixtures/`; every generated run artifact (portrait copies, snapshots, receipts, traces, results sheets) only under `outputs/`, one subdirectory per run. Edit `src/` only for the instrumentation and repairs a stage calls for.
 - One session targets one stage. Follow explicit user/repository instructions; resolve material conflicts before dependent execution. Briefly state the authorized outcome, allowed edits, and completion evidence.
 - **Unclear goal, requirement, scope, acceptance criterion, or authorization: ask one focused question and wait. Do not substitute an assumption.** Silence, a reversible action, or a written proposal is not approval. Routine choices may proceed within clear scope; verify facts and mark unknown evidence honestly.
@@ -41,6 +41,7 @@ These rules apply in addition to the repository rules above; they do not replace
 
 - Check tasks only after verification; preserve user changes and evidence. Use at most two diagnosis → targeted repair → verification cycles per distinct problem, then report the failure; application model-retry semantics are separate.
 - **Verification is reported only from a full run.** Before reporting a code change verified, or asking to commit it, run `npm test` and `npm run test:compass` in full and quote the raw result of every run; a partial run is reported as partial. A failure of a test listed as known-intermittent in the T1.6 baseline in md/stage-1-task.md, with the same failure message recorded there, is rerun once; if the rerun passes, report it as the known flake. A failure with any other message or duration is a real failure.
+- **Order-dependent failures need repeated runs.** When a change touches a test file with a recorded intermittent failure, or shared test setup or mocks, verify it with at least 20 default-order runs of the affected suite and report the failure count; one passing run is not evidence.
 - **Limits are user-confirmed for every live run.** The row for the run type in md/compass.md is the suggested default; if it is UNSET, suggest values with their basis and assumptions. Pass `--run-type`, `--max-model-requests`, and `--max-run-ms` to the harness (it has no defaults). Show the user the run type, limits, selected file with its trio count, and output directory, and pass `--confirmed` only after the user approves them in this session. Accept only finite positive values. Unattended runs never self-confirm. Count inference attempts across all models, including retries and follow-ups; several questions in one Jev request count once. Never raise a ceiling on your own, edit the md/compass.md table unless asked, or evade a cap by automatic restart. Record the run type, suggested and final limits, and their source in every run manifest.
 - Verify isolation and limit controls offline before live calls.
 - A `smoke` run that ends by completion or by a cap, with its checks met, is a successful smoke result with no measurement claims. A capped run of any other type is incomplete: leave the task and stage unchecked and preserve partial evidence.
@@ -75,6 +76,7 @@ Each document carries MAJOR.MINOR.PATCH in its header and history table. All sta
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.4.0 | 2026-10-14 | Session start reads stage.md and the task file before the first reply; handoffs do not replace them. Added the repeated-runs rule for order-dependent failures. |
 | 0.3.0 | 2026-10-12 | Added the Reporting to the user section: status board, one instruction set per message, no repeated asks. Added a rule not to enter ./private (the user's scratch directory) |
 | 0.2.0 | 2026-10-12 | Added the verification-reporting rule; Tests bullet names test:compass. |
 | 0.1.0 | 2026-10-11 | Initial committed draft. |
