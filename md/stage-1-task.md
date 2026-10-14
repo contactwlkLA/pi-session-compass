@@ -1,6 +1,6 @@
 # Stage 1 — Establish the baseline
 
-Project: **pi-session-compass** · Revision: **0.3.1** · Status: **In progress**
+Project: **pi-session-compass** · Revision: **0.3.2** · Status: **In progress**
 
 Date: **2026-10-14**
 
@@ -50,12 +50,12 @@ Initial review uses one unbranched conversation path. Branch support is deferred
 
 Purpose: confirm the harness runs end to end and show sample output. This task makes no measurement claims.
 
-- [ ] **1.** Freeze source, fixture, settings, selector/selected files/output path, initial portrait/scan state, run type, and suggested/final limits with their source in a manifest.
-- [ ] **2.** Verify model availability/authentication without exposing credentials; record access blockers.
-- [ ] **3.** Run the ungated selected-file pipeline under the confirmed `smoke` limits only after T2/T3 verification.
-- [ ] **4.** Verify smoke pass criteria: the selector resolved the intended file; isolation held and the live portrait is unchanged (hashes); the counter counted actual requests, with at least one live request, cross-checked against provider-side usage where available; the run ended by completion or by a cap/deadline without automatic restart (offline T3.8 covers the cap-stop logic); a receipt was written with run type, limits and provenance, request traces, and stop reason; no credentials appear in artifacts; the results sheet was produced.
-- [ ] **5.** Produce the results sheet: one entry per examined trio with its trio reference, the extractor’s output (candidate rules or none), the builder’s insert/merge/skip decision if reached, and the portrait diff. Present these as samples, not a quality measurement.
-- [ ] **6.** Record the smoke result in stage.md as PASS or FAIL with the failing criterion. A run that ends by completion or by a cap, with all criteria met, is PASS. Record raw observations (requests, elapsed time, any usage) without projecting them to the full session.
+- [x] **1.** Freeze source, fixture, settings, selector/selected files/output path, initial portrait/scan state, run type, and suggested/final limits with their source in a manifest. *(evidence: outputs/s1-t4/smoke/manifest.json — source commit, fixture sha256, settings snapshot, selection, start snapshot digest, run type, suggested/final limits with source; outputs/s1-t4/smoke-result.md)*
+- [x] **2.** Verify model availability/authentication without exposing credentials; record access blockers. *(evidence: meta/muse-spark-1.3-contributor resolves in the registry; auth.json has an api-key entry for meta (value not read); live requests 1–4 returned usage — outputs/s1-t4/smoke-result.md)*
+- [x] **3.** Run the ungated selected-file pipeline under the confirmed `smoke` limits only after T2/T3 verification. *(evidence: outputs/s1-t4/smoke/ — attempt 3 after two harness repairs, attempts 1–2 kept under outputs/s1-t4/)*
+- [x] **4.** Verify smoke pass criteria: the selector resolved the intended file; isolation held and the live portrait is unchanged (hashes); the counter counted actual requests, with at least one live request, cross-checked against provider-side usage where available; the run ended by completion or by a cap/deadline without automatic restart (offline T3.8 covers the cap-stop logic); a receipt was written with run type, limits and provenance, request traces, and stop reason; no credentials appear in artifacts; the results sheet was produced. *(evidence: outputs/s1-t4/smoke-result.md criteria table; provider-side cross-check partial: response usage only)*
+- [x] **5.** Produce the results sheet: one entry per examined trio with its trio reference, the extractor’s output (candidate rules or none), the builder’s insert/merge/skip decision if reached, and the portrait diff. Present these as samples, not a quality measurement. *(evidence: outputs/s1-t4/smoke/results-sheet.md + running-table.md; no build completed)*
+- [x] **6.** Record the smoke result in stage.md as PASS or FAIL with the failing criterion. A run that ends by completion or by a cap, with all criteria met, is PASS. Record raw observations (requests, elapsed time, any usage) without projecting them to the full session. *(evidence: md/stage.md smoke result PASS; raw observations in outputs/s1-t4/smoke-result.md)*
 
 ## T5 — Baseline (run type `baseline`)
 
@@ -80,6 +80,7 @@ Discover package/runtime details from the Pi checkout before asking for uploads.
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.3.2 | 2026-10-14 | T4.1–T4.6 checked with evidence (smoke PASS). |
 | 0.3.1 | 2026-10-14 | T3.7 checked with evidence. |
 | 0.3.0 | 2026-10-14 | T3.6 checked with evidence; T1.6 known-intermittent record marks the llm-call timeouts fixed (rerun rule no longer expected to apply). |
 | 0.2.2 | 2026-10-14 | T3.2 checked with evidence. |

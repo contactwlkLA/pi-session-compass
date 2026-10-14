@@ -1,6 +1,6 @@
 # pi-session-compass — Stage continuation
 
-Revision: **0.2.6** · Updated: **2026-10-14**
+Revision: **0.2.7** · Updated: **2026-10-14**
 
 Select the first unchecked stage. A checked stage requires verified milestone evidence. Unchecked means not started, partial, or blocked; use the continuation fields below. Stop after that stage’s completion or a documented stopping condition.
 
@@ -14,16 +14,16 @@ Select the first unchecked stage. A checked stage requires verified milestone ev
 ## Continuation
 
 - Active stage: **S1**
-- Next unfinished step: **S1.T4 — smoke test (run type `smoke`; limits need user confirmation at launch)**
-- Last completed step: **S1.T1.1–T1.6, S1.T2.1–T2.2, S1.T2.3, S1.T2.4–T2.6, S1.T3.1–T3.8**
+- Next unfinished step: **S1.T5.1 — suggest `baseline` limits from the census and smoke observations; user confirms**
+- Last completed step: **S1.T1.1–T1.6, S1.T2.1–T2.2, S1.T2.3, S1.T2.4–T2.6, S1.T3.1–T3.8, S1.T4.1–T4.6**
 - Outcome: **IN PROGRESS: S1 harness code and tests committed on branch s1/harness**
 - Blocker: **user decisions**
-- Pending user inputs: **permission rule for the harness launch command; the smoke run (limits approved 2026-10-14: 5 requests, 900000 ms, compass.md row)**
+- Pending user inputs: **baseline limits (compass.md row UNSET); the baseline run**
 - Limits: **suggested at launch from the [compass.md](compass.md) run-type table; confirmed by the user for every live run**
-- Smoke result (S1.T4): **pending**
+- Smoke result (S1.T4): **PASS** (2026-10-14, attempt 3, capped at 5 requests; outputs/s1-t4/smoke-result.md)
 - Baseline result (S1.T5): **pending**
 - Continue/stop decision (end of S2): **pending**
-- Evidence: **outputs/s1-t1/; outputs/s1-t2.3/; fixtures/sessions/ (frozen July seed + receipt); fixtures/snapshots/s1-start/; scripts/compass/ + tests/compass/**
+- Evidence: **outputs/s1-t1/; outputs/s1-t2.3/; outputs/s1-t4/; fixtures/sessions/ (frozen July seed + receipt); fixtures/snapshots/s1-start/; scripts/compass/ + tests/compass/**
 - Milestone evidence: **M1 pending (requires T4 smoke + T5 baseline)**
 
 At session exit, update these fields and task checkboxes. Record a short evidence reference alongside each completed stage. A cap/blocker leaves its stage unchecked and identifies the next unfinished task. Do not skip it. If the selected task file is missing, report the missing file and stop; do not invent it.
@@ -34,6 +34,7 @@ Stage meanings and dependencies: [plan.md](plan.md). Operating rules: [AGENTS.md
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.2.7 | 2026-10-14 | T4 smoke PASS (attempt 3, after the discovery-root and cap-refusal repairs); next step T5.1. |
 | 0.2.6 | 2026-10-14 | Decisions recorded: maintenance backfill calls are tagged "maintenance"; the harness launches with `node --import jiti/register` (installed jiti, no package change); smoke limits approved. |
 | 0.2.5 | 2026-10-14 | T3.7 completed (running table; strings approved); next step T4. |
 | 0.2.4 | 2026-10-14 | Pending inputs: added the maintenance backfill stage-tag decision. |

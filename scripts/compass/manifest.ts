@@ -36,7 +36,10 @@ export function buildManifestData(input: {
   try {
     branch = execSync("git rev-parse --abbrev-ref HEAD", { cwd: input.workspaceRoot, encoding: "utf-8" }).trim();
     commit = execSync("git rev-parse HEAD", { cwd: input.workspaceRoot, encoding: "utf-8" }).trim();
-    dirty = execSync("git status --porcelain", { cwd: input.workspaceRoot, encoding: "utf-8" }).trim().length > 0;
+    // Tracked changes only: untracked scratch files do not change the source under test.
+    dirty =
+      execSync("git status --porcelain --untracked-files=no", { cwd: input.workspaceRoot, encoding: "utf-8" }).trim()
+        .length > 0;
   } catch {
     // git unavailable — manifest records nulls
   }

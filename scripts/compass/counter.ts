@@ -144,6 +144,14 @@ export class RequestCounter {
       };
       const finalizeOk = (message: unknown): void => {
         entry.endedAtMs = this.now();
+        const final = message as { stopReason?: string; errorMessage?: string } | null;
+        if (final?.stopReason) entry.stopReason = final.stopReason;
+        // A provider failure resolves with an error/aborted message instead of throwing.
+        if (final?.stopReason === "error" || final?.stopReason === "aborted") {
+          entry.outcome = "error";
+          entry.error = final.errorMessage ?? final.stopReason;
+          this.stats.failures++;
+        }
         const usage = (message as { usage?: { input?: number; output?: number } } | null)?.usage;
         if (usage && (typeof usage.input === "number" || typeof usage.output === "number")) {
           entry.usage = {

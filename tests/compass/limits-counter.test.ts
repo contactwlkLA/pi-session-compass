@@ -162,6 +162,16 @@ describe("RequestCounter", () => {
     expect(counter.snapshot().usageTotals.unknown).toBe(1);
   });
 
+  it("records a provider error that resolves as an error message", async () => {
+    const counter = new RequestCounter(SMOKE);
+    const wrapped = counter.wrapStreamFn(() =>
+      simpleStream(async () => ({ stopReason: "error", errorMessage: "upstream 500", usage: { input: 0, output: 0 } })),
+    );
+    await (await wrapped({ id: "m", provider: "p" }, {}, {})).result();
+    expect(counter.traces[0]).toMatchObject({ outcome: "error", error: "upstream 500", stopReason: "error" });
+    expect(counter.stats.failures).toBe(1);
+  });
+
   it("guard passes below ceilings", () => {
     const counter = new RequestCounter(SMOKE);
     expect(() => counter.guard()).not.toThrow();

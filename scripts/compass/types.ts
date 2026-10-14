@@ -70,6 +70,8 @@ export interface TraceEntry {
   endedAtMs: number;
   outcome: "ok" | "error" | "refused";
   error?: string;
+  /** The response's stopReason as reported by the provider layer. */
+  stopReason?: string;
   usage?: { input?: number; output?: number };
   /** Portrait attempt tag, when the request originated from an instrumented attempt. */
   stage?: string;

@@ -14,6 +14,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderConfirmation } from "../../scripts/compass/confirmation.js";
+import { buildManifestData } from "../../scripts/compass/manifest.js";
 import { executeRun, prepareRun } from "../../scripts/compass/run.js";
 import {
   restoreSnapshot,
@@ -281,5 +282,30 @@ describe("restoreSnapshot", () => {
     expect(execSync("git rev-parse HEAD", { cwd: dest, encoding: "utf-8" }).trim()).toBe(
       verifySnapshot(snap)[".git/HEAD"],
     );
+  });
+});
+
+describe("manifest source identity", () => {
+  it("is dirty for tracked changes only, not untracked files", () => {
+    const workspace = path.join(TEST_TMP, "ws-dirty");
+    makePortraitDir(workspace);
+    commitAll(workspace);
+    const manifestFor = () =>
+      buildManifestData({
+        runType: "smoke",
+        suggested: null,
+        finalLimits: LIMITS,
+        selection: { scope: "all", runId: "t", outputDir: workspace, createdAt: new Date(0).toISOString() },
+        census: null,
+        settingsSnapshotPath: "",
+        workspaceRoot: workspace,
+        startPortrait: { source: "live", dir: workspace, digest: "d" },
+        confirmed: null,
+      });
+
+    fs.writeFileSync(path.join(workspace, "scratch.txt"), "untracked\n", "utf-8");
+    expect(manifestFor().sourceIdentity.dirty).toBe(false);
+    fs.writeFileSync(path.join(workspace, "portrait.md"), "# Edited\n", "utf-8");
+    expect(manifestFor().sourceIdentity.dirty).toBe(true);
   });
 });
