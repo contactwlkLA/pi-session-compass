@@ -22,6 +22,7 @@ import {
 } from "../../scripts/compass/selection.js";
 import { hashTree, snapshotPortraitState, treeDigest } from "../../scripts/compass/snapshot.js";
 import { sha256File } from "../../scripts/compass/util.js";
+import { discoverFiles } from "../../src/collector.js";
 
 const ROOT = process.cwd();
 const TEST_TMP = path.join(ROOT, "outputs", "test-tmp", "compass-harness");
@@ -88,10 +89,10 @@ describe("selection", () => {
     expect(selection.frozen?.sizeBytes).toBe(fs.statSync(source).size);
     expect(sha256File(selection.frozen?.storedPath ?? "")).toBe(selection.frozen?.sha256);
 
-    const isolated = selection.isolatedSessionDir ?? "";
-    const files = fs.readdirSync(isolated).filter((f) => f.endsWith(".jsonl"));
-    expect(files).toHaveLength(1);
-    expect(sha256File(path.join(isolated, files[0]))).toBe(selection.frozen?.sha256);
+    // The pipeline's own discovery, run on the isolated session root, finds exactly the frozen file.
+    const discovered = discoverFiles([selection.isolatedSessionDir ?? ""], 0);
+    expect(discovered).toHaveLength(1);
+    expect(sha256File(discovered[0].path)).toBe(selection.frozen?.sha256);
 
     const selectionPath = writeSelection(outputDir, selection);
     expect(JSON.parse(fs.readFileSync(selectionPath, "utf-8")).scope).toBe("file");

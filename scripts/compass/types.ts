@@ -32,7 +32,7 @@ export interface RunSelection {
   outputDir: string;
   /** Present only for scope=file. */
   frozen?: FrozenFile;
-  /** Isolated dir containing exactly the selected file (scope=file only). */
+  /** Isolated session root the pipeline scans; holds exactly the selected file under selected/ (scope=file only). */
   isolatedSessionDir?: string;
   createdAt: string;
 }

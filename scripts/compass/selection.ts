@@ -49,7 +49,9 @@ export interface FreezeOptions {
  * Freeze the selection:
  * - scope=file: validate + hash the source, copy it to fixtures/sessions/<sha>-<name>
  *   (canonical frozen copy), then place exactly that one file into
- *   <outputDir>/sessions/selected/<name> — the only directory the pipeline may scan.
+ *   <outputDir>/sessions/selected/<name>. The session root the pipeline scans is
+ *   <outputDir>/sessions: discovery reads <root>/<project>/*.jsonl, so "selected"
+ *   is the only project directory.
  * - scope=all: no file copy; the pipeline keeps scanning the real session dirs.
  */
 export function freezeSelection(opts: FreezeOptions): RunSelection {
@@ -70,13 +72,12 @@ export function freezeSelection(opts: FreezeOptions): RunSelection {
     fs.copyFileSync(sourcePath, storedPath);
   }
 
-  const isolatedSessionDir = path.join(opts.outputDir, "sessions", "selected");
-  fs.mkdirSync(isolatedSessionDir, { recursive: true });
-  // Exactly one .jsonl in the isolated dir — remove any stale extras from a reused output dir.
-  for (const existing of fs.readdirSync(isolatedSessionDir)) {
-    if (existing.endsWith(".jsonl")) fs.rmSync(path.join(isolatedSessionDir, existing));
-  }
-  const isolatedFile = path.join(isolatedSessionDir, baseName);
+  const isolatedSessionDir = path.join(opts.outputDir, "sessions");
+  const projectDir = path.join(isolatedSessionDir, "selected");
+  // Exactly one .jsonl under the session root — clear anything left from a reused output dir.
+  fs.rmSync(isolatedSessionDir, { recursive: true, force: true });
+  fs.mkdirSync(projectDir, { recursive: true });
+  const isolatedFile = path.join(projectDir, baseName);
   fs.copyFileSync(storedPath, isolatedFile);
   if (sha256File(isolatedFile) !== sha256) {
     throw new SelectionError(strings.frozenCopyMismatch(isolatedFile));
