@@ -19,7 +19,7 @@
  * Usage:
  *   node run.js prepare --session <path> [--scope file] --output <dir>
  *   node run.js execute --session <path> --run-type smoke --max-model-requests 5 \
- *       --max-run-ms 900000 --limits-source compass-table --confirmed
+ *       --max-run-ms 900000 --limits-source compass-table --confirmed [--start-snapshot <dir>]
  */
 
 import * as fs from "node:fs";
@@ -32,9 +32,9 @@ import { LimitError, LimitReached, parseLimits, suggestedLimits } from "./limits
 import { buildManifestData, freezeManifest } from "./manifest.js";
 import { freezeSelection, parseScope, SelectionError, writeSelection } from "./selection.js";
 import { captureSettingsSnapshot } from "./settings.js";
-import { restoreSnapshot, snapshotPortraitState } from "./snapshot.js";
+import { restoreSnapshot, SnapshotError, snapshotPortraitState, treeDigest, verifySnapshot } from "./snapshot.js";
 import { strings } from "./strings.js";
-import type { CensusResult, Limits, RunSelection } from "./types.js";
+import type { CensusResult, Limits, RunSelection, StartPortrait } from "./types.js";
 import { findWorkspaceRoot, parseArgv } from "./util.js";
 
 function livePortraitDir(): string {
@@ -53,6 +53,8 @@ export interface PrepareOptions {
   workspaceRoot: string;
   limits: Limits | null;
   suggested: { maxModelRequests: number; maxRunMs: number; source: string } | null;
+  /** When set, restore from this frozen snapshot instead of snapshotting live. */
+  startSnapshotDir?: string;
 }
 
 export interface PrepareResult {
@@ -61,6 +63,7 @@ export interface PrepareResult {
   settingsSnapshotPath: string;
   manifestPath: string;
   snapshotDir: string;
+  startPortrait: StartPortrait;
 }
 
 /** Offline preparation: freeze selection, snapshot state/settings, census, manifest. */
@@ -75,9 +78,19 @@ export async function prepareRun(opts: PrepareOptions): Promise<PrepareResult> {
   });
   writeSelection(opts.outputDir, selection);
 
-  // Freeze the live portrait/archive snapshot into fixtures (reusable across runs).
-  const snapshotDir = path.join(opts.workspaceRoot, "fixtures", "snapshots", opts.runId);
-  snapshotPortraitState(livePortraitDir(), snapshotDir);
+  // Resolve the starting portrait: a verified frozen snapshot when --start-snapshot
+  // is given, otherwise a fresh snapshot of the live state (reusable across runs).
+  let startPortrait: StartPortrait;
+  let snapshotDir: string;
+  if (opts.startSnapshotDir) {
+    const hashes = verifySnapshot(opts.startSnapshotDir);
+    snapshotDir = opts.startSnapshotDir;
+    startPortrait = { source: "snapshot", dir: snapshotDir, digest: treeDigest(hashes) };
+  } else {
+    snapshotDir = path.join(opts.workspaceRoot, "fixtures", "snapshots", opts.runId);
+    const { hashes } = snapshotPortraitState(livePortraitDir(), snapshotDir);
+    startPortrait = { source: "live", dir: snapshotDir, digest: treeDigest(hashes) };
+  }
   // The run starts from the recorded initial state.
   restoreSnapshot(snapshotDir, path.join(opts.outputDir, "portrait"));
 
@@ -100,11 +113,12 @@ export async function prepareRun(opts: PrepareOptions): Promise<PrepareResult> {
       census,
       settingsSnapshotPath: snapshotPath,
       workspaceRoot: opts.workspaceRoot,
+      startPortrait,
       confirmed: null,
     }),
   );
 
-  return { selection, census, settingsSnapshotPath: snapshotPath, manifestPath, snapshotDir };
+  return { selection, census, settingsSnapshotPath: snapshotPath, manifestPath, snapshotDir, startPortrait };
 }
 
 function selectionLabel(selection: RunSelection, census: CensusResult | null): string {
@@ -122,6 +136,8 @@ export async function executeRun(
   const outputDir = typeof args.output === "string" ? path.resolve(args.output) : path.join(root, "outputs", runId);
   const scope = typeof args.scope === "string" ? args.scope : "file";
   const sessionPath = typeof args.session === "string" ? args.session : undefined;
+  const startSnapshotArg = typeof args["start-snapshot"] === "string" ? args["start-snapshot"] : undefined;
+  const startSnapshotDir = startSnapshotArg ? path.resolve(startSnapshotArg) : undefined;
 
   let limits: Limits;
   try {
@@ -133,15 +149,25 @@ export async function executeRun(
 
   const suggested = limits.source === "compass-table" ? { ...tableSuggested(limits.runType) } : null;
 
-  const prepared = await prepareRun({
-    scope,
-    sessionPath,
-    outputDir,
-    runId,
-    workspaceRoot: root,
-    limits,
-    suggested,
-  });
+  let prepared: PrepareResult;
+  try {
+    prepared = await prepareRun({
+      scope,
+      sessionPath,
+      outputDir,
+      runId,
+      workspaceRoot: root,
+      limits,
+      suggested,
+      startSnapshotDir,
+    });
+  } catch (error) {
+    if (error instanceof SnapshotError) {
+      process.stderr.write(`${error.message}\n`);
+      return 2;
+    }
+    throw error;
+  }
 
   // Install isolation before any pipeline import.
   process.env.PI_PORTRAIT_STATE_DIR = path.join(outputDir, "portrait");
@@ -155,6 +181,7 @@ export async function executeRun(
     selectionLabel: selectionLabel(prepared.selection, prepared.census),
     trioCount: prepared.census?.totalTrios ?? 0,
     outputDir,
+    startPortrait: prepared.startPortrait,
   });
   const confirmation = await resolveConfirmation(block, { confirmed: opts.confirmed, isTTY: opts.isTTY });
   if (!confirmation.proceed) return 2;
@@ -170,6 +197,7 @@ export async function executeRun(
       census: prepared.census,
       settingsSnapshotPath: prepared.settingsSnapshotPath,
       workspaceRoot: root,
+      startPortrait: prepared.startPortrait,
       confirmed: { mode: confirmation.mode, at: new Date().toISOString() },
     }),
   );
@@ -231,7 +259,7 @@ export async function main(argv: string[]): Promise<number> {
   process.stderr.write(
     `compass harness: expected 'prepare' or 'execute'.\n` +
       "  prepare  --session <jsonl> [--scope file|all] [--output <dir>]\n" +
-      "  execute  --session <jsonl> --run-type <t> --max-model-requests N --max-run-ms N --limits-source <s> [--confirmed]\n",
+      "  execute  --session <jsonl> --run-type <t> --max-model-requests N --max-run-ms N --limits-source <s> [--confirmed] [--start-snapshot <dir>]\n",
   );
   return 2;
 }

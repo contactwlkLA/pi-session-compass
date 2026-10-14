@@ -29,6 +29,8 @@ export const strings = {
   confirmSelectionAll: (trios: number) =>
     `Selection: all session files in scope — ${trios} eligible trios in last census`,
   confirmOutputDir: (dir: string) => `Output directory: ${dir}`,
+  confirmStartSnapshot: (dir: string) => `Starting portrait: ${dir} (frozen snapshot)`,
+  confirmStartLive: (dir: string) => `Starting portrait: ${dir} (live — snapshot taken at this run)`,
   costNoteLowerBound:
     "Each eligible trio needs at least one extraction request (a source-review lower bound, unmeasured).",
   costNoteSpend: "The limits cap requests and wall-clock time — not spend.",
@@ -39,6 +41,14 @@ export const strings = {
     "compass harness: refusing to run — no model request was made. " +
     "When an agent launches the harness, it must pass --confirmed only after the user approves these values in the session.",
   cancelled: "compass harness: cancelled — no model request was made.",
+
+  // ── Starting snapshot ──
+  startSnapshotNotFound: (dir: string) =>
+    `compass harness: start snapshot not found: ${dir} — no model request was made.`,
+  startSnapshotNoHashes: (dir: string) =>
+    `compass harness: start snapshot has no hashes.json: ${dir} — no model request was made.`,
+  startSnapshotMismatch: (file: string, dir: string) =>
+    `compass harness: start snapshot does not match its recorded hashes (${file}): ${dir} — no model request was made.`,
 
   // ── Selection ──
   selectionNotFound: (p: string) => `selection target not found: ${p}`,

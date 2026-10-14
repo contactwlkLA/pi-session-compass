@@ -18,6 +18,13 @@ export interface FrozenFile {
   sizeBytes: number;
 }
 
+/** Where a run's starting portrait came from, recorded in the manifest. */
+export interface StartPortrait {
+  source: "snapshot" | "live";
+  dir: string;
+  digest: string;
+}
+
 /** The selection object shared with the pipeline and counter before any model call. */
 export interface RunSelection {
   scope: Scope;

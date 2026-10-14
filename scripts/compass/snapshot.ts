@@ -4,6 +4,7 @@
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { strings } from "./strings.js";
 import { sha256File, sha256Text } from "./util.js";
 
 /** State files copied by a portrait/archive snapshot (lock files are runtime-only). */
@@ -67,6 +68,48 @@ export function restoreSnapshot(snapshotDir: string, destDir: string): void {
   }
   const gitDir = path.join(snapshotDir, ".git");
   if (fs.existsSync(gitDir)) copyDirRecursive(gitDir, path.join(destDir, ".git"));
+}
+
+/** A frozen snapshot that is missing or does not match its recorded hashes. */
+export class SnapshotError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SnapshotError";
+  }
+}
+
+/**
+ * Verify a frozen snapshot against its recorded hashes.json. Every listed entry
+ * must still hash the same; `.git/HEAD` is checked with `git rev-parse HEAD` in
+ * the snapshot dir. Returns the recorded hashes; throws SnapshotError on the
+ * first mismatch so a run refuses before any model request.
+ */
+export function verifySnapshot(dir: string): Record<string, string> {
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+    throw new SnapshotError(strings.startSnapshotNotFound(dir));
+  }
+  const hashesPath = path.join(dir, "hashes.json");
+  if (!fs.existsSync(hashesPath)) {
+    throw new SnapshotError(strings.startSnapshotNoHashes(dir));
+  }
+  const hashes = JSON.parse(fs.readFileSync(hashesPath, "utf-8")) as Record<string, string>;
+  for (const [name, expected] of Object.entries(hashes)) {
+    if (name === ".git/HEAD") {
+      let actual: string;
+      try {
+        actual = execSync("git rev-parse HEAD", { cwd: dir, encoding: "utf-8" }).trim();
+      } catch {
+        throw new SnapshotError(strings.startSnapshotMismatch(name, dir));
+      }
+      if (actual !== expected) throw new SnapshotError(strings.startSnapshotMismatch(name, dir));
+      continue;
+    }
+    const filePath = path.join(dir, name);
+    if (!fs.existsSync(filePath) || sha256File(filePath) !== expected) {
+      throw new SnapshotError(strings.startSnapshotMismatch(name, dir));
+    }
+  }
+  return hashes;
 }
 
 /** Hash every regular file under dir (relative paths sorted) — for isolation checks. */

@@ -174,6 +174,7 @@ describe("resolveConfirmation", () => {
     selectionLabel: "/tmp/session.jsonl",
     trioCount: 3,
     outputDir: "/tmp/out",
+    startPortrait: { source: "live", dir: "/tmp/portrait", digest: "0" },
   });
 
   it("renders run type, limits, selection, output dir, and cost notes", () => {

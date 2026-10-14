@@ -220,6 +220,7 @@ describe("snapshots and manifests", () => {
         census: null,
         settingsSnapshotPath: path.join(outputDir, "settings-snapshot.json"),
         workspaceRoot: ROOT,
+        startPortrait: { source: "live", dir: path.join(ROOT, "fixtures", "snapshots", "iso"), digest: "0" },
         confirmed: null,
       }),
     );

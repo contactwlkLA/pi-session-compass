@@ -1,8 +1,8 @@
 # Stage 1 — Establish the baseline
 
-Project: **pi-session-compass** · Revision: **0.2.0** · Status: **In progress**
+Project: **pi-session-compass** · Revision: **0.2.1** · Status: **In progress**
 
-Date: **2026-10-12**
+Date: **2026-10-14**
 
 Parent: [Development plan](plan.md), Stage 1. Contract: [Architecture](architecture.md). Operating rules: [AGENTS.md](../AGENTS.md); read before execution and install at the Portrait checkout root.
 
@@ -30,7 +30,7 @@ Initial review uses one unbranched conversation path. Branch support is deferred
 
 - [x] **1.** Implement file selection through a selection object with an extensible `scope` field (`all` keeps today’s behavior as the default; `file` is new) and an independent output path. *(evidence: scripts/compass/selection.ts + scope tests)*
 - [x] **2.** Accept/copy/hash the user-selected session JSONL; select only that file, independent of age. Put the harness in `scripts/`, the copied session and starting snapshot in `fixtures/`, and a per-run subdirectory of `outputs/` holding the isolated portrait, archives, state/checkpoints, locks, and diagnostics. Use synthetic fixtures offline until the target is supplied. *(evidence: fixtures/sessions/ frozen July seed + july-seed-receipt.json)*
-- [ ] **3.** Establish the explicitly selected starting portrait/archive snapshot; save hashes and reusable copies. *(tooling verified in scripts/compass/snapshot.ts; user confirmation of the starting portrait pending)*
+- [x] **3.** Establish the explicitly selected starting portrait/archive snapshot; save hashes and reusable copies. *(evidence: fixtures/snapshots/s1-start/ frozen from the live ~/.pi/portrait, git HEAD 7b9c52e8, six files matching outputs/s1-t2.3/hashes-before.txt; user-confirmed 2026-10-13; runs start from it via execute --start-snapshot, tests/compass/start-snapshot.test.ts)*
 - [x] **4.** Provide a runnable selected-file harness entry point; freeze/list files and share the selection with pipeline/counter before model calls. *(evidence: scripts/compass/run.ts `prepare`/`execute`; selection.json)*
 - [x] **5.** Enumerate the selected file’s trios offline with source references; this is the trio census used to suggest limits. For the optional July seed only, explain differences from 26. *(evidence: scripts/compass/census.ts; July seed observed 26 = claimed 26, outputs/s1-census/)*
 - [x] **6.** Verify file scope, the unchanged `all` default, zero matches, invalid targets, counter agreement, repeatable snapshots, and isolated writes; never fall back to a wider scope. *(evidence: tests/compass/compass-harness.test.ts, T2.6)*
@@ -80,6 +80,7 @@ Discover package/runtime details from the Pi checkout before asking for uploads.
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.2.1 | 2026-10-14 | T2.3 checked with evidence. |
 | 0.2.0  | 2026-10-12 | Status set to In progress; completed tasks checked with evidence references (T2.3, T3.2, T3.6, T3.7 left open with reasons); added the T1.6 baseline record (native-filesystem environment, suite sizes, known-intermittent llm-call backoff signature and rerun rule). |
 | 0.1.1 | 2026-10-12 | S1 verification runs both `npm test` and `npm run test:compass` (harness suite split out of the default run). |
 | 0.1.0 | 2026-10-11 | Initial committed draft. |

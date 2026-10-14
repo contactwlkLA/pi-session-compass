@@ -4,7 +4,7 @@
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { CensusResult, Limits, RunSelection } from "./types.js";
+import type { CensusResult, Limits, RunSelection, StartPortrait } from "./types.js";
 
 export interface ManifestData {
   runType: Limits["runType"];
@@ -13,6 +13,7 @@ export interface ManifestData {
   selection: RunSelection;
   census: { file: string; sha256: string; totalTrios: number } | null;
   settingsSnapshotPath: string;
+  startPortrait: StartPortrait;
   sourceIdentity: { branch: string | null; commit: string | null; dirty: boolean };
   confirmed: { mode: string; at: string } | null;
 }
@@ -26,6 +27,7 @@ export function buildManifestData(input: {
   census: CensusResult | null;
   settingsSnapshotPath: string;
   workspaceRoot: string;
+  startPortrait: StartPortrait;
   confirmed: ManifestData["confirmed"];
 }): ManifestData {
   let branch: string | null = null;
@@ -47,6 +49,7 @@ export function buildManifestData(input: {
       ? { file: input.census.file, sha256: input.census.sha256, totalTrios: input.census.totalTrios }
       : null,
     settingsSnapshotPath: input.settingsSnapshotPath,
+    startPortrait: input.startPortrait,
     sourceIdentity: { branch, commit, dirty },
     confirmed: input.confirmed,
   };

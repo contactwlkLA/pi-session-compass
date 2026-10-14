@@ -1,6 +1,6 @@
 # pi-session-compass — Stage continuation
 
-Revision: **0.2.0** · Updated: **2026-10-12**
+Revision: **0.2.1** · Updated: **2026-10-14**
 
 Select the first unchecked stage. A checked stage requires verified milestone evidence. Unchecked means not started, partial, or blocked; use the continuation fields below. Stop after that stage’s completion or a documented stopping condition.
 
@@ -14,16 +14,16 @@ Select the first unchecked stage. A checked stage requires verified milestone ev
 ## Continuation
 
 - Active stage: **S1**
-- Next unfinished step: **S1.T2.3 — starting portrait/archive snapshot (user confirmation pending)**
-- Last completed step: **S1.T1.1–T1.6, S1.T2.1–T2.2, S1.T2.4–T2.6, S1.T3.1, S1.T3.3–T3.5, S1.T3.8**
+- Next unfinished step: **S1.T3.2 — validation-round tag**
+- Last completed step: **S1.T1.1–T1.6, S1.T2.1–T2.2, S1.T2.3, S1.T2.4–T2.6, S1.T3.1, S1.T3.3–T3.5, S1.T3.8**
 - Outcome: **IN PROGRESS: S1 harness code and tests committed on branch s1/harness**
 - Blocker: **user decisions**
-- Pending user inputs: **approval of the confirmation prompt and the other harness strings (the sink-error strings are already approved); starting-portrait confirmation; smoke limits; the smoke run; jiti dependency decision (deferred)**
+- Pending user inputs: **approval of the confirmation prompt and the other harness strings (the sink-error strings are already approved); smoke limits; the smoke run; jiti dependency decision (deferred)**
 - Limits: **suggested at launch from the [compass.md](compass.md) run-type table; confirmed by the user for every live run**
 - Smoke result (S1.T4): **pending**
 - Baseline result (S1.T5): **pending**
 - Continue/stop decision (end of S2): **pending**
-- Evidence: **outputs/s1-t1/; fixtures/sessions/ (frozen July seed + receipt); scripts/compass/ + tests/compass/**
+- Evidence: **outputs/s1-t1/; outputs/s1-t2.3/; fixtures/sessions/ (frozen July seed + receipt); fixtures/snapshots/s1-start/; scripts/compass/ + tests/compass/**
 - Milestone evidence: **M1 pending (requires T4 smoke + T5 baseline)**
 
 At session exit, update these fields and task checkboxes. Record a short evidence reference alongside each completed stage. A cap/blocker leaves its stage unchecked and identifies the next unfinished task. Do not skip it. If the selected task file is missing, report the missing file and stop; do not invent it.
@@ -34,5 +34,6 @@ Stage meanings and dependencies: [plan.md](plan.md). Operating rules: [AGENTS.md
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.2.1 | 2026-10-14 | T2.3 completed; next step T3.2. |
 | 0.2.0 | 2026-10-12 | S1 in progress on s1/harness; completed: T1.1–T1.6, T2.1–T2.2, T2.4–T2.6, T3.1, T3.3–T3.5, T3.8. Open: T2.3 (starting-portrait confirmation), T3.2 (validation-round tag), T3.6 (confirmation strings), T3.7 (baseline running table). Blocker: user decisions. |
 | 0.1.0 | 2026-10-11 | Initial committed draft. |

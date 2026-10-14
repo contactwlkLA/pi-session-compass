@@ -3,7 +3,7 @@
 
 import * as readline from "node:readline";
 import { strings } from "./strings.js";
-import type { Limits } from "./types.js";
+import type { Limits, StartPortrait } from "./types.js";
 
 export interface ConfirmationInput {
   limits: Limits;
@@ -12,6 +12,7 @@ export interface ConfirmationInput {
   selectionLabel: string;
   trioCount: number;
   outputDir: string;
+  startPortrait: StartPortrait;
 }
 
 /** Render the start-of-run confirmation block (compass.md rule 4). */
@@ -29,6 +30,9 @@ export function renderConfirmation(input: ConfirmationInput): string {
       ? strings.confirmSelectionAll(input.trioCount)
       : strings.confirmSelection(input.selectionLabel, input.trioCount),
     strings.confirmOutputDir(input.outputDir),
+    input.startPortrait.source === "snapshot"
+      ? strings.confirmStartSnapshot(input.startPortrait.dir)
+      : strings.confirmStartLive(input.startPortrait.dir),
     "",
     strings.costNoteLowerBound,
     strings.costNoteSpend,
