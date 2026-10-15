@@ -1,8 +1,10 @@
 # Stage 3 Part A — Claude Code plan (planner and reviewer)
 
-Project: **pi-session-compass** · Revision: **0.2.0** · Status: **Approved (user, 2026-10-14)**
+Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Approved (user, 2026-10-14)**
 
 Date: **2026-10-14**
+
+> **Pi parked (user, 2026-10-14).** From Block A-2c, Claude Code both codes (from the brief) and reviews (this plan). The relay steps no longer apply; every other check stays.
 
 Parent: [stage-3-task.md](stage-3-task.md) Part A. Pi's brief: [stage-3a-pi.md](stage-3a-pi.md). Operating rules: [AGENTS.md](../AGENTS.md).
 
@@ -13,7 +15,7 @@ Parent: [stage-3-task.md](stage-3-task.md) Part A. Pi's brief: [stage-3a-pi.md](
 ## Before Block A-1
 
 - [x] **1.** User approves stage-3-task.md, this plan, the Pi brief, and strings S1–S4. Fill the approved strings into the brief; set all three docs to approved. *(user approved 2026-10-14)*
-- [ ] **2.** Commit and push the docs (and bugs.md P8–P10). Record the start commit for Part A.
+- [x] **2.** Commit and push the docs (and bugs.md P8–P10). Record the start commit for Part A. *(2ebb50a)*
 
 ## Per block: review loop
 
@@ -61,16 +63,18 @@ For each block A-1, A-2a, A-2b, A-2c, A-3:
 
 ## Independent acceptance (CC, after A-2c)
 
-- [ ] **1.** Write outputs/s3-a/scan-check.ts: copy the S1 fixture to a temp session root, run the production `scanSessions` pass by pass with a stub extractor that makes every trio productive (the worst case for P7), and list the examined trios.
-- [ ] **2.** Compare with the census (scripts/compass/census.ts) on the same file: expect **26 of 26**, the same trios in the same order. Also run it with every trio unproductive; expect 26 again.
-- [ ] **3.** Re-run outputs/s2-t3/trio-loss-replay.ts logic against the new code path; record the result in outputs/s3-a/scan-check.md.
-- [ ] **4.** Update P7, P8, P9 in bugs.md: FIXED with commit and evidence.
+- [x] **1.** Write outputs/s3-a/scan-check.ts: copy the S1 fixture to a temp session root, run the production `scanSessions` pass by pass with a stub extractor that makes every trio productive (the worst case for P7), and list the examined trios.
+- [x] **2.** Compare with the census (scripts/compass/census.ts) on the same file: expect **26 of 26**, the same trios in the same order. Also run it with every trio unproductive; expect 26 again.
+- [x] **3.** Re-run outputs/s2-t3/trio-loss-replay.ts logic against the new code path; record the result in outputs/s3-a/scan-check.md.
+- [x] **4.** Update P7, P8, P9 in bugs.md: FIXED with commit and evidence.
 
 No live model runs in Part A.
 
+Result: 26 of 26 in both variants; A-1 to A-2c committed in 47a95b5 (outputs/s3-a/scan-check.md).
+
 ## Part A gate
 
-- [ ] **1.** Both full suites green, quoted raw. Everything committed and pushed.
+- [ ] **1.** Both full suites green, quoted raw, plus one single-worker run (`npx vitest run --maxWorkers=1`, bugs.md B17). Everything committed and pushed.
 - [ ] **2.** Sync stage-3-task.md (A1, A2, gate), stage.md (last step, next step: Part B), bugs.md; bump revisions of changed docs.
 - [ ] **3.** Write the handoff (~/handoff-*.md) after the gates pass.
 - [ ] **4.** Report to the user: Done/Now/Next, scan-check result, test counts, open items. Wait before Part B.
@@ -85,5 +89,5 @@ No live model runs in Part A.
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.1.0 | 2026-10-14 | Initial CC plan for Stage 3 Part A. |
 | 0.2.0 | 2026-10-14 | Review checklists follow the A-2 split (A-2a, A-2b, A-2c). |
+| 0.3.0 | 2026-10-15 | Pi parked; acceptance done (26 of 26); gate adds a single-worker run (B17). |

@@ -1,6 +1,6 @@
 # Stage 3 — Preserve pending work and safe restore
 
-Project: **pi-session-compass** · Revision: **0.1.1** · Status: **Approved (user, 2026-10-14)**
+Project: **pi-session-compass** · Revision: **0.2.0** · Status: **Approved (user, 2026-10-14)**
 
 Date: **2026-10-14**
 
@@ -16,7 +16,7 @@ Use [stage.md](stage.md) for continuation. The stage runs in three parts, **A �
 | B — Pending work, publication, restore | S3.T2, S3.T4 | Candidates survive failures and crashes; builds publish only after validation; restart restores and redoes | ~2.5 h |
 | C — Locking, migration, lifecycle, M3 | S3.T5, S3.T6 | Shared lock, one-time legacy import, reset covers the snapshot; lifecycle safe; M3 verified | ~1.5 h |
 
-Pair setup (user, 2026-10-14): Pi writes the code from a per-part brief; Claude Code plans, reviews, verifies, and commits. Part A: [stage-3a-pi.md](stage-3a-pi.md) (Pi) and [stage-3a-cc.md](stage-3a-cc.md) (CC).
+Pair setup (user, 2026-10-14): Pi writes the code from a per-part brief; Claude Code plans, reviews, verifies, and commits. Part A: [stage-3a-pi.md](stage-3a-pi.md) (Pi) and [stage-3a-cc.md](stage-3a-cc.md) (CC). Pi wrote Blocks A-1 to A-2b; the user then parked Pi over Pi/mimo configuration problems (bugs.md E5), so Claude Code codes from A-2c on, with the same brief and review gates.
 
 No live model runs are planned in this stage; M3 is verified on isolated fixtures. Any live run would need its own user-confirmed limits.
 
@@ -28,10 +28,10 @@ Scope guard: any fix beyond these lists is raised with the user before work star
 
 ### A1 — Trio-boundary scan position (S3.T3, fixes P7)
 
-- [ ] **1.** Turn outputs/s2-t3/trio-loss-replay.ts into failing tests: adjacent trios across passes, and a restarted scan that must emit the same trios as an uninterrupted one. Add cases for append-at-EOF, a partial final line, multibyte Unicode before the boundary, and a source file that no longer matches its saved identity.
-- [ ] **2.** Save the scan position only at a trio boundary: the byte offset of the start of the trio's closing assistant record. The next pass reconstructs that assistant message as context before the next user turn. Offsets count bytes, not characters.
-- [ ] **3.** Narrow the parse-error catches in the scanner to parsing alone, so they cannot swallow extraction or storage failures (P8). A malformed complete record stops that file with diagnostics; a partial tail is left for the next pass (P9). Before resuming, verify source identity and a stored boundary digest; a truncated or rewritten source stops that file instead of rescanning.
-- [ ] **4.** Offline census check: the scanner's trio list on the S1 fixture matches the census (26 trios), with no model calls. Update P7 in bugs.md with the fix commit and evidence.
+- [x] **1.** Turn outputs/s2-t3/trio-loss-replay.ts into failing tests: adjacent trios across passes, and a restarted scan that must emit the same trios as an uninterrupted one. Add cases for append-at-EOF, a partial final line, multibyte Unicode before the boundary, and a source file that no longer matches its saved identity.
+- [x] **2.** Save the scan position only at a trio boundary: the byte offset of the start of the trio's closing assistant record. The next pass reconstructs that assistant message as context before the next user turn. Offsets count bytes, not characters.
+- [x] **3.** Narrow the parse-error catches in the scanner to parsing alone, so they cannot swallow extraction or storage failures (P8). A malformed complete record stops that file with diagnostics; a partial tail is left for the next pass (P9). Before resuming, verify source identity and a stored boundary digest; a truncated or rewritten source stops that file instead of rescanning.
+- [x] **4.** Offline census check: the scanner's trio list on the S1 fixture matches the census (26 trios), with no model calls. Update P7 in bugs.md with the fix commit and evidence. *(evidence: 47a95b5; outputs/s3-a/scan-check.md: 26 of 26; tests/scan-position.test.ts, tests/jsonl-reader.test.ts)*
 
 ### A2 — Snapshot storage (S3.T1)
 
@@ -115,3 +115,4 @@ Protected text expected in Part C: the migration notice (including the historica
 |---|---|---|
 | 0.1.0 | 2026-10-14 | Initial draft from plan.md Stage 3, split into Parts A–C. |
 | 0.1.1 | 2026-10-14 | Part A protected-text list names all four strings. |
+| 0.2.0 | 2026-10-15 | A1 done (A-1 to A-2c); Pi parked after A-2b; tests isolated per file (B17). |

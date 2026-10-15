@@ -1,8 +1,10 @@
 # Stage 3 Part A — Pi coding brief
 
-Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Approved (user, 2026-10-14)**
+Project: **pi-session-compass** · Revision: **0.4.0** · Status: **Approved (user, 2026-10-14)**
 
 Date: **2026-10-14**
+
+> **Pi parked (user, 2026-10-14).** Pi delivered Blocks A-1, A-2a and A-2b. Claude Code codes the remaining blocks (A-2c, A-3) from this brief, with the same review gates; see bugs.md E5.
 
 Parent: [stage-3-task.md](stage-3-task.md) Part A. Contract: [architecture.md](architecture.md) §6 "Snapshot" and "Scan position". Bugs: [bugs.md](bugs.md) P7, P8, P9. Reviewer's plan: [stage-3a-cc.md](stage-3a-cc.md).
 
@@ -112,6 +114,6 @@ Use these exactly (user-approved 2026-10-14). `${...}` are template-literal plac
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.1.0 | 2026-10-14 | Initial Pi brief for Stage 3 Part A (Blocks A-1 to A-3). |
 | 0.2.0 | 2026-10-14 | Block A-2 split into A-2a (reader), A-2b (position), A-2c (identity, catch, stop). |
 | 0.3.0 | 2026-10-14 | Pi audit fixes: chunk-boundary test without a size parameter; exact digest bytes for CRLF; manifest covers state.json; S3 reason texts (user-approved). |
+| 0.4.0 | 2026-10-15 | Pi parked after A-2b; Claude Code codes A-2c and A-3 from this brief. |

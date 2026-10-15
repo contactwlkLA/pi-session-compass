@@ -1,6 +1,6 @@
 # pi-session-compass — Bug journal
 
-Revision: **0.4.0** · Updated: **2026-10-14**
+Revision: **0.6.0** · Updated: **2026-10-14**
 
 A live record of every bug found while building and running the harness: harness, pipeline, test, or environment. Add an entry when a bug is found; update its status, fix commit, and evidence when it changes. Never delete an entry; a closed bug stays as history. Pipeline behaviors that a stage is meant to change are listed separately under Pipeline findings.
 
@@ -21,11 +21,12 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 | B9 | 2026-10-14 | harness | Manifest `dirty: true` from untracked `private/` | `git status --porcelain` counted untracked files | FIXED 095bfe2 | tests/compass/start-snapshot.test.ts |
 | B10 | 2026-10-14 | harness | Baseline attempt 1 stopped after 2 of 26 trios, "completed" | Harness ran one pipeline pass; the extension resumes on later timer ticks | FIXED da9987a (passes re-run until the scope is exhausted) | outputs/s1-t5/baseline-attempt1-one-pass/; tests/compass/running-table.test.ts |
 | B11 | 2026-10-14 | harness | Results-sheet builder lines read `[insert] C1`, not the rule text | Sheet prints `decision.text ?? decision.candidate`; inserts carry only the candidate ID | OPEN (the final diff has the text) | outputs/s1-t5/baseline/results-sheet.md |
-| B12 | 2026-10-14 | tests | One full `npm test` run failed 14 tests in tests/pipeline.test.ts ("expected +0 to be 1") | Unknown; order-dependent | WATCH (rerun passed; 0 of 20 default-order runs) | stage-1-task.md T1.6 record |
+| B12 | 2026-10-14 | tests | One full `npm test` run failed 14 tests in tests/pipeline.test.ts ("expected +0 to be 1") | Unknown; order-dependent | FIXED 47a95b5 via B17 (recurred in S3: 1/20 runs at A-2b, 5/20 at A-2c) | outputs/s3-a/flake/ |
 | B13 | 2026-10-13 | harness | A corrupt `hashes.json` exits 1 with a stack trace instead of the clean start-snapshot refusal | JSON parse error not mapped to SnapshotError | OPEN (no model call is made) | handoff 2026-10-14 |
 | B14 | 2026-10-13 | harness | `RUN_TYPES` lacks `probe` | Added to the plan after the harness types | OPEN (needed before S2.T4) | scripts/compass/types.ts |
 | B15 | 2026-10-14 | harness | Confirmation minutes print the raw division (100000 ms → 1.6666666666666667 min) | `confirmLimits` divides without rounding | OPEN (protected text; needs approval to change) | scripts/compass/strings.ts |
 | B16 | 2026-10-13 | tests | MaxListenersExceededWarning in `npm test` | Not investigated | OPEN | npm test output |
+| B17 | 2026-10-14 | tests | The repository suite is order-dependent: single-worker runs (`--maxWorkers=1`) of the unmodified S2 tree fail 5–29 tests every run (maintenance, extraction, portrait, sqlite-mutex, llm-call); shuffled file orders fail 2 of 3 seeds; default parallel runs usually hide it | `isolate: false` shares one module registry; files that call `vi.resetModules()` can split the shared stub flags in tests/setup.ts from the stubs, so a later file runs real code (pipeline.test.ts: real scanSessions, "expected +0 to be 1") | FIXED 47a95b5 (`isolate: true`, user decision): single-worker 3/3 and default-order 20/20 clean; each part's gate adds one single-worker run | outputs/s3-a/flake/ (base, current, a2c, seeds-base) |
 
 ## Pipeline findings (src/, measured in S1; targets of later stages)
 
@@ -37,9 +38,9 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 | P4 | 2026-10-14 | `runPipelineLoop` returns after its first productive sequence when it came from the last discovered file (`remainingFiles` counts only later files); the rest waits for the next timer tick | src/collector.ts `scanSessions`; B10 | Recorded; S3 replaces the scan position |
 | P5 | 2026-10-12 | `retries: N` means N attempts in total, so `retries: 0` makes no attempt | plan.md S2.T2 | S2.T2: fixed 54620a4 (1 + N attempts); tests/llm-call.test.ts |
 | P6 | 2026-10-14 | Return-tool captures live in closures that are never reset, so a retry or validation round with no valid tool call returns the previous round's capture as a success | outputs/s2-t1/termination-note.md | S2.T2: fixed 54620a4 (results count only after a terminating capture in the current attempt); tests/llm-call.test.ts |
-| P7 | 2026-10-14 | The pipeline examines 20 of the census's 26 trios: after a productive trio, `scanSessions` sets the checkpoint past the trio's closing assistant record (collector.ts, `prevByte + bytesScanned`), and the next pass starts with a fresh detector, so a following trio that opens with that record is never detected. Affects S1 baseline and S2 compare equally; the S1 report's "trios 21–26 not examined" is wrong (the baseline reached every trio the pipeline can reach) | outputs/s2-t3/compare-report.md; outputs/s2-t3/trio-loss-replay.ts | S3.T3 (trio-boundary scan position, adjacent trios) |
-| P8 | 2026-10-14 | The scanner's `catch` around each record wraps both `JSON.parse` and the trio's extraction, post-review, `onTrio`, and checkpoint save; any error other than PAUSED is swallowed as a "malformed line", the scan continues, and the next productive trio moves the checkpoint past the failed one | src/collector.ts streamAndExtract (try/catch around `detector.process` and `tryExtractTrio`) | S3 Part A (A1: narrow the catch to parsing) |
-| P9 | 2026-10-14 | Scanner byte accounting can put the resume offset mid-record: an unterminated final line (a record still being written) is parsed, fails, and is counted as `length + 1` bytes; blank lines are skipped without counting; CRLF line ends count one byte short | src/collector.ts streamAndExtract `bytesRead`, scanSessions `prevByte + bytesScanned` | S3 Part A (A1: read only complete newline-terminated records with exact byte offsets) |
+| P7 | 2026-10-14 | The pipeline examines 20 of the census's 26 trios: after a productive trio, `scanSessions` sets the checkpoint past the trio's closing assistant record (collector.ts, `prevByte + bytesScanned`), and the next pass starts with a fresh detector, so a following trio that opens with that record is never detected. Affects S1 baseline and S2 compare equally; the S1 report's "trios 21–26 not examined" is wrong (the baseline reached every trio the pipeline can reach) | outputs/s2-t3/compare-report.md; outputs/s2-t3/trio-loss-replay.ts | FIXED 47a95b5: 26 of 26 census trios examined (outputs/s3-a/scan-check.md) |
+| P8 | 2026-10-14 | The scanner's `catch` around each record wraps both `JSON.parse` and the trio's extraction, post-review, `onTrio`, and checkpoint save; any error other than PAUSED is swallowed as a "malformed line", the scan continues, and the next productive trio moves the checkpoint past the failed one | src/collector.ts streamAndExtract (try/catch around `detector.process` and `tryExtractTrio`) | FIXED 47a95b5: only `JSON.parse` is guarded (tests/scan-position.test.ts) |
+| P9 | 2026-10-14 | Scanner byte accounting can put the resume offset mid-record: an unterminated final line (a record still being written) is parsed, fails, and is counted as `length + 1` bytes; blank lines are skipped without counting; CRLF line ends count one byte short | src/collector.ts streamAndExtract `bytesRead`, scanSessions `prevByte + bytesScanned` | FIXED 47a95b5: src/jsonl-reader.ts (tests/jsonl-reader.test.ts) |
 | P10 | 2026-10-14 | A failed extraction (no valid return after retries) returns empty notes, so it is recorded as an empty result and the checkpoint advances past the trio | src/collector.ts callExtractionLlm `if (!result)` | S3 Part B (B1: typed outcomes) |
 
 ## Environment
@@ -48,12 +49,14 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 |---|---|---|---|
 | E1 | 2026-10-12 | On /mnt/i the suite also failed extension-idempotency, cache-refresh and reload-lifecycle | Moved to the native filesystem (~/compass-ext4) |
 | E2 | 2026-10-14 | The user's own Pi session writes ~/.pi/portrait/instance.lock.sqlite-journal during runs | Exclude lock files when comparing live-portrait hashes |
-| E3 | 2026-10-14 | Pi CLI 1.2.0 is available; 1.1.0 is installed and recorded | Upgrade only with the user's approval, at a stage boundary |
+| E3 | 2026-10-14 | Pi CLI 1.2.0 is available; 1.1.0 is installed and recorded | Upgraded by the user to 1.2.0 on 2026-10-14 (S3 Part A); the harness uses the project's node_modules packages, not the CLI |
+| E4 | 2026-10-14 | Two global Pi CLIs exist, one under nvm (Node 24) and one under fnm (Node 22); which one runs depends on PATH order, so an update to one left the other at 0.84.4 | Both at 1.2.0 after the user's update; check `type -a pi` after each update |
+| E5 | 2026-10-14 | Pi session (mimo-v2.6-pro) failed mid-Block A-2b: last response stopReason `length` with 1 output token at 123,956 input tokens (context full). The mimo models in ~/.pi/agent/models.json set no `contextWindow` or `maxTokens`, so Pi cannot compact before the limit. Thinking is not off on this endpoint: with Pi's thinking level `off`, 41 of 42 assistant turns carried thinking blocks (314k characters) and usage reported `reasoning` tokens (14,291 of 14,466 output tokens in the turn before the failure); the next request's input (123,956) shows that reasoning was carried back into the context | Cause (Pi 1.2.0 source): the custom `xiaomi-tp` entries list bare model IDs, so Pi applies custom-model defaults: `reasoning: false` (Pi never sends `thinking: {type: "disabled"}`, and the endpoint reasons by default), `contextWindow: 128000`, `maxTokens: 16384`. Pi's built-in `xiaomi-token-plan-sgp` provider (same base URL, key `XIAOMI_TOKEN_PLAN_SGP_API_KEY`) sets `reasoning: true`, `thinkingFormat: "deepseek"`, `contextWindow: 1048576`, `maxTokens: 131072`. Fix: the user switches Pi to the built-in provider or copies those fields into models.json; workaround until then: one fresh Pi session per block |
 
 ## Revision history
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.2.0 | 2026-10-14 | P6 (stale captures) added; P1, P3, P5, P6 fixed in S2.T2. |
-| 0.3.0 | 2026-10-14 | P7 (adjacent trios lost across passes) added; P2 counted in the compare run. |
 | 0.4.0 | 2026-10-14 | P8–P10 (scanner catch scope, byte accounting, failed extraction recorded as empty) added. |
+| 0.5.0 | 2026-10-14 | E3 updated (Pi CLI 1.2.0); E4 (two Pi installs) and E5 (Pi context overflow) added. |
+| 0.6.0 | 2026-10-15 | P7–P9 fixed; B17 (order-dependent suite) found and fixed; B12 explained by B17. |
