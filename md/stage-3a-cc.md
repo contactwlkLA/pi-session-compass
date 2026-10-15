@@ -1,0 +1,78 @@
+# Stage 3 Part A — Claude Code plan (planner and reviewer)
+
+Project: **pi-session-compass** · Revision: **0.1.0** · Status: **Approved (user, 2026-10-14)**
+
+Date: **2026-10-14**
+
+Parent: [stage-3-task.md](stage-3-task.md) Part A. Pi's brief: [stage-3a-pi.md](stage-3a-pi.md). Operating rules: [AGENTS.md](../AGENTS.md).
+
+**Roles.** Pi codes from the brief, one block per relay. CC plans, reviews each diff in the repo, verifies with full suites and an independent check, keeps the docs, and commits under the standing approval. The user relays blocks and approves protected text.
+
+**Relay convention.** CC says **"Tell Pi: Block A-N"** with the exact line to paste. Nothing else in CC's messages is meant for Pi.
+
+## Before Block A-1
+
+- [x] **1.** User approves stage-3-task.md, this plan, the Pi brief, and strings S1–S4. Fill the approved strings into the brief; set all three docs to approved. *(user approved 2026-10-14)*
+- [ ] **2.** Commit and push the docs (and bugs.md P8–P10). Record the start commit for Part A.
+
+## Per block: review loop
+
+For each block A-1, A-2, A-3:
+
+- [ ] **1.** Relay line: `Read md/stage-3a-pi.md and do Block A-N only; stop and send the report.`
+- [ ] **2.** On Pi's report: `git status` and `git diff` against the last commit. Files outside the block's allowed paths → reject.
+- [ ] **3.** Review against the block checklist below. Run Pi's test files with `npx vitest run`.
+- [ ] **4.** Run `npm test` and `npm run test:compass` in full; quote the raw results.
+- [ ] **5.** Pass → commit and push (standing approval b), update the checkboxes in stage-3-task.md. Fail → one precise correction block for Pi. At most two correction rounds per problem, then report to the user.
+- [ ] **6.** Record any new bug in bugs.md when found.
+
+### Checklist A-1 (tests only)
+
+- Only tests/ changed. Each of the 10 cases exists and asserts what the brief says.
+- Failures are for the expected reason (lost trio, mid-record offset, swallowed error), not setup errors.
+- The extraction mock does not make real model calls; temp dirs are cleaned up.
+
+### Checklist A-2 (scan position)
+
+- Saved positions are always 0 or a line start of an assistant-with-text record; no remaining `prevByte + bytesScanned` position arithmetic.
+- The `try` covers only `JSON.parse`; PAUSED and all extraction/save errors propagate.
+- Partial tail never parsed or counted; blank lines and CRLF counted exactly.
+- Identity check runs only when `boundaryDigest` is present; legacy checkpoints resume as before.
+- `ScanFileStopped` is caught only in `scanSessions`, reported via `reportError`, position unchanged, other files continue.
+- `countPendingTrios` unchanged in behavior; `TrioDetector` change is additive.
+- Strings S1, S2 match the approved text exactly.
+
+### Checklist A-3 (snapshot store)
+
+- Write order: tmp dir → fsync → rename → `CURRENT` replaced atomically. Previous snapshot kept.
+- Corrupt and unsupported cases throw; `null` only when `snapshots/` is absent.
+- Not imported anywhere in the pipeline yet.
+- Strings S3, S4 match the approved text exactly.
+
+## Independent acceptance (CC, after A-2)
+
+- [ ] **1.** Write outputs/s3-a/scan-check.ts: copy the S1 fixture to a temp session root, run the production `scanSessions` pass by pass with a stub extractor that makes every trio productive (the worst case for P7), and list the examined trios.
+- [ ] **2.** Compare with the census (scripts/compass/census.ts) on the same file: expect **26 of 26**, the same trios in the same order. Also run it with every trio unproductive; expect 26 again.
+- [ ] **3.** Re-run outputs/s2-t3/trio-loss-replay.ts logic against the new code path; record the result in outputs/s3-a/scan-check.md.
+- [ ] **4.** Update P7, P8, P9 in bugs.md: FIXED with commit and evidence.
+
+No live model runs in Part A.
+
+## Part A gate
+
+- [ ] **1.** Both full suites green, quoted raw. Everything committed and pushed.
+- [ ] **2.** Sync stage-3-task.md (A1, A2, gate), stage.md (last step, next step: Part B), bugs.md; bump revisions of changed docs.
+- [ ] **3.** Write the handoff (~/handoff-*.md) after the gates pass.
+- [ ] **4.** Report to the user: Done/Now/Next, scan-check result, test counts, open items. Wait before Part B.
+
+## Risks to watch
+
+- **Footer and KB progress** use the byte counters being changed; check the footer tests still mean the same thing.
+- **Background counter** (`countPendingTrios`) starts from the new position with a fresh detector; by the invariant its counts stay consistent. Its own byte counting has the P9 pattern; leave it for Part C (C1.5) unless a test shows a wrong count.
+- **Harness** reads checkpoint files only through the start snapshot copy; confirm `npm run test:compass` stays green.
+
+## Revision history
+
+| Revision | Date | Change |
+|---|---|---|
+| 0.1.0 | 2026-10-14 | Initial CC plan for Stage 3 Part A. |

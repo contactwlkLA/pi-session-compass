@@ -1,6 +1,6 @@
 # pi-session-compass — Bug journal
 
-Revision: **0.3.0** · Updated: **2026-10-14**
+Revision: **0.4.0** · Updated: **2026-10-14**
 
 A live record of every bug found while building and running the harness: harness, pipeline, test, or environment. Add an entry when a bug is found; update its status, fix commit, and evidence when it changes. Never delete an entry; a closed bug stays as history. Pipeline behaviors that a stage is meant to change are listed separately under Pipeline findings.
 
@@ -38,6 +38,9 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 | P5 | 2026-10-12 | `retries: N` means N attempts in total, so `retries: 0` makes no attempt | plan.md S2.T2 | S2.T2: fixed 54620a4 (1 + N attempts); tests/llm-call.test.ts |
 | P6 | 2026-10-14 | Return-tool captures live in closures that are never reset, so a retry or validation round with no valid tool call returns the previous round's capture as a success | outputs/s2-t1/termination-note.md | S2.T2: fixed 54620a4 (results count only after a terminating capture in the current attempt); tests/llm-call.test.ts |
 | P7 | 2026-10-14 | The pipeline examines 20 of the census's 26 trios: after a productive trio, `scanSessions` sets the checkpoint past the trio's closing assistant record (collector.ts, `prevByte + bytesScanned`), and the next pass starts with a fresh detector, so a following trio that opens with that record is never detected. Affects S1 baseline and S2 compare equally; the S1 report's "trios 21–26 not examined" is wrong (the baseline reached every trio the pipeline can reach) | outputs/s2-t3/compare-report.md; outputs/s2-t3/trio-loss-replay.ts | S3.T3 (trio-boundary scan position, adjacent trios) |
+| P8 | 2026-10-14 | The scanner's `catch` around each record wraps both `JSON.parse` and the trio's extraction, post-review, `onTrio`, and checkpoint save; any error other than PAUSED is swallowed as a "malformed line", the scan continues, and the next productive trio moves the checkpoint past the failed one | src/collector.ts streamAndExtract (try/catch around `detector.process` and `tryExtractTrio`) | S3 Part A (A1: narrow the catch to parsing) |
+| P9 | 2026-10-14 | Scanner byte accounting can put the resume offset mid-record: an unterminated final line (a record still being written) is parsed, fails, and is counted as `length + 1` bytes; blank lines are skipped without counting; CRLF line ends count one byte short | src/collector.ts streamAndExtract `bytesRead`, scanSessions `prevByte + bytesScanned` | S3 Part A (A1: read only complete newline-terminated records with exact byte offsets) |
+| P10 | 2026-10-14 | A failed extraction (no valid return after retries) returns empty notes, so it is recorded as an empty result and the checkpoint advances past the trio | src/collector.ts callExtractionLlm `if (!result)` | S3 Part B (B1: typed outcomes) |
 
 ## Environment
 
@@ -51,6 +54,6 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.1.0 | 2026-10-14 | Initial journal from the S1 sessions. |
 | 0.2.0 | 2026-10-14 | P6 (stale captures) added; P1, P3, P5, P6 fixed in S2.T2. |
 | 0.3.0 | 2026-10-14 | P7 (adjacent trios lost across passes) added; P2 counted in the compare run. |
+| 0.4.0 | 2026-10-14 | P8–P10 (scanner catch scope, byte accounting, failed extraction recorded as empty) added. |
