@@ -24,7 +24,7 @@ Once approved, text can be applied directly during implementation. Any subsequen
 
 # pi-session-compass — Agent operating rules
 
-Revision: **0.6.0** · 2026-10-14
+Revision: **0.7.0** · 2026-10-14
 
 Adds to the repository rules above. On conflict, follow the repository rules and ask the user.
 
@@ -44,9 +44,11 @@ Adds to the repository rules above. On conflict, follow the repository rules and
 - **Repairs:** at most two diagnose → repair → verify cycles per problem, then report the failure. Application model-retry semantics are separate.
 - **Verify with full runs.** Before reporting a change verified or asking to commit, run `npm test` and `npm run test:compass` in full and quote each raw result; label partial runs as partial. A test listed as known-intermittent in the T1.6 record (md/stage-1-task.md) that fails with the recorded message is rerun once; if the rerun passes, report the known flake. Any other failure is real.
 - **Flaky test files or shared test setup/mocks:** verify a change with 20 default-order runs and report the failure count.
-- **Live-run limits are user-confirmed every time.** Suggest the md/compass.md row; if UNSET, suggest values with their basis and assumptions. Pass `--run-type`, `--max-model-requests`, `--max-run-ms` (no defaults; finite positive values only). Show the run type, limits, file with trio count, and output directory; pass `--confirmed` only after the user approves them in this session. Unattended runs never self-confirm. Count every inference attempt across models, including retries and follow-ups; one multi-question Jev request counts once. Never raise a ceiling, edit the compass.md table unasked, or restart to evade a cap. Record run type, suggested and final limits, and their source in each manifest.
+- **Live-run limits are user-confirmed every time, except under a standing approval below.** Suggest the md/compass.md row; if UNSET, suggest values with their basis and assumptions. Pass `--run-type`, `--max-model-requests`, `--max-run-ms` (no defaults; finite positive values only). Show the run type, limits, file with trio count, and output directory; pass `--confirmed` only after the user approves them in this session. Unattended runs never self-confirm beyond a standing approval. Count every inference attempt across models, including retries and follow-ups; one multi-question Jev request counts once. Never raise a ceiling, edit the compass.md table unasked, or restart to evade a cap. Record run type, suggested and final limits, and their source in each manifest.
 - Verify isolation and limit controls offline before live calls.
 - A `smoke` run ending by completion or cap with its checks met is a success with no measurement claims. Any other capped run is incomplete: leave its task and stage unchecked and keep partial evidence.
+- **Standing approvals** (granted by the user 2026-10-14; the user may withdraw them at any time): (a) after a fix that touches only harness code or tests (`scripts/`, `tests/`), relaunch the same live run (same run type, limits, file, and starting snapshot) without a new confirmation, once the fix is in md/bugs.md and both full test suites pass; record the relaunch and its approval source in the run's notes; (b) commit and push once both full test suites pass. They never cover raised limits, a new run type, protected text, `src/` changes, or the user's live `~/.pi` data.
+- **Waiting on the user:** finish authorized independent work first, then send a push notification naming the one decision needed. While the user is away, run already-approved long work (live runs, test loops) instead of idling.
 - Stop on user instruction, reached limits, lost isolation or control, or the stage boundary. Finish clearly authorized independent work when prerequisites are missing.
 - **At exit,** sync task checkboxes and stage.md (outcome, status, next task, blocker, evidence path). Check a stage only after its milestone is verified, never because the session ended.
 - Keep secrets out of artifacts and messages. Give brief updates at task transitions and blockers.
@@ -78,6 +80,7 @@ Each document carries MAJOR.MINOR.PATCH in its header and history table, startin
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.7.0 | 2026-10-14 | Standing approvals (relaunch after a harness-only fix; commit and push after green suites) and push-notify when waiting on the user. |
 | 0.6.0 | 2026-10-14 | Added the bug-journal rule (md/bugs.md). |
 | 0.5.0 | 2026-10-14 | Handoffs are written only after the gates pass; re-entry runs a git status drift check. Condensed the project rules' wording with no other change in meaning. |
 | 0.4.0 | 2026-10-14 | Session start reads stage.md and the task file before the first reply; handoffs do not replace them. Added the repeated-runs rule for order-dependent failures. |
