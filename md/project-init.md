@@ -1,6 +1,6 @@
 # pi-session-compass — Project initialization
 
-Revision: **0.2.0** · State: **Stage 1 not started**
+Revision: **0.3.0** · State: **Stage 1 complete**
 
 Date: **2026-10-11**
 
@@ -53,7 +53,7 @@ Unverified: this launch syntax, and the claim that Pi loads AGENTS.md automatica
 
 One session targets one stage. Interrupted/blocked work resumes the same stage. If the selected task file is missing, report it and stop; do not invent instructions. Every live run takes finite limits that the user confirms at the start; the compass.md run-type table supplies the suggested values, and the initial `smoke` row is **5 actual model requests and 15 minutes**. Preserve partial evidence and leave capped non-smoke work unchecked.
 
-Expected Stage 1 evidence: source/runtime inventory, isolated selector/harness checks, offline limit and confirmation checks, smoke receipt with results sheet and PASS/FAIL, `baseline` run manifest, request traces, baseline receipt with running table, and task/stage status. M1 requires verified smoke and baseline completion, not merely an ended run.
+Expected Stage 1 evidence: source/runtime inventory, isolated selector/harness checks, offline limit and confirmation checks, smoke receipt with results sheet and PASS/FAIL, `baseline` run manifest, request traces, baseline receipt with running table, and task/stage status. M1 requires verified smoke and baseline completion, not merely an ended run; the S1 baseline is an accepted capped run (plan.md, M1 exception).
 
 ## Revision history
 
@@ -61,3 +61,4 @@ Expected Stage 1 evidence: source/runtime inventory, isolated selector/harness c
 |---|---|---|
 | 0.1.0 | 2026-10-11 | Initial committed draft. |
 | 0.2.0 | 2026-10-12 | Added timing.md to the file table. |
+| 0.3.0 | 2026-10-14 | State set to Stage 1 complete; noted the accepted capped S1 baseline. |

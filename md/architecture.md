@@ -1,6 +1,6 @@
 # pi-session-compass — Architecture Specification
 
-Revision: **0.3.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
+Revision: **0.4.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
 
 Companion: [Development plan](plan.md)
 
@@ -257,6 +257,7 @@ Use [stage.md](stage.md) as the continuation index and each `stage-N-task.md` as
 | Provider-level retries below the counted boundary | Unknown; determined in S1.T3.1 and cross-checked against provider-side usage in the smoke test. |
 | TypeSafe credential/account availability | Configure locally during implementation; no key supplied here. |
 | Gate questions, threshold, and input cap | Proposals; validate before enforce mode. A fifth question for durable explicit directives and positive reinforcement was proposed and is not in this design. |
+| Baseline coverage | The S1 baseline is the capped run (150 requests, 20 of 26 trios, 56.9 min), accepted by the user on 2026-10-14: the cap is itself the benchmark. Comparisons use the same file and settings: coverage within that budget, and per-trio rates on trios 1–20. |
 | Live-run limits | Run-type table in compass.md; `smoke` is set (5 requests, 15 minutes), the other rows are UNSET suggestions. Every live run takes switches and user confirmation. Implement and verify before any live run. |
 | Census, productive rate, and workbook assumptions | Still unmeasured; do not adopt the bridge’s illustrative 4× as a requirement. The Stage 1 census is used to suggest limits. |
 | `<!-- approved -->` markers | Part of upstream’s Text Review convention in its AGENTS.md; no runtime meaning is assumed. Leave existing markers; changes to protected text follow that rule. |
@@ -282,3 +283,4 @@ Official Jev documentation: the API reference, models and version-pinning, and N
 | 0.1.0 | 2026-10-11 | Initial committed draft. |
 | 0.2.0 | 2026-10-12 | Added expected-benefit and break-even reasoning to the outcomes section. |
 | 0.3.0 | 2026-10-12 | Added the `probe` run type to the run-type list. |
+| 0.4.0 | 2026-10-14 | Added the baseline-coverage decision to the verification and decisions table. |

@@ -1,6 +1,6 @@
 # pi-session-compass
 
-Revision: **0.2.0** · Planning ready; implementation not started.
+Revision: **0.3.0** · Stage 1 complete; Stage 2 next.
 
 pi-session-compass improves session-to-behavioral-rule collection with explicit session-file selection, recoverable work, and a Jev gate before expensive extraction. The gate writes no rules; the existing extractor and builder do that work. Features and performance gains remain unverified.
 
@@ -37,7 +37,7 @@ Rules:
 4. **Confirmation at the start.** After the free offline selection and trio count, and before any model request, the harness shows the run type, limits, selected file with its eligible trio count, and output directory. It also states that each eligible trio needs at least one extraction request (a source-review lower bound, unmeasured), that the limits cap requests and wall-clock time and not spend, that extraction runs at high thinking so token cost is unknown until the provider reports usage, and that a capped run stops partway and is incomplete. On a terminal the harness asks. When an agent launches it, the harness refuses to run without `--confirmed`, which the agent passes only after the user approves the displayed values in the session. Unattended runs cannot start. Cancelling makes no model call.
 5. **Manifests record provenance:** run type, suggested values, final values, and their source (compass.md row, agent suggestion, or user override).
 6. **Counting:** include Jev, extractor, builder, review, and maintenance requests, failed attempts, retries, and tool-follow-ups. Retries inside the provider layer count too, or the undercount is recorded (S1.T3.1). One Jev request with multiple questions counts once. Local tool execution and offline mocks do not count. The run deadline is wall-clock time and includes cooldowns.
-7. **Meaning of a cap:** a `smoke` run that ends by completion or by a cap, with its harness checks met, is a successful smoke result with no measurement claims. In every other run type, a capped run is incomplete and leaves its task and stage unchecked.
+7. **Meaning of a cap:** a `smoke` run that ends by completion or by a cap, with its harness checks met, is a successful smoke result with no measurement claims. In every other run type, a capped run is incomplete and leaves its task and stage unchecked, unless the user accepts it as the measurement and the stage documents record that decision. The S1 baseline is such a case (plan.md, M1 exception).
 
 Stage 1 verifies selectable input and isolated output before live calls. Supply the test session path in Pi; runtime and package information is discovered in the checkout.
 
@@ -51,3 +51,4 @@ See [architecture.md](architecture.md) and [plan.md](plan.md) as needed. Based o
 |---|---|---|
 | 0.1.0 | 2026-10-11 | Initial committed draft. |
 | 0.2.0 | 2026-10-12 | Added the optional `probe` run type. |
+| 0.3.0 | 2026-10-14 | Rule 7: a capped non-smoke run can stand as the measurement when the user accepts it and the stage documents record it (the S1 baseline). Status line updated. |

@@ -1,6 +1,6 @@
 # Stage 1 — Establish the baseline
 
-Project: **pi-session-compass** · Revision: **0.4.0** · Status: **Complete (M1, baseline covers trios 1–20 by user decision)**
+Project: **pi-session-compass** · Revision: **0.4.1** · Status: **Complete (M1, baseline covers trios 1–20 by user decision)**
 
 Date: **2026-10-14**
 
@@ -67,7 +67,7 @@ Purpose: produce the measured baseline that M1 requires. Runs only after the T4 
 - [x] **3.** Run the ungated selected-file baseline under the confirmed limits; retain traces, outputs, failures, and stop reason. *(evidence: outputs/s1-t5/baseline/ receipt, traces, sheets; attempt 1 (one pipeline pass, 2 trios) kept in outputs/s1-t5/baseline-attempt1-one-pass/)*
 - [x] **4.** Report trio/candidate counts, requests by stage, retries/follow-ups, reported usage, total elapsed time, and cooldown contribution. Include the running table: for each trio, trios examined so far, cumulative productive rate, cumulative candidates, insert/merge/skip counts, and portrait size. Report what the run covered; do not extrapolate uncovered trios. *(evidence: outputs/s1-t5/baseline-attempt2-report.md + running-table.md; covers trios 1–20 only)*
 - [x] **5.** Inspect a successful extraction and build trace for post-return requests; report observations without assuming savings. If the run never reached a build, record builder cost as unobserved. The user reviews a sample from the results sheet for quality; a measured quality comparison against labels belongs to Stage 5. *(evidence: 98 of 150 requests followed the attempt's first return-tool call — outputs/s1-t5/baseline-attempt2-report.md; user reviewed the results-sheet sample 2026-10-14: "I suppose it's fine")*
-- [x] **6.** Save the receipt and starting snapshots for Stage 2. If the run was capped before covering the selected file, label it incomplete; the user may raise the limits and the run repeats from step 2. *(evidence: receipt and traces in outputs/s1-t5/baseline/, start snapshot fixtures/snapshots/s1-start/; run capped at 150 requests after 20 of 26 trios; by user decision 2026-10-14 this capped run is the S1 baseline, compared on trios 1–20)*
+- [x] **6.** Save the receipt and starting snapshots for Stage 2. If the run was capped before covering the selected file, label it incomplete; the user may raise the limits and the run repeats from step 2. *(evidence: receipt and traces in outputs/s1-t5/baseline/, start snapshot fixtures/snapshots/s1-start/; run capped at 150 requests after 20 of 26 trios; by user decision 2026-10-14 this capped run is the S1 baseline: running past that budget is not acceptable, so the cap is itself the benchmark; comparisons check coverage within 150 requests and per-trio rates on trios 1–20 — plan.md, M1 exception)*
 
 ## Stage completion — M1
 
@@ -81,6 +81,7 @@ Discover package/runtime details from the Pi checkout before asking for uploads.
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.4.1 | 2026-10-14 | T5.6 evidence states why the capped baseline stands. |
 | 0.4.0 | 2026-10-14 | T5 and M1 checked. By user decision the capped baseline (20 of 26 trios) is the S1 baseline. T1.6 record: an unexplained pipeline.test.ts intermittent failure. |
 | 0.3.2 | 2026-10-14 | T4.1–T4.6 checked with evidence (smoke PASS). |
 | 0.3.1 | 2026-10-14 | T3.7 checked with evidence. |

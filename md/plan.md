@@ -1,6 +1,6 @@
 # pi-session-compass — Development Plan
 
-Revision: **0.2.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
+Revision: **0.3.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
 
 Contract: [Architecture specification](architecture.md)
 
@@ -50,6 +50,8 @@ Deferred and outside this plan: workspace/all-scope selection, public selection 
 
 **Milestone M1:** verified file selection/isolation, limit controls and start-of-run confirmation, a passed smoke test, a runnable harness, and a completed declared baseline measurement with its evidence. A capped or blocked baseline retains its partial evidence but does not satisfy M1. No speedup claim before this point.
 
+**M1 exception:** by user decision on 2026-10-14, the S1 baseline is the capped `baseline` run: 150 requests, 20 of 26 trios, 56.9 minutes. Running past that budget is not acceptable for this workload, so the cap is itself the benchmark: the unchanged pipeline cannot cover one 26-trio session within 150 requests. M1 was checked on that basis; later comparisons use the same file and settings.
+
 ## 4. Stage 2 — terminate successful calls and fix retries
 
 ### Tasks
@@ -58,7 +60,7 @@ Deferred and outside this plan: workspace/all-scope selection, public selection 
 
 - [ ] **S2.T2 — Patch terminal returns and retry handling.** Patch successful captures for all four return tools. Keep extraction summary validation errors nonterminal. Clear captured responses before retries and validation rounds. Fix retry semantics to initial attempt + configured retries, with budget checks for every resulting request.
 
-- [ ] **S2.T3 — Verify repairs and measure their effect.** Use controlled model/stream fixtures to verify successful termination, invalid-tool repair, missing-tool response, timeout after capture, and retry-zero behavior. Run one bounded live comparison (run type `compare`) on the same corpus and settings, under limits the user confirms at launch. Preserve before/after traces.
+- [ ] **S2.T3 — Verify repairs and measure their effect.** Use controlled model/stream fixtures to verify successful termination, invalid-tool repair, missing-tool response, timeout after capture, and retry-zero behavior. Run one bounded live comparison (run type `compare`) on the same corpus and settings, under limits the user confirms at launch. Preserve before/after traces. Against the capped S1 baseline (M1 exception), report whether the run covers all 26 trios within the baseline budget (150 requests), its elapsed time, and per-trio requests and time on trios 1–20, which both runs cover.
 
 - [ ] **S2.T4 — Optional: Jev latency and rejection-share probe (run type `probe`).** Skippable; nothing else in the plan depends on it, and S4 is built against mocks either way. A standalone script in `scripts/`, outside the pipeline, sends each eligible trio of the S1 fixture to Jev once in the four-question format of architecture.md §4 and records latency, the four probabilities, and errors. It needs `TYPESAFE_API_KEY` and user-confirmed `probe` limits (see compass.md). Present the question wording to the user for approval before use, and keep the drafts for S4. Report the median and spread of G, the share of trios at or below the 0.10 rejection rule, and an indicative break-even using E and p from S1. It makes no safety claim: missed lessons need the Stage 5 labels.
 - [ ] **S2.T5 — Checkpoint with the user.** Report the repaired baseline’s measured productive rate and requests per trio, and whether the run covered the whole file. If the probe was run, include its G and rejection share. Ask the user to choose: raise the limit and rerun for fuller coverage, proceed to S3, or stop. Record the decision in stage.md. Do not start S3 without it.
@@ -164,3 +166,4 @@ Handoff contents: implementation diff/commit, exact dependency versions, test re
 |---|---|---|
 | 0.1.0 | 2026-10-11 | Initial committed draft. |
 | 0.2.0 | 2026-10-12 | Added optional S2.T4 Jev probe and the `probe` run type; checkpoint renumbered to S2.T5. |
+| 0.3.0 | 2026-10-14 | M1 exception: the capped S1 baseline (20 of 26 trios, 150 requests) is the baseline by user decision, the cap being the benchmark; S2.T3 compares coverage within that budget and per-trio rates on trios 1–20. |

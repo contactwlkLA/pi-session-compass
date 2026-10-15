@@ -24,7 +24,7 @@ Once approved, text can be applied directly during implementation. Any subsequen
 
 # pi-session-compass — Agent operating rules
 
-Revision: **0.5.0** · 2026-10-14
+Revision: **0.6.0** · 2026-10-14
 
 Adds to the repository rules above. On conflict, follow the repository rules and ask the user.
 
@@ -40,6 +40,7 @@ Adds to the repository rules above. On conflict, follow the repository rules and
 ## Execute and stop
 
 - Check a task only after verification; preserve user changes and evidence.
+- **Bug journal:** record every bug found (harness, pipeline, test, or environment) in md/bugs.md when it is found, and update its status, fix commit, and evidence when it changes; never delete an entry.
 - **Repairs:** at most two diagnose → repair → verify cycles per problem, then report the failure. Application model-retry semantics are separate.
 - **Verify with full runs.** Before reporting a change verified or asking to commit, run `npm test` and `npm run test:compass` in full and quote each raw result; label partial runs as partial. A test listed as known-intermittent in the T1.6 record (md/stage-1-task.md) that fails with the recorded message is rerun once; if the rerun passes, report the known flake. Any other failure is real.
 - **Flaky test files or shared test setup/mocks:** verify a change with 20 default-order runs and report the failure count.
@@ -77,6 +78,7 @@ Each document carries MAJOR.MINOR.PATCH in its header and history table, startin
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.6.0 | 2026-10-14 | Added the bug-journal rule (md/bugs.md). |
 | 0.5.0 | 2026-10-14 | Handoffs are written only after the gates pass; re-entry runs a git status drift check. Condensed the project rules' wording with no other change in meaning. |
 | 0.4.0 | 2026-10-14 | Session start reads stage.md and the task file before the first reply; handoffs do not replace them. Added the repeated-runs rule for order-dependent failures. |
 | 0.3.0 | 2026-10-12 | Added the Reporting to the user section: status board, one instruction set per message, no repeated asks. Added a rule not to enter ./private (the user's scratch directory) |
