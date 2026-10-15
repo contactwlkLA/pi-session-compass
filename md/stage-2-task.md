@@ -1,6 +1,6 @@
 # Stage 2 — Terminate successful calls and fix retries
 
-Project: **pi-session-compass** · Revision: **0.1.0** · Status: **In progress (approved by the user 2026-10-14)**
+Project: **pi-session-compass** · Revision: **0.2.0** · Status: **Complete (M2; user decision 2026-10-14: proceed to S3)**
 
 Date: **2026-10-14**
 
@@ -35,20 +35,21 @@ Scope guard: the zero-output responses (P2) are counted and reported in T3, not 
 
 ## T4 — Optional: Jev latency and rejection-share probe (run type `probe`)
 
-Skipped unless the user asks for it. If requested, this file gets its steps (B14 `probe` in RUN_TYPES, question wording for approval, `TYPESAFE_API_KEY`, confirmed `probe` limits) before any work starts.
+Skipped (user decision 2026-10-14). If requested later, this file gets its steps (B14 `probe` in RUN_TYPES, question wording for approval, `TYPESAFE_API_KEY`, confirmed `probe` limits) before any work starts.
 
 ## T5 — Checkpoint with the user
 
-- [ ] **1.** Report the repaired run's productive rate, requests per trio, and whether it covered the whole file.
-- [ ] **2.** Ask the user to choose: raise the limit and rerun for fuller coverage, run the T4 probe, proceed to S3, or stop. Record the decision in stage.md. Do not start S3 without it.
+- [x] **1.** Report the repaired run's productive rate, requests per trio, and whether it covered the whole file. *(evidence: 16 of 20 productive (80%), 2.3 requests per examined trio; completed the pipeline's scope, which misses 6 of 26 census trios (P7))*
+- [x] **2.** Ask the user to choose: raise the limit and rerun for fuller coverage, run the T4 probe, proceed to S3, or stop. Record the decision in stage.md. Do not start S3 without it. *(evidence: user decision 2026-10-14: proceed to S3; T4 probe skipped; recorded in stage.md)*
 
 ## Stage completion — M2
 
-- [ ] **1.** The repaired ungated baseline is established (T3 evidence), and the user's continue/stop decision is recorded (T5).
-- [ ] **2.** Sync the task checks, stage.md, and bugs.md. Commit and push after both full suites pass.
+- [x] **1.** The repaired ungated baseline is established (T3 evidence), and the user's continue/stop decision is recorded (T5). *(evidence: outputs/s2-t3/compare-report.md; stage.md)*
+- [x] **2.** Sync the task checks, stage.md, and bugs.md. Commit and push after both full suites pass. *(evidence: git log on s1/harness)*
 
 ## Revision history
 
 | Revision | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-14 | Initial draft from plan.md Stage 2. |
+| 0.2.0 | 2026-10-14 | S2 complete: T1–T3 and T5 done with evidence; T4 skipped by user decision. |
