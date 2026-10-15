@@ -135,6 +135,7 @@ export async function runMaintenance(shouldCancel: (() => boolean) | undefined):
               },
             ],
             details: undefined,
+            terminate: true,
           };
         },
       };

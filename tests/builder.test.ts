@@ -12,6 +12,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { afterEach, beforeEach, describe, expect, it, type vi } from "vitest";
 import { buildPortrait } from "../src/builder.js";
 import { callPortraitLlm } from "../src/llm-call.js";
@@ -62,5 +63,18 @@ describe("buildPortrait validationRound", () => {
     await buildPortrait(portraitDir, ["candidate one"], { skipPersist: true, stageTag: "maintenance" });
 
     expect(mockCallPortraitLlm.mock.calls.map((call) => call[8])).toEqual(["maintenance"]);
+  });
+});
+
+describe("return_building tool", () => {
+  it("ends the agent loop on a successful capture", async () => {
+    writeTestPortrait(portraitDir, ["rule 1"]);
+    mockCallPortraitLlm.mockResolvedValueOnce({ decisions: [{ action: "skip", candidate: "candidate one" }] });
+
+    await buildPortrait(portraitDir, ["candidate one"], undefined);
+
+    const tool = mockCallPortraitLlm.mock.calls[0][2] as AgentTool;
+    const toolResult = await tool.execute("call-1", { decisions: [] }, undefined, () => {});
+    expect(toolResult.terminate).toBe(true);
   });
 });

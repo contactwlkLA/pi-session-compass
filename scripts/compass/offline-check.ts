@@ -11,6 +11,8 @@
  *
  * Scenarios:
  *   followup — one attempt: tool-call turn + text follow-up turn = 2 counted requests.
+ *   terminate — one attempt: the tool's successful result sets `terminate: true`, so the
+ *              tool-call turn is the only counted request.
  *   retry    — first attempt returns no tool call (failure), second attempt succeeds
  *              after the backoff; requests = 1 + 2 = 3, attempts = 2.
  *   cap      — real agentLoop, maxModelRequests=1: the first attempt's request is issued,
@@ -80,8 +82,8 @@ interface CheckResult {
   boundaryUsages?: Array<{ input?: number; output?: number }>;
 }
 
-async function scenarioFollowup(): Promise<CheckResult> {
-  const { attemptWithRetries, setLlmAttemptSink } = await import("../../src/llm-call.js");
+async function scenarioReturn(scenario: "followup" | "terminate"): Promise<CheckResult> {
+  const { attemptWithRetries, NO_ATTEMPT_START_HOOK, setLlmAttemptSink } = await import("../../src/llm-call.js");
   const { RequestCounter } = await import("./counter.js");
   const events: unknown[] = [];
   setLlmAttemptSink((event) => events.push(event));
@@ -99,7 +101,8 @@ async function scenarioFollowup(): Promise<CheckResult> {
     parameters: Type.Object({ probe: Type.String() }),
     execute: (_id: string, params: unknown) => {
       captured = params;
-      return Promise.resolve({ content: [{ type: "text", text: "stored" }] });
+      const stored = { content: [{ type: "text", text: "stored" }] };
+      return Promise.resolve(scenario === "terminate" ? { ...stored, terminate: true } : stored);
     },
   };
   let captured: unknown;
@@ -123,15 +126,16 @@ async function scenarioFollowup(): Promise<CheckResult> {
     context as never,
     config as never,
     30_000,
-    2,
+    1,
     () => captured ?? undefined,
     "offline check",
     "offline-check",
     1,
+    NO_ATTEMPT_START_HOOK,
   );
   setLlmAttemptSink(null);
   return {
-    scenario: "followup",
+    scenario,
     streamCalls,
     attempts: events,
     failuresRecorded: 0,
@@ -142,7 +146,7 @@ async function scenarioFollowup(): Promise<CheckResult> {
 }
 
 async function scenarioRetry(): Promise<CheckResult> {
-  const { attemptWithRetries, setLlmAttemptSink } = await import("../../src/llm-call.js");
+  const { attemptWithRetries, NO_ATTEMPT_START_HOOK, setLlmAttemptSink } = await import("../../src/llm-call.js");
   const { RequestCounter } = await import("./counter.js");
   const events: unknown[] = [];
   setLlmAttemptSink((event) => events.push(event));
@@ -184,11 +188,12 @@ async function scenarioRetry(): Promise<CheckResult> {
     context as never,
     config as never,
     30_000,
-    3,
+    1,
     () => captured ?? undefined,
     "offline check",
     "offline-check",
     1,
+    NO_ATTEMPT_START_HOOK,
   );
   setLlmAttemptSink(null);
   return {
@@ -212,7 +217,7 @@ async function scenarioCeiling(
   limits: { maxModelRequests: number; maxRunMs: number },
   delayMs: number,
 ): Promise<CheckResult> {
-  const { attemptWithRetries, setLlmAttemptSink } = await import("../../src/llm-call.js");
+  const { attemptWithRetries, NO_ATTEMPT_START_HOOK, setLlmAttemptSink } = await import("../../src/llm-call.js");
   const { RequestCounter } = await import("./counter.js");
   const events: unknown[] = [];
   setLlmAttemptSink((event) => events.push(event));
@@ -239,11 +244,12 @@ async function scenarioCeiling(
     context as never,
     config as never,
     30_000,
-    2,
+    1,
     () => undefined,
     "offline check",
     "offline-check",
     1,
+    NO_ATTEMPT_START_HOOK,
   );
   setLlmAttemptSink(null);
   const snapshot = counter.snapshot();
@@ -272,12 +278,12 @@ export async function main(argv: string[]): Promise<number> {
   const flag = argv.indexOf("--scenario");
   const scenario = flag >= 0 ? argv[flag + 1] : undefined;
   let result: CheckResult;
-  if (scenario === "followup") result = await scenarioFollowup();
+  if (scenario === "followup" || scenario === "terminate") result = await scenarioReturn(scenario);
   else if (scenario === "retry") result = await scenarioRetry();
   else if (scenario === "cap") result = await scenarioCap();
   else if (scenario === "deadline") result = await scenarioDeadline();
   else {
-    process.stderr.write("offline-check: expected --scenario <followup|retry|cap|deadline>\n");
+    process.stderr.write("offline-check: expected --scenario <followup|terminate|retry|cap|deadline>\n");
     return 2;
   }
   process.stdout.write(`${JSON.stringify(result)}\n`);

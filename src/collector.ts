@@ -650,6 +650,7 @@ ${userText}
       return {
         content: [{ type: "text" as const, text: `Extracted ${typedParams.behaviorNotes.length} notes` }],
         details: undefined,
+        terminate: true,
       };
     },
   };
@@ -742,6 +743,7 @@ ${interactionBlock}
       return {
         content: [{ type: "text" as const, text: `Validated ${typedParams.behaviorNotes.length} notes` }],
         details: undefined,
+        terminate: true,
       };
     },
   };

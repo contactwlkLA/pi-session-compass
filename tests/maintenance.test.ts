@@ -5,6 +5,7 @@ import "../src/globals.js";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PortraitState } from "../src/types.js";
 
@@ -140,6 +141,17 @@ describe("runMaintenance", () => {
     const rounds = mockCallPortraitLlm.mock.calls.map((call) => call[9]);
     expect(stages).toEqual(["maintenance", "maintenance"]);
     expect(rounds).toEqual([1, 2]);
+  });
+
+  it("ends the agent loop on a successful return_maintenance capture", async () => {
+    writeTestPortrait(mockPortraitDir, ["rule 1", "rule 2"]);
+    mockCallPortraitLlm.mockResolvedValueOnce({ portrait: ["rule 1"], dropped: [2] });
+
+    await runMaintenance(undefined);
+
+    const tool = mockCallPortraitLlm.mock.calls[0][2] as AgentTool;
+    const toolResult = await tool.execute("call-1", { portrait: ["rule 1"], dropped: [2] }, undefined, () => {});
+    expect(toolResult.terminate).toBe(true);
   });
 
   it("validates dropped rule numbers must be valid positions", async () => {

@@ -78,6 +78,7 @@ export async function buildPortrait(
       return {
         content: [{ type: "text" as const, text: `Applied ${typedParams.decisions.length} decisions` }],
         details: undefined,
+        terminate: true,
       };
     },
   };

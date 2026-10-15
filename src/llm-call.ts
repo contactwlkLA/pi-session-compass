@@ -146,6 +146,9 @@ export const NO_LLM_ATTEMPT_SINK: ((event: LlmAttemptEvent) => void) | null = nu
 /** Sentinel: no instrumentation stage tag (sink records "unknown"). */
 export const NO_STAGE_TAG: string | null = null;
 
+/** Sentinel for attemptWithRetries — no per-attempt start hook. */
+export const NO_ATTEMPT_START_HOOK: (() => void) | null = null;
+
 /** Required inputs for one attempt event. `error`/`usage` keys are omitted when null. */
 export interface AttemptEventInput {
   stage: string | null;
@@ -237,8 +240,11 @@ export function makeDebugStreamDumpSink(dumpPath: string | null): (event: DebugS
  *
  * @param messages - Initial messages array (mutated on retry with error context)
  * @param systemPrompt - System prompt for the agent context
- * @param tool - Tool definition with execute callback that captures the result
- * @param resultExtractor - Function to extract the result from the tool callback's captured state
+ * @param tool - Tool definition with execute callback that captures the result. A successful
+ *  capture returns `terminate: true`, which ends the agent loop without a follow-up request.
+ * @param resultExtractor - Function to extract the result from the tool callback's captured state.
+ *  Consulted only when the tool made a successful capture during the current attempt, so a capture
+ *  left over from an earlier attempt or validation round never counts as a result.
  * @param errorContext - Message text added on retry after failure
  * @param modelOverride - Optional model override (provider/model-id)
  * @param maxTokensOverride - Optional max-tokens override. Pass null to omit the cap
@@ -281,9 +287,25 @@ export async function callPortraitLlm<T>(
 
   // Build context — pi ≥0.87: AgentContext.systemPrompt was removed; the prompt
   // rides as the transcript's leading system message instead.
+  // Track successful captures per attempt: the tool's closure state outlives attempts and
+  // validation rounds, so the extractor is read only after a capture in the current attempt.
+  let capturedThisAttempt = false;
+  const trackedTool: AgentTool = {
+    ...tool,
+    execute: async (...args: Parameters<AgentTool["execute"]>) => {
+      const toolResult = await tool.execute(...args);
+      if (toolResult.terminate === true) capturedThisAttempt = true;
+      return toolResult;
+    },
+  };
+  const currentAttemptResult = () => (capturedThisAttempt ? resultExtractor() : undefined);
+  const resetCapture = () => {
+    capturedThisAttempt = false;
+  };
+
   const context: AgentContext = {
     messages: [{ role: "system", content: systemPrompt, timestamp: Date.now() }],
-    tools: [tool],
+    tools: [trackedTool],
   };
 
   // Build config — maxTokens omitted entirely when maxTokensOverride is null
@@ -300,7 +322,8 @@ export async function callPortraitLlm<T>(
     toolExecution: "sequential" as const,
   };
 
-  // Execute with retry (Decision 24: configurable via settings.retries, default 3)
+  // Execute with retry (Decision 24: configurable via settings.retries, default 3):
+  // one initial attempt plus settings.retries retries.
   const maxRetries = settings.retries;
 
   // Initial attempt with retries
@@ -310,14 +333,15 @@ export async function callPortraitLlm<T>(
     config,
     timeoutMs,
     maxRetries,
-    resultExtractor,
+    currentAttemptResult,
     errorContext,
     stageTag,
     validationRound,
+    resetCapture,
   );
   if (result !== undefined) return result;
 
-  // After 3 failures: show user dialog (Decision 24)
+  // After the retries are exhausted: show user dialog (Decision 24)
   const state = globalThis.__piPortrait;
   if (state?.uiSelect) {
     const uiSelect = state.uiSelect;
@@ -337,10 +361,11 @@ export async function callPortraitLlm<T>(
         config,
         timeoutMs,
         maxRetries,
-        resultExtractor,
+        currentAttemptResult,
         errorContext,
         stageTag,
         validationRound,
+        resetCapture,
       ));
       if (result !== undefined) return result;
       // Loop continues, re-offering dialog
@@ -368,8 +393,8 @@ export function retryDelayMs(attempt: number): number {
 }
 
 /**
- * Attempt LLM call with up to maxRetries attempts.
- * Creates fresh AbortSignal per attempt.
+ * Attempt LLM call: one initial attempt plus up to maxRetries retries (maxRetries 0 = one attempt).
+ * Creates fresh AbortSignal per attempt and calls onAttemptStart before each one.
  * Caps message array length to prevent unbounded growth.
  * Reports streaming progress (tokens from provider usage + words from deltas) to the
  * module-level sink, throttled to PROGRESS_THROTTLE_MS, with a final forced flush.
@@ -385,11 +410,13 @@ export async function attemptWithRetries<T>(
   errorContext: string,
   stageTag: string | null,
   validationRound: number,
+  onAttemptStart: (() => void) | null,
 ): Promise<{ result?: T; lastError?: string }> {
   let lastError: string | undefined;
   const maxMessages = 20; // Cap to prevent unbounded growth
   const PROGRESS_THROTTLE_MS = 500;
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    onAttemptStart?.();
     // Fresh signal per attempt (don't reuse AbortSignal across retries).
     // timeoutMs === null means no timeout — agentLoop's signal is optional, so we
     // pass undefined and the call runs to completion (used by maintenance).
@@ -482,7 +509,7 @@ export async function attemptWithRetries<T>(
     // "tool not called"). Without this, a tool-not-called failure would loop with no pause
     // and no nudge — exhausting every retry instantly and re-showing the dialog immediately
     // after the user picks "Continue retrying".
-    if (attempt < maxRetries - 1) {
+    if (attempt < maxRetries) {
       // Cap messages to prevent unbounded growth
       if (messages.length > maxMessages) {
         messages.splice(0, messages.length - maxMessages);

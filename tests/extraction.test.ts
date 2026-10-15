@@ -18,6 +18,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as config from "../src/config.js";
 import { initGit } from "../src/git.js";
@@ -432,6 +433,41 @@ describe("enriched extraction summary", () => {
 
     expect(dumpContent).toContain("=== Extraction Agent Output ===");
     expect(dumpContent).not.toContain("=== Post-Extraction Output ===");
+  });
+
+  it("ends the agent loop only on successful extraction and post-extraction captures", async () => {
+    createSessionFile(sessionDir, "test.jsonl", [
+      {
+        assistant1: "I will write unit tests for the module.",
+        user: "Also test edge cases.",
+        assistant2: "I added edge case tests.",
+      },
+    ]);
+    const summary = {
+      agentBefore: "Agent was writing unit tests",
+      userFeedback: "User said to test edge cases",
+      agentAfter: "Agent added edge case tests",
+    };
+    mockCallPortraitLlm.mockResolvedValueOnce({ notes: ["Test edge cases"], summary });
+    mockCallPortraitLlm.mockResolvedValueOnce(["Test edge cases"]);
+
+    await scanSessions(portraitDir, getDefaultState(), 10, 100);
+
+    const extractionTool = mockCallPortraitLlm.mock.calls[0][2] as AgentTool;
+    const postExtractionTool = mockCallPortraitLlm.mock.calls[1][2] as AgentTool;
+    const noUpdate = () => {};
+    const valid = await extractionTool.execute("call-1", { summary, behaviorNotes: ["n"] }, undefined, noUpdate);
+    expect(valid.terminate).toBe(true);
+    // A missing summary field is a repairable input error: the loop continues for the model's repair.
+    const repairable = await extractionTool.execute(
+      "call-2",
+      { summary: { ...summary, userFeedback: "" }, behaviorNotes: ["n"] },
+      undefined,
+      noUpdate,
+    );
+    expect(repairable.terminate).toBeUndefined();
+    const post = await postExtractionTool.execute("call-3", { behaviorNotes: ["n"] }, undefined, noUpdate);
+    expect(post.terminate).toBe(true);
   });
 
   it("forwards postExtractionModel override to callPortraitLlm", async () => {

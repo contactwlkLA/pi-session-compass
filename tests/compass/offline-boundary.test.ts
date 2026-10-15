@@ -91,6 +91,15 @@ describe("offline boundary checks", () => {
     expect(out.attempts[0].usage).toEqual(boundarySums);
   });
 
+  it("ends the attempt after a terminating tool result with no follow-up request", { timeout: 180_000 }, async () => {
+    const out = await execScenario({ scenario: "terminate", timeoutMs: 150_000 });
+    expect(out.streamCalls).toBe(1);
+    expect(out.attempts).toHaveLength(1);
+    expect(out.attempts[0]).toMatchObject({ stage: "offline-check", attempt: 1, ok: true });
+    expect(out.result).toBeDefined();
+    expect(out.boundaryUsages).toEqual([{ input: 7, output: 3 }]);
+  });
+
   it("counts retry attempts and their tool-follow-up turns", { timeout: 180_000 }, async () => {
     const out = await execScenario({ scenario: "retry", timeoutMs: 150_000 });
     expect(out.streamCalls).toBe(3);
