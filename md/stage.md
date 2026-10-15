@@ -1,6 +1,6 @@
 # pi-session-compass — Stage continuation
 
-Revision: **0.7.0** · Updated: **2026-10-14**
+Revision: **0.8.0** · Updated: **2026-10-14**
 
 Select the first unchecked stage. A checked stage requires verified milestone evidence. Unchecked means not started, partial, or blocked; use the continuation fields below. Stop after that stage’s completion or a documented stopping condition.
 
@@ -14,11 +14,11 @@ Select the first unchecked stage. A checked stage requires verified milestone ev
 ## Continuation
 
 - Active stage: **S3**
-- Next unfinished step: **S3 Part A, Block A-3 (snapshot store module), coded by CC from md/stage-3a-pi.md; then the Part A gate**
-- Last completed step: **S3 Part A A-1..A-2c (47a95b5): scanner examines 26 of 26 trios (P7–P9 fixed); tests isolated per file (B17)**
+- Next unfinished step: **S3 Part B (B1 typed outcomes and pending candidates, B2 validated publication and restore, B3 crash tests): write md/stage-3b.md (one plan; Pi parked) for user approval, after the user's go-ahead at the Part A checkpoint**
+- Last completed step: **S3 Part A complete: A-1..A-2c (47a95b5) scanner 26 of 26 trios; A-3 snapshot store (2edb1ab); gates 420/420, 91/91, single-worker 420/420**
 - Outcome: **S2 COMPLETE: termination, capture reset and retry fixes; compare run 46 requests / 26.0 min on the pipeline's 20 trios; branch s1/harness**
 - Blocker: **none**
-- Pending user inputs: **none for A-3 (strings S3/S4 and reasons approved)**
+- Pending user inputs: **go-ahead for Part B; Part B protected text (restore conflict report, failed review/build stop message)**
 - Stage order: **plan order, S2.T1–T3 before the optional S2.T4 Jev probe (user decision 2026-10-14)**
 - Limits: **suggested at launch from the [compass.md](compass.md) run-type table; confirmed by the user for every live run**
 - Smoke result (S1.T4): **PASS** (2026-10-14, attempt 3, capped at 5 requests; outputs/s1-t4/smoke-result.md)
@@ -37,6 +37,6 @@ Stage meanings and dependencies: [plan.md](plan.md). Operating rules: [AGENTS.md
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.8.0 | 2026-10-15 | S3 Part A complete; next Part B. |
 | 0.7.0 | 2026-10-15 | S3 Part A A-1..A-2c done; Pi parked; next A-3. |
 | 0.6.0 | 2026-10-14 | S3 started: task file approved, split into Parts A–C, Pi/CC pair setup. |
-| 0.5.0 | 2026-10-14 | S2 complete (M2) and S3 next; S1 baseline coverage corrected (P7). |

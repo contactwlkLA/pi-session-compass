@@ -1,6 +1,6 @@
 # Stage 3 Part A — Pi coding brief
 
-Project: **pi-session-compass** · Revision: **0.4.0** · Status: **Approved (user, 2026-10-14)**
+Project: **pi-session-compass** · Revision: **0.5.0** · Status: **Approved (user, 2026-10-14)**
 
 Date: **2026-10-14**
 
@@ -100,6 +100,8 @@ Create `src/snapshot-store.ts` (not `snapshot.ts`; the harness already has `scri
 - **Tests:** round trip; two writes keep the previous; interrupted write (`.tmp` left, `CURRENT` unchanged) loads the previous; corrupt file digest; corrupt JSON; missing target; unsupported version; `null` when no `snapshots/` directory.
 - Do not call this module from the pipeline yet.
 
+**As built (CC, 2edb1ab), three refinements:** (1) `loadLatestSnapshot` also returns `null` when `snapshots/` holds only an interrupted first write (no `CURRENT`, no complete snapshot); `CURRENT` missing beside complete snapshots is corrupt (S3, `${dir}` = the snapshots directory). (2) Copies are named `files/<index>-<basename>`, so equal basenames cannot collide, and the manifest records each copy's original path in `sources` (for Part B's restore). (3) A crash between the rename and the `CURRENT` switch leaves the previous snapshot active; the next write removes the orphan.
+
 ## Approved strings
 
 Use these exactly (user-approved 2026-10-14). `${...}` are template-literal placeholders.
@@ -114,6 +116,6 @@ Use these exactly (user-approved 2026-10-14). `${...}` are template-literal plac
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.2.0 | 2026-10-14 | Block A-2 split into A-2a (reader), A-2b (position), A-2c (identity, catch, stop). |
 | 0.3.0 | 2026-10-14 | Pi audit fixes: chunk-boundary test without a size parameter; exact digest bytes for CRLF; manifest covers state.json; S3 reason texts (user-approved). |
 | 0.4.0 | 2026-10-15 | Pi parked after A-2b; Claude Code codes A-2c and A-3 from this brief. |
+| 0.5.0 | 2026-10-15 | A-3 as-built refinements recorded (interrupted first write, copy names and sources). |

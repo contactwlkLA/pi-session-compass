@@ -1,6 +1,6 @@
 # Stage 3 Part A — Claude Code plan (planner and reviewer)
 
-Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Approved (user, 2026-10-14)**
+Project: **pi-session-compass** · Revision: **0.4.0** · Status: **Approved (user, 2026-10-14)**
 
 Date: **2026-10-14**
 
@@ -74,9 +74,9 @@ Result: 26 of 26 in both variants; A-1 to A-2c committed in 47a95b5 (outputs/s3-
 
 ## Part A gate
 
-- [ ] **1.** Both full suites green, quoted raw, plus one single-worker run (`npx vitest run --maxWorkers=1`, bugs.md B17). Everything committed and pushed.
-- [ ] **2.** Sync stage-3-task.md (A1, A2, gate), stage.md (last step, next step: Part B), bugs.md; bump revisions of changed docs.
-- [ ] **3.** Write the handoff (~/handoff-*.md) after the gates pass.
+- [x] **1.** Both full suites green, quoted raw, plus one single-worker run (`npx vitest run --maxWorkers=1`, bugs.md B17). Everything committed and pushed.
+- [x] **2.** Sync stage-3-task.md (A1, A2, gate), stage.md (last step, next step: Part B), bugs.md; bump revisions of changed docs.
+- [x] **3.** Write the handoff (~/handoff-*.md) after the gates pass.
 - [ ] **4.** Report to the user: Done/Now/Next, scan-check result, test counts, open items. Wait before Part B.
 
 ## Risks to watch
@@ -89,5 +89,5 @@ Result: 26 of 26 in both variants; A-1 to A-2c committed in 47a95b5 (outputs/s3-
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.2.0 | 2026-10-14 | Review checklists follow the A-2 split (A-2a, A-2b, A-2c). |
 | 0.3.0 | 2026-10-15 | Pi parked; acceptance done (26 of 26); gate adds a single-worker run (B17). |
+| 0.4.0 | 2026-10-15 | Part A gate passed (A-3 2edb1ab). |

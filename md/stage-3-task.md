@@ -1,6 +1,6 @@
 # Stage 3 — Preserve pending work and safe restore
 
-Project: **pi-session-compass** · Revision: **0.2.0** · Status: **Approved (user, 2026-10-14)**
+Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Approved (user, 2026-10-14)**
 
 Date: **2026-10-14**
 
@@ -35,17 +35,17 @@ Scope guard: any fix beyond these lists is raised with the user before work star
 
 ### A2 — Snapshot storage (S3.T1)
 
-- [ ] **1.** Implement the snapshot module per architecture.md §6: a directory under the output directory holding a schema version, state, and copies of the portrait and archive files.
-- [ ] **2.** Write each new snapshot beside the previous one, flush it, then switch to it; at startup load the newest complete snapshot.
-- [ ] **3.** A corrupt or unsupported snapshot stops processing with an error; it never resets progress. Unit tests cover complete, partial (interrupted write), corrupt, and unsupported-version snapshots.
-- [ ] **4.** The module is not yet wired into the pipeline; the existing checkpoint file stays the scan-position store until Part B.
+- [x] **1.** Implement the snapshot module per architecture.md §6: a directory under the output directory holding a schema version, state, and copies of the portrait and archive files.
+- [x] **2.** Write each new snapshot beside the previous one, flush it, then switch to it; at startup load the newest complete snapshot.
+- [x] **3.** A corrupt or unsupported snapshot stops processing with an error; it never resets progress. Unit tests cover complete, partial (interrupted write), corrupt, and unsupported-version snapshots.
+- [x] **4.** The module is not yet wired into the pipeline; the existing checkpoint file stays the scan-position store until Part B. *(evidence: 2edb1ab src/snapshot-store.ts, tests/snapshot-store.test.ts 11 tests)*
 
 Protected text expected in Part A: the truncated-or-rewritten source report; the malformed-record report; the corrupt snapshot error; the unsupported snapshot error.
 
 ### Part A gate
 
-- [ ] **1.** Both full suites pass (`npm test`, `npm run test:compass`), raw results quoted. Commit and push.
-- [ ] **2.** Sync this file, stage.md, and bugs.md. Report to the user and wait before Part B.
+- [x] **1.** Both full suites pass (`npm test`, `npm run test:compass`), raw results quoted. Commit and push. *(2026-10-15: `npm test` 19 files / 420 passed; `npm run test:compass` 8 files / 91 passed; single-worker 420 passed; 47a95b5, 2edb1ab)*
+- [x] **2.** Sync this file, stage.md, and bugs.md. Report to the user and wait before Part B.
 
 ## Part B — Pending work, publication, restore
 
@@ -113,6 +113,6 @@ Protected text expected in Part C: the migration notice (including the historica
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.1.0 | 2026-10-14 | Initial draft from plan.md Stage 3, split into Parts A–C. |
 | 0.1.1 | 2026-10-14 | Part A protected-text list names all four strings. |
 | 0.2.0 | 2026-10-15 | A1 done (A-1 to A-2c); Pi parked after A-2b; tests isolated per file (B17). |
+| 0.3.0 | 2026-10-15 | Part A complete (A1, A2, gate). |
