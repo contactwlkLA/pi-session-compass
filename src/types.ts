@@ -35,9 +35,14 @@ export interface PortraitState {
   reportError: ((errorMsg: string, source: string) => void) | null;
 }
 
-// Scan checkpoint (byte position of last extracted user turn)
+// Scan checkpoint (scan position: byte offset of the record boundary a fresh
+// detector restarts from, plus that record's digest and the file's session id)
 export interface ScanCheckpoint {
   lastByte: number;
+  /** sha256 hex of the boundary record's bytes without its line ending. */
+  boundaryDigest?: string;
+  /** Session id from the file's header record. */
+  sessionId?: string;
 }
 
 export interface ScanCheckpoints {

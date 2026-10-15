@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2026 avtc <tarasenkov@gmail.com>
 
 import "./globals.js";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as readline from "node:readline";
@@ -9,14 +10,16 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { getBgScanCheckpointsPath, getPortraitDir, getSessionDirs } from "./config.js";
 import { appendDebug, openDebugDump } from "./debug.js";
+import { reportError } from "./error.js";
 import { extractContent } from "./filtering.js";
 import { setCachedPipelineState } from "./footer.js";
 import { emitTrioExamined } from "./instrument.js";
+import { type CompleteRecord, readCompleteRecords } from "./jsonl-reader.js";
 import { buildSingleUserMessage, callPortraitLlm, PAUSED } from "./llm-call.js";
 import { EXTRACTION_PROMPT, POST_EXTRACTION_PROMPT } from "./prompts.js";
 import { getPortraitSettings } from "./settings-ui.js";
 import { loadPortraitState, loadScanCheckpoints, savePortraitState, saveScanCheckpoints } from "./storage.js";
-import { TrioDetector } from "./trio-detector.js";
+import { type SessionEntry, TrioDetector } from "./trio-detector.js";
 import type {
   BgScanCheckpoints,
   ExtractionResult,
@@ -65,6 +68,75 @@ export function discoverFiles(sessionDirs: string[], cutoff: number): Discovered
 export const DEFAULT_MAX_FILES_PER_CYCLE = 10;
 export const DEFAULT_MAX_RESULTS = Infinity;
 
+/** sha256 hex digest of a record's text (its UTF-8 bytes without the line ending). */
+function recordDigest(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}
+
+const FILE_START = 0;
+const SCAN_ERROR_SOURCE = "scan error";
+
+/** Stops scanning one session file; the scan reports it and continues with other files. */
+class ScanFileStopped extends Error {
+  constructor(
+    readonly path: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ScanFileStopped";
+  }
+}
+
+function sourceChangedError(filePath: string): ScanFileStopped {
+  return new ScanFileStopped(
+    filePath,
+    `Stopped scanning ${filePath}: the file was truncated or rewritten after it was last scanned. Its scan position was kept.`,
+  );
+}
+
+function malformedRecordError(filePath: string, offset: number): ScanFileStopped {
+  return new ScanFileStopped(filePath, `Stopped scanning ${filePath}: malformed record at byte ${offset}.`);
+}
+
+async function firstRecordAt(filePath: string, startByte: number): Promise<CompleteRecord | undefined> {
+  for await (const record of readCompleteRecords(filePath, startByte)) {
+    return record;
+  }
+  return undefined;
+}
+
+function headerSessionId(record: CompleteRecord | undefined): string | undefined {
+  if (!record) return undefined;
+  try {
+    const header = JSON.parse(record.text);
+    return header?.type === "session" && typeof header.id === "string" ? header.id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Before resuming from a saved position, confirm the file is still the one that was scanned:
+ * same header session id, not shorter than the position, and the record at the position
+ * still has the saved digest. Positions saved without a digest resume unchecked.
+ */
+async function verifyScanPosition(filePath: string, checkpoint: ScanCheckpoint): Promise<void> {
+  if (checkpoint.boundaryDigest === undefined) return;
+  if (fs.statSync(filePath).size < checkpoint.lastByte) throw sourceChangedError(filePath);
+  if (checkpoint.sessionId !== undefined) {
+    const currentId = headerSessionId(await firstRecordAt(filePath, FILE_START));
+    if (currentId !== checkpoint.sessionId) throw sourceChangedError(filePath);
+  }
+  const boundary = await firstRecordAt(filePath, checkpoint.lastByte);
+  if (
+    !boundary ||
+    boundary.offset !== checkpoint.lastByte ||
+    recordDigest(boundary.text) !== checkpoint.boundaryDigest
+  ) {
+    throw sourceChangedError(filePath);
+  }
+}
+
 export async function scanSessions(
   portraitDir: string,
   state: PortraitPipelineState,
@@ -104,7 +176,7 @@ export async function scanSessions(
     const _lastByte = file.checkpoint?.lastByte ?? 0;
 
     // Stream file from checkpoint, extracting trios immediately
-    let scanResult: { triosFound: number; totalNonEmpty: number; bytesScanned: number };
+    let scanResult: StreamAndExtractResult;
     try {
       scanResult = await streamAndExtract({
         sessionFile: file.path,
@@ -136,23 +208,32 @@ export async function scanSessions(
         maxTrios: maxResults - results.length,
       });
     } catch (err) {
-      // Only handle file-not-found/access errors — let everything else bubble up
+      // A stopped file keeps its saved position; report it and scan the other files
+      if (err instanceof ScanFileStopped) {
+        reportError(err.message, SCAN_ERROR_SOURCE);
+        continue;
+      }
+      // Only handle file-not-found/access errors on this session file — let everything else
+      // bubble up, including filesystem errors raised while extracting its trios
       const msg = err instanceof Error ? err.message : "";
-      if (msg.includes("ENOENT") || msg.includes("EPERM") || msg.includes("EBUSY") || msg.includes("EACCES")) {
+      const onThisFile = (err as NodeJS.ErrnoException | undefined)?.path === file.path;
+      if (
+        onThisFile &&
+        (msg.includes("ENOENT") || msg.includes("EPERM") || msg.includes("EBUSY") || msg.includes("EACCES"))
+      ) {
         delete checkpoints[file.path];
         continue;
       }
       throw err;
     }
 
-    const { totalNonEmpty, bytesScanned } = scanResult;
+    const { totalNonEmpty, bytesScanned, resumeByte, boundaryDigest, sessionId } = scanResult;
     filesProcessed++;
 
-    // Update checkpoint if scan advanced
-    const prevByte = file.checkpoint?.lastByte ?? 0;
-    const newByte = prevByte + bytesScanned;
-    if (newByte > prevByte) {
-      checkpoints[file.path] = { lastByte: newByte };
+    // Store the scan position the pass ended at: the record boundary a fresh
+    // detector restarts from to rebuild this detector's state.
+    checkpoints[file.path] = { lastByte: resumeByte, boundaryDigest, sessionId };
+    if (bytesScanned > 0) {
       sessionKB += Math.round(bytesScanned / 1024);
     }
 
@@ -333,27 +414,41 @@ interface StreamAndExtractOptions {
   maxTrios: number;
 }
 
-async function streamAndExtract(
-  opts: StreamAndExtractOptions,
-): Promise<{ triosFound: number; totalNonEmpty: number; bytesScanned: number }> {
+/** What one streaming pass over a session file reports back. */
+interface StreamAndExtractResult {
+  triosFound: number;
+  totalNonEmpty: number;
+  bytesScanned: number;
+  resumeByte: number;
+  boundaryDigest: string | undefined;
+  sessionId: string | undefined;
+}
+
+async function streamAndExtract(opts: StreamAndExtractOptions): Promise<StreamAndExtractResult> {
   const { sessionFile, source, portraitDir, checkpoints, onProgress, onTrio, maxTrios } = opts;
 
-  const checkpointByte = checkpoints[sessionFile]?.lastByte ?? 0;
-  const fileStream = fs.createReadStream(sessionFile, { encoding: "utf-8", start: checkpointByte });
-  const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
+  const savedCheckpoint = checkpoints[sessionFile];
+  if (savedCheckpoint) await verifyScanPosition(sessionFile, savedCheckpoint);
+  const checkpointByte = savedCheckpoint?.lastByte ?? FILE_START;
+  const records = readCompleteRecords(sessionFile, checkpointByte);
 
   let triosFound = 0;
   let bytesRead = 0; // bytes read since resume (for progress)
 
   // Trio detection is delegated to TrioDetector (shared with countPendingTrios)
-  // to keep the two paths consistent. bytePos is tracked separately for checkpointing.
+  // to keep the two paths consistent. resumeByte tracks the record boundary a
+  // fresh detector must restart from to rebuild this detector's state.
   const detector = new TrioDetector();
-  let lastUserBytePos = 0;
+  let resumeByte = checkpointByte;
+  let boundaryDigest = checkpoints[sessionFile]?.boundaryDigest;
+  let sessionId = checkpoints[sessionFile]?.sessionId;
 
   // Helper to save checkpoint mid-file (after each trio extraction)
-  function saveMidFileCheckpoint(bytePos: number) {
+  function saveMidFileCheckpoint() {
     checkpoints[sessionFile] = {
-      lastByte: checkpointByte + bytePos,
+      lastByte: resumeByte,
+      boundaryDigest,
+      sessionId,
     };
     saveScanCheckpoints(portraitDir, checkpoints);
   }
@@ -378,47 +473,54 @@ async function streamAndExtract(
       await onTrio(result);
       triosFound++;
     }
-    // Advance checkpoint past this user turn (even if no notes — prevents re-extraction)
-    saveMidFileCheckpoint(lastUserBytePos);
+    // Save the scan position after every examined trio (even if no notes — prevents re-extraction)
+    saveMidFileCheckpoint();
     return triosFound >= maxTrios;
   }
 
-  for await (const line of rl) {
-    if (!line.trim()) continue;
+  for await (const record of records) {
+    const recordBytes = record.length + 1; // +1 for newline
+    bytesRead += recordBytes;
 
-    const lineBytes = Buffer.byteLength(line, "utf-8") + 1; // +1 for newline
-    bytesRead += lineBytes;
-
-    // Parse entry — SessionMessageEntry wraps AgentMessage inside a `message` field
+    // Parse entry — SessionMessageEntry wraps AgentMessage inside a `message` field.
+    // Only parsing is guarded: extraction and checkpoint errors (including PAUSED) propagate.
+    let entry: SessionEntry & { id?: unknown };
     try {
-      const entry = JSON.parse(line);
-      if (entry.type === "message") {
-        // Track bytePos of user messages for checkpointing (TrioDetector doesn't track this)
-        const msg = entry.message;
-        if (msg.role === "user" || (msg.role === "toolResult" && msg.toolName === "ask_user_question")) {
-          lastUserBytePos = bytesRead - lineBytes;
-        }
-        // Delegate trio detection to TrioDetector
-        const trio = detector.process(entry);
-        if (trio) {
-          const limitReached = await tryExtractTrio(trio);
-          onProgress(triosFound, bytesRead, bytesRead);
-          if (limitReached) {
-            fileStream.destroy();
-            return { triosFound, totalNonEmpty: bytesRead, bytesScanned: bytesRead };
-          }
+      entry = JSON.parse(record.text);
+    } catch {
+      throw malformedRecordError(sessionFile, record.offset);
+    }
+    if (entry === null || typeof entry !== "object") throw malformedRecordError(sessionFile, record.offset);
+    // Session id comes from the file's header record (first record); a resumed
+    // pass keeps the id saved by the pass that saw the header.
+    if (entry.type === "session" && typeof entry.id === "string") {
+      sessionId = entry.id;
+    }
+    if (entry.type === "message") {
+      // Delegate trio detection to TrioDetector
+      const trio = detector.process(entry);
+      if (detector.lastRecordSetLastAssistant) {
+        resumeByte = record.offset;
+        boundaryDigest = recordDigest(record.text);
+      }
+      if (trio) {
+        const limitReached = await tryExtractTrio(trio);
+        onProgress(triosFound, bytesRead, bytesRead);
+        if (limitReached) {
+          return {
+            triosFound,
+            totalNonEmpty: bytesRead,
+            bytesScanned: bytesRead,
+            resumeByte,
+            boundaryDigest,
+            sessionId,
+          };
         }
       }
-    } catch (err) {
-      // PAUSED (user paused from the LLM retry dialog) must propagate up to the pipeline —
-      // do NOT swallow it here as a malformed line, or the scan continues and the retry
-      // dialog re-appears after the user already chose to pause.
-      if (err instanceof Error && err.message === "PAUSED") throw err;
-      // Malformed line — skip
     }
 
     // Report progress every ~50 lines worth of bytes
-    if (bytesRead % (50 * 200) < lineBytes) {
+    if (bytesRead % (50 * 200) < recordBytes) {
       // ~every 50 lines (avg 200 bytes/line)
       onProgress(triosFound, bytesRead, bytesRead);
     }
@@ -427,8 +529,7 @@ async function streamAndExtract(
   // Final pass: try to extract any remaining complete trio
   // (no-op if lastAssistant/lastUser already cleared)
 
-  fileStream.destroy();
-  return { triosFound, totalNonEmpty: bytesRead, bytesScanned: bytesRead };
+  return { triosFound, totalNonEmpty: bytesRead, bytesScanned: bytesRead, resumeByte, boundaryDigest, sessionId };
 }
 
 /**

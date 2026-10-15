@@ -27,6 +27,12 @@ export interface SessionEntry {
 export class TrioDetector {
   private lastAssistant: string | null = null;
   private lastUser: string | null = null;
+  private assistantSetByLastRecord = false;
+
+  /** Whether the record most recently passed to process() set the last-assistant text. */
+  get lastRecordSetLastAssistant(): boolean {
+    return this.assistantSetByLastRecord;
+  }
 
   /**
    * Process a single session entry. Returns the completed trio if one was found,
@@ -34,6 +40,7 @@ export class TrioDetector {
    * user message completes at most one trio.
    */
   process(entry: SessionEntry): { agentBefore: string; userFeedback: string; agentAfter: string } | null {
+    this.assistantSetByLastRecord = false;
     if (entry.type !== "message" || !entry.message) return null;
 
     const msg = entry.message;
@@ -55,9 +62,11 @@ export class TrioDetector {
           // Clear to match extraction logic: one user message = one trio
           this.lastUser = null;
           this.lastAssistant = text;
+          this.assistantSetByLastRecord = true;
           return { agentBefore, userFeedback, agentAfter };
         }
         this.lastAssistant = text;
+        this.assistantSetByLastRecord = true;
       }
     } else if (msg.role === "user" || (msg.role === "toolResult" && msg.toolName === "ask_user_question")) {
       let content = extractContent(msg.content);
@@ -79,5 +88,6 @@ export class TrioDetector {
   reset(): void {
     this.lastAssistant = null;
     this.lastUser = null;
+    this.assistantSetByLastRecord = false;
   }
 }

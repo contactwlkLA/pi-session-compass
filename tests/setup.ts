@@ -4,9 +4,10 @@
 /**
  * Global test setup, registered via `setupFiles` in vitest.config.ts.
  *
- * The suite runs with `isolate: false` for speed, which shares ONE module registry and ONE
- * `globalThis` across every test file. Without coordination this turns ordinary test patterns
- * into deterministic killers:
+ * Each test file runs in its own module registry (`isolate: true` in vitest.config.ts), so module
+ * state cannot leak between files and results do not depend on file order. A run with
+ * `isolate: false` shares ONE module registry and ONE `globalThis` across every test file; without
+ * the coordination below, that turns ordinary test patterns into deterministic killers:
  *
  * 1. `vi.mock(module)` collisions. When several files `vi.mock` the SAME module, only the first
  *    factory to load wins for the whole process, and the `vi.fn()` it mints is the single cached

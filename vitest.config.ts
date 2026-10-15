@@ -7,7 +7,7 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
     exclude: ["tests/compass/**"],
-    isolate: false,
+    isolate: true,
     testTimeout: 30_000,
     setupFiles: ["./tests/setup.ts"],
   },
