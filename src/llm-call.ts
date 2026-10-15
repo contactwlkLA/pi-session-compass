@@ -415,6 +415,7 @@ export async function attemptWithRetries<T>(
   let lastError: string | undefined;
   const maxMessages = 20; // Cap to prevent unbounded growth
   const PROGRESS_THROTTLE_MS = 500;
+  const returnToolName = context.tools?.[0]?.name ?? "the required tool";
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     onAttemptStart?.();
     // Fresh signal per attempt (don't reuse AbortSignal across retries).
@@ -467,7 +468,7 @@ export async function attemptWithRetries<T>(
 
       const res = resultExtractor();
       const endedAtMs = Date.now();
-      const attemptError = res === undefined ? "LLM did not call the required extraction tool" : null;
+      const attemptError = res === undefined ? `LLM did not return a result through ${returnToolName}` : null;
       if (res !== undefined) {
         _debugStreamSink?.({ type: "end", ok: true });
       } else {

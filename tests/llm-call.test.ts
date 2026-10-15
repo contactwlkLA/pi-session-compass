@@ -153,7 +153,7 @@ describe("attemptWithRetries backoff", () => {
     await vi.runAllTimersAsync();
     const { lastError } = await promise;
 
-    expect(lastError).toBe("LLM did not call the required extraction tool");
+    expect(lastError).toBe("LLM did not return a result through the required tool");
     expect(mockAgentLoop).toHaveBeenCalledTimes(3);
     // Two backoff delays occurred between the three attempts (proves attempts did NOT fire back-to-back)
     expect(delayResolved.length).toBe(2);
@@ -189,7 +189,7 @@ describe("attemptWithRetries backoff", () => {
       .map((c) => c.text)
       .filter((t) => t.includes(NO_TOOL_CALLED_CONTEXT));
     expect(nudgeTexts.length).toBe(1);
-    expect(nudgeTexts[0]).toContain("LLM did not call the required extraction tool");
+    expect(nudgeTexts[0]).toContain("LLM did not return a result through the required tool");
   });
 });
 
@@ -358,6 +358,8 @@ describe("callPortraitLlm termination and capture reset (real agent loop, script
   let script: Array<ScriptedTurn | ((signal: AbortSignal | undefined) => Promise<ScriptedTurn>)>;
   let streamCalls: number;
   let events: CapturedEvent[];
+  let errors: Array<string | null>;
+  const lastAttemptError = () => errors[errors.length - 1];
 
   beforeEach(async () => {
     const loop = globalThis.__portraitAgentLoop;
@@ -376,7 +378,11 @@ describe("callPortraitLlm termination and capture reset (real agent loop, script
     script = [];
     streamCalls = 0;
     events = [];
-    actual.setLlmAttemptSink((event) => events.push(event));
+    errors = [];
+    actual.setLlmAttemptSink((event) => {
+      events.push(event);
+      errors.push(event.error ?? null);
+    });
     setDefaultStreamFn(((_model: unknown, _context: unknown, options: { signal?: AbortSignal }) => {
       const turn = script[streamCalls] ?? TEXT_TURN;
       streamCalls++;
@@ -433,6 +439,7 @@ describe("callPortraitLlm termination and capture reset (real agent loop, script
     expect(await call(tool, state)).toBeUndefined();
     expect(streamCalls).toBe(1);
     expect(events.map((e) => [e.attempt, e.ok])).toEqual([[1, false]]);
+    expect(lastAttemptError()).toBe("LLM did not return a result through return_probe");
   });
 
   it("runs one initial attempt plus the configured retries", async () => {
