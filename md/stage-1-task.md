@@ -1,6 +1,6 @@
 # Stage 1 — Establish the baseline
 
-Project: **pi-session-compass** · Revision: **0.3.2** · Status: **In progress**
+Project: **pi-session-compass** · Revision: **0.4.0** · Status: **Complete (M1, baseline covers trios 1–20 by user decision)**
 
 Date: **2026-10-14**
 
@@ -24,6 +24,7 @@ Initial review uses one unbranched conversation path. Branch support is deferred
   T1.6 baseline record:
   - Baseline environment: native WSL filesystem (~/compass-ext4). npm test: 15 files, 376 tests. npm run test:compass: 3 files, 45 tests.
   - Known intermittent: tests/llm-call.test.ts > attemptWithRetries backoff, the two tests "pauses with exponential backoff between attempts when the tool is not called" and "pushes an error-context nudge after a tool-not-called failure". Signature: each hits the 30 s test timeout, about 63 s total wall time. Observed on the unmodified fork base in 1 of 10 runs, and on the S1 tree without tests/compass in 2 of 10. Rule: rerun once. Fixed 2026-10-14: the agentLoop mock is shared from tests/setup.ts instead of mocked per file; the same failure (these two plus the two T3.2 validationRound tests in that file) occurred in 5 of 20 default-order runs before the fix and 0 of 20 after.
+  - Unexplained intermittent (not a known flake): 2026-10-14, one full `npm test` run failed 14 tests in tests/pipeline.test.ts (runPipelineLoop, e.g. "expected +0 to be 1" for totalSequences); the immediate full rerun passed, the file passes alone, and 20 default-order `npx vitest run` runs had 0 failures. Treat a recurrence as a real failure and investigate.
   - On /mnt/i the suite also failed extension-idempotency (suite), cache-refresh and reload-lifecycle; these disappeared on the native filesystem and are not part of the baseline.
 
 ## T2 — Create the file-selecting, isolated fixture harness
@@ -61,18 +62,18 @@ Purpose: confirm the harness runs end to end and show sample output. This task m
 
 Purpose: produce the measured baseline that M1 requires. Runs only after the T4 smoke test passes.
 
-- [ ] **1.** Report the T2.5 trio census and any smoke observations. Suggest `baseline` limits with their basis and assumptions (the compass.md row, if set). The user accepts them or enters their own at the start-of-run confirmation. Do not proceed without confirmed finite limits.
-- [ ] **2.** Freeze a new manifest with run type `baseline`, the final limits and their source, and unchanged source/fixture/settings/selector/output revisions; if any changed since T4, invalidate affected evidence first. Restore the starting portrait/archive snapshot so the run starts from the recorded state.
-- [ ] **3.** Run the ungated selected-file baseline under the confirmed limits; retain traces, outputs, failures, and stop reason.
-- [ ] **4.** Report trio/candidate counts, requests by stage, retries/follow-ups, reported usage, total elapsed time, and cooldown contribution. Include the running table: for each trio, trios examined so far, cumulative productive rate, cumulative candidates, insert/merge/skip counts, and portrait size. Report what the run covered; do not extrapolate uncovered trios.
-- [ ] **5.** Inspect a successful extraction and build trace for post-return requests; report observations without assuming savings. If the run never reached a build, record builder cost as unobserved. The user reviews a sample from the results sheet for quality; a measured quality comparison against labels belongs to Stage 5.
-- [ ] **6.** Save the receipt and starting snapshots for Stage 2. If the run was capped before covering the selected file, label it incomplete; the user may raise the limits and the run repeats from step 2.
+- [x] **1.** Report the T2.5 trio census and any smoke observations. Suggest `baseline` limits with their basis and assumptions (the compass.md row, if set). The user accepts them or enters their own at the start-of-run confirmation. Do not proceed without confirmed finite limits. *(evidence: census 26 trios; smoke observations; suggested 150 requests / 5400000 ms as agent suggestion, user-confirmed — outputs/s1-t5/baseline/manifest.json)*
+- [x] **2.** Freeze a new manifest with run type `baseline`, the final limits and their source, and unchanged source/fixture/settings/selector/output revisions; if any changed since T4, invalidate affected evidence first. Restore the starting portrait/archive snapshot so the run starts from the recorded state. *(evidence: outputs/s1-t5/baseline/manifest.json — commit da9987a clean; fixture, settings snapshot and start-snapshot digest identical to T4; start restored from fixtures/snapshots/s1-start)*
+- [x] **3.** Run the ungated selected-file baseline under the confirmed limits; retain traces, outputs, failures, and stop reason. *(evidence: outputs/s1-t5/baseline/ receipt, traces, sheets; attempt 1 (one pipeline pass, 2 trios) kept in outputs/s1-t5/baseline-attempt1-one-pass/)*
+- [x] **4.** Report trio/candidate counts, requests by stage, retries/follow-ups, reported usage, total elapsed time, and cooldown contribution. Include the running table: for each trio, trios examined so far, cumulative productive rate, cumulative candidates, insert/merge/skip counts, and portrait size. Report what the run covered; do not extrapolate uncovered trios. *(evidence: outputs/s1-t5/baseline-attempt2-report.md + running-table.md; covers trios 1–20 only)*
+- [x] **5.** Inspect a successful extraction and build trace for post-return requests; report observations without assuming savings. If the run never reached a build, record builder cost as unobserved. The user reviews a sample from the results sheet for quality; a measured quality comparison against labels belongs to Stage 5. *(evidence: 98 of 150 requests followed the attempt's first return-tool call — outputs/s1-t5/baseline-attempt2-report.md; user reviewed the results-sheet sample 2026-10-14: "I suppose it's fine")*
+- [x] **6.** Save the receipt and starting snapshots for Stage 2. If the run was capped before covering the selected file, label it incomplete; the user may raise the limits and the run repeats from step 2. *(evidence: receipt and traces in outputs/s1-t5/baseline/, start snapshot fixtures/snapshots/s1-start/; run capped at 150 requests after 20 of 26 trios; by user decision 2026-10-14 this capped run is the S1 baseline, compared on trios 1–20)*
 
 ## Stage completion — M1
 
-- [ ] **1.** Verify T1–T5 evidence against consistent source/settings/fixture revisions.
-- [ ] **2.** Confirm scope-isolation checks, a passed smoke test, a runnable harness, and a completed baseline measurement; state limitations.
-- [ ] **3.** Update task checks and stage.md with verified M1 evidence, or an incomplete outcome/blocker and next step. Stop this session; a later continuation selects the first unfinished stage.
+- [x] **1.** Verify T1–T5 evidence against consistent source/settings/fixture revisions. *(evidence: T4 and T5 share fixture b75a1246…, settings snapshot, start digest 51f057ec…; src/ unchanged between them, harness-only fixes)*
+- [x] **2.** Confirm scope-isolation checks, a passed smoke test, a runnable harness, and a completed baseline measurement; state limitations. *(evidence: isolation hashes for every live run; smoke PASS; harness runnable via node_modules/.bin/jiti scripts/compass/run.ts; limitation: baseline covers 20 of 26 trios by user decision, one run, model output varies between runs)*
+- [x] **3.** Update task checks and stage.md with verified M1 evidence, or an incomplete outcome/blocker and next step. Stop this session; a later continuation selects the first unfinished stage. *(evidence: md/stage.md)*
 
 Discover package/runtime details from the Pi checkout before asking for uploads. Missing access, unconfirmed limits, or a reached ceiling in `baseline` leaves dependent checks and M1 pending; preserve partial evidence and the next unfinished task in stage.md.
 
@@ -80,6 +81,7 @@ Discover package/runtime details from the Pi checkout before asking for uploads.
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.4.0 | 2026-10-14 | T5 and M1 checked. By user decision the capped baseline (20 of 26 trios) is the S1 baseline. T1.6 record: an unexplained pipeline.test.ts intermittent failure. |
 | 0.3.2 | 2026-10-14 | T4.1–T4.6 checked with evidence (smoke PASS). |
 | 0.3.1 | 2026-10-14 | T3.7 checked with evidence. |
 | 0.3.0 | 2026-10-14 | T3.6 checked with evidence; T1.6 known-intermittent record marks the llm-call timeouts fixed (rerun rule no longer expected to apply). |
