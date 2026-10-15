@@ -1,6 +1,6 @@
 # Stage 3 Part A — Pi coding brief
 
-Project: **pi-session-compass** · Revision: **0.1.0** · Status: **Approved (user, 2026-10-14)**
+Project: **pi-session-compass** · Revision: **0.2.0** · Status: **Approved (user, 2026-10-14)**
 
 Date: **2026-10-14**
 
@@ -59,17 +59,32 @@ Tests (each asserts `scanAll` equals `uninterrupted`, plus the stated extra):
 
 Expected now: tests 1, 3–10 fail (2 may pass). Report which fail and why, in one line each.
 
-## Block A-2 — Implement the trio-boundary scan position
+## Block A-2a — Byte-exact record reader (P9)
 
-1. **Record reader.** Replace `readline` in `streamAndExtract` with a byte reader: read raw `Buffer` chunks from the start offset, split on `0x0A`, track the absolute byte offset of each record's first byte. Strip a trailing `\r`. Skip blank lines but count their bytes. Decode each complete line as UTF-8 only after splitting. An unterminated final segment is a partial tail: do not parse it, do not count it.
-2. **Detector boundary.** Add to `TrioDetector` a way to know when `lastAssistant` was set by the current record (for example, `process()` stays as is and a new getter `lastAssistantSetByLastCall` or a returned flag). Keep `countPendingTrios` working unchanged.
-3. **Position.** `streamAndExtract` tracks `resumeByte`: the absolute offset of the record that last set `lastAssistant` (initially the start offset). It returns `resumeByte` and its **boundary digest**: sha256 hex of that record's bytes (without the newline). Save it after each examined trio (replacing `saveMidFileCheckpoint(lastUserBytePos)`) and at the end of the pass. `scanSessions` stores the returned position directly; remove `prevByte + bytesScanned` as the position. Keep the KB/footer progress counters as they are.
-4. **Checkpoint shape.** Extend `ScanCheckpoint` (src/types.ts) to `{ lastByte: number; boundaryDigest?: string; sessionId?: string }`. `sessionId` is the header's `id` (first record). Old entries without `boundaryDigest` resume from `lastByte` as before (migration comes later).
-5. **Identity check before resuming** (only when `boundaryDigest` is present): the file's header `id` must equal `sessionId`, the file size must be ≥ `lastByte`, and the record starting at `lastByte` must hash to `boundaryDigest`. Otherwise stop that file with diagnostic S1; do not change its checkpoint.
-6. **Narrow the catch (P8).** The `try/catch` covers only `JSON.parse`. A complete record that fails to parse stops that file with diagnostic S2, position unchanged from the last boundary. Extraction, review, `onTrio`, and checkpoint errors propagate (PAUSED keeps propagating as now).
-7. **Stopping a file.** Throw a typed `ScanFileStopped` error (own class, carries `path` and the message) inside `streamAndExtract`; `scanSessions` catches only that class, calls `reportError(message, "scan error")` (the existing route in src/pipeline.ts; import or pass it in the way the code already does), skips the file for the rest of the pass, and continues with other files.
+1. Create `src/jsonl-reader.ts` exporting an async generator `readCompleteRecords(filePath, startByte)` that yields `{ offset, length, text }` for each complete record: `offset` is the absolute byte offset of the record's first byte, `length` its byte length without the line ending, `text` the UTF-8 decoding of those bytes.
+2. Read raw `Buffer` chunks from `startByte` (no `encoding` option), split on `0x0A`, carry an incomplete segment across chunk boundaries, and decode only after splitting. Strip one trailing `\r` from a record. Skip blank (or whitespace-only) records without yielding them; their bytes still count toward later offsets.
+3. An unterminated final segment is a partial tail: never yield it.
+4. Create `tests/jsonl-reader.test.ts`: offsets on LF, CRLF, and blank lines; multibyte characters split across a chunk boundary (use a small chunk size option or a large record); a partial tail is not yielded; a later append completes it; a non-zero `startByte` at a line start.
+5. Do not change `collector.ts` yet.
 
-All Block A-1 tests pass. Existing tests pass; update an existing test only if it asserted the old end-of-record checkpoint, and list each such change under Deviations.
+Expected: the new reader tests pass; Block A-1 tests are unchanged (still failing).
+
+## Block A-2b — Trio-boundary scan position (P7)
+
+1. In `streamAndExtract`, replace `readline` with `readCompleteRecords`. Keep the `try/catch` and PAUSED handling exactly as they are in this block (A-2c changes them).
+2. **Detector boundary.** Make `TrioDetector` report whether the record just processed set `lastAssistant` (for example a returned flag or a getter); the change is additive and `countPendingTrios` behaves the same.
+3. **Position.** `streamAndExtract` tracks `resumeByte`: the absolute offset of the record that last set `lastAssistant` (initially the start offset). It returns `resumeByte` and its **boundary digest**: sha256 hex of that record's bytes (without the line ending). Save it after each examined trio (replacing `saveMidFileCheckpoint(lastUserBytePos)`) and at the end of the pass. `scanSessions` stores the returned position directly; remove `prevByte + bytesScanned` as the position. Keep the KB/footer progress counters as they are.
+4. **Checkpoint shape.** Extend `ScanCheckpoint` (src/types.ts) to `{ lastByte: number; boundaryDigest?: string; sessionId?: string }`. `sessionId` is the header's `id` (first record). Save both fields with every position. Old entries without `boundaryDigest` resume from `lastByte` as before (migration comes later). Do not verify them yet (A-2c).
+
+Expected: Block A-1 tests 1–6 pass; 7–10 may still fail. Existing tests pass; update an existing test only if it asserted the old end-of-record checkpoint, and list each such change under Deviations.
+
+## Block A-2c — Identity check, narrow catch, per-file stop (P8)
+
+1. **Identity check before resuming** (only when `boundaryDigest` is present): the file's header `id` must equal `sessionId`, the file size must be ≥ `lastByte`, and the record starting at `lastByte` must hash to `boundaryDigest`. Otherwise stop that file with S1; do not change its checkpoint.
+2. **Narrow the catch.** The `try/catch` covers only `JSON.parse`. A complete record that fails to parse stops that file with S2 (offset = the record's `offset`); the position stays at the last boundary. Extraction, review, `onTrio`, and checkpoint errors propagate; PAUSED keeps propagating as now.
+3. **Stopping a file.** Throw a typed `ScanFileStopped` error (own class, carries `path` and the message) inside `streamAndExtract`; `scanSessions` catches only that class, calls `reportError(message, "scan error")` (src/error.ts, the existing route), skips the file for the rest of the pass, and continues with other files.
+
+Expected: all Block A-1 tests pass, and all existing tests.
 
 ## Block A-3 — Snapshot store module (not wired)
 
@@ -97,3 +112,4 @@ Use these exactly (user-approved 2026-10-14). `${...}` are template-literal plac
 | Revision | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-14 | Initial Pi brief for Stage 3 Part A (Blocks A-1 to A-3). |
+| 0.2.0 | 2026-10-14 | Block A-2 split into A-2a (reader), A-2b (position), A-2c (identity, catch, stop). |

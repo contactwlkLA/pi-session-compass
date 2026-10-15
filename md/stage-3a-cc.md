@@ -1,6 +1,6 @@
 # Stage 3 Part A — Claude Code plan (planner and reviewer)
 
-Project: **pi-session-compass** · Revision: **0.1.0** · Status: **Approved (user, 2026-10-14)**
+Project: **pi-session-compass** · Revision: **0.2.0** · Status: **Approved (user, 2026-10-14)**
 
 Date: **2026-10-14**
 
@@ -17,13 +17,13 @@ Parent: [stage-3-task.md](stage-3-task.md) Part A. Pi's brief: [stage-3a-pi.md](
 
 ## Per block: review loop
 
-For each block A-1, A-2, A-3:
+For each block A-1, A-2a, A-2b, A-2c, A-3:
 
 - [ ] **1.** Relay line: `Read md/stage-3a-pi.md and do Block A-N only; stop and send the report.`
 - [ ] **2.** On Pi's report: `git status` and `git diff` against the last commit. Files outside the block's allowed paths → reject.
 - [ ] **3.** Review against the block checklist below. Run Pi's test files with `npx vitest run`.
 - [ ] **4.** Run `npm test` and `npm run test:compass` in full; quote the raw results.
-- [ ] **5.** Pass → commit and push (standing approval b), update the checkboxes in stage-3-task.md. Fail → one precise correction block for Pi. At most two correction rounds per problem, then report to the user.
+- [ ] **5.** Pass → save the reviewed diff to outputs/s3-a/<block>.patch and update the checkboxes in stage-3-task.md. A-1's tests fail by design until A-2c, so A-1 through A-2c are committed together once A-2c turns both suites green (standing approval b); A-3 commits on its own. Fail → one precise correction block for Pi. At most two correction rounds per problem, then report to the user.
 - [ ] **6.** Record any new bug in bugs.md when found.
 
 ### Checklist A-1 (tests only)
@@ -32,15 +32,25 @@ For each block A-1, A-2, A-3:
 - Failures are for the expected reason (lost trio, mid-record offset, swallowed error), not setup errors.
 - The extraction mock does not make real model calls; temp dirs are cleaned up.
 
-### Checklist A-2 (scan position)
+### Checklist A-2a (reader)
+
+- Only src/jsonl-reader.ts and its test added; collector.ts untouched.
+- No `encoding` on the stream; decoding after splitting; offsets exact on LF, CRLF, blank lines, and multibyte characters across chunks.
+- Partial tail never yielded.
+
+### Checklist A-2b (position)
 
 - Saved positions are always 0 or a line start of an assistant-with-text record; no remaining `prevByte + bytesScanned` position arithmetic.
-- The `try` covers only `JSON.parse`; PAUSED and all extraction/save errors propagate.
-- Partial tail never parsed or counted; blank lines and CRLF counted exactly.
-- Identity check runs only when `boundaryDigest` is present; legacy checkpoints resume as before.
-- `ScanFileStopped` is caught only in `scanSessions`, reported via `reportError`, position unchanged, other files continue.
+- Digest and `sessionId` saved with every position; legacy entries resume as before.
 - `countPendingTrios` unchanged in behavior; `TrioDetector` change is additive.
-- Strings S1, S2 match the approved text exactly.
+- The catch is untouched in this block. A-1 tests 1–6 pass.
+
+### Checklist A-2c (identity, catch, stop)
+
+- The `try` covers only `JSON.parse`; PAUSED and all extraction/save errors propagate.
+- Identity check runs only when `boundaryDigest` is present.
+- `ScanFileStopped` is caught only in `scanSessions`, reported via `reportError`, position unchanged, other files continue.
+- Strings S1, S2 match the approved text exactly. All A-1 tests pass.
 
 ### Checklist A-3 (snapshot store)
 
@@ -49,7 +59,7 @@ For each block A-1, A-2, A-3:
 - Not imported anywhere in the pipeline yet.
 - Strings S3, S4 match the approved text exactly.
 
-## Independent acceptance (CC, after A-2)
+## Independent acceptance (CC, after A-2c)
 
 - [ ] **1.** Write outputs/s3-a/scan-check.ts: copy the S1 fixture to a temp session root, run the production `scanSessions` pass by pass with a stub extractor that makes every trio productive (the worst case for P7), and list the examined trios.
 - [ ] **2.** Compare with the census (scripts/compass/census.ts) on the same file: expect **26 of 26**, the same trios in the same order. Also run it with every trio unproductive; expect 26 again.
@@ -76,3 +86,4 @@ No live model runs in Part A.
 | Revision | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-14 | Initial CC plan for Stage 3 Part A. |
+| 0.2.0 | 2026-10-14 | Review checklists follow the A-2 split (A-2a, A-2b, A-2c). |
