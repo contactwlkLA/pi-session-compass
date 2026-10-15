@@ -14,15 +14,15 @@ Select the first unchecked stage. A checked stage requires verified milestone ev
 ## Continuation
 
 - Active stage: **S2**
-- Next unfinished step: **S2.T3.3 — compare manifest and launch (limits confirmed by the user at launch)**
-- Last completed step: **S2.T1, S2.T2, S2.T3.1–2 (termination, capture reset, retries 1 + N, P3 wording; offline-verified)**
+- Next unfinished step: **S2.T5 — checkpoint: user chooses rerun, T4 probe, S3, or stop**
+- Last completed step: **S2.T3 — compare run completed: same 20 trios as the baseline in 46 requests / 26.0 min (baseline 150 / 56.9 min); outputs/s2-t3/compare-report.md**
 - Outcome: **S1 COMPLETE: harness, smoke PASS, baseline on trios 1–20; branch s1/harness**
 - Blocker: **none**
-- Pending user inputs: **`compare` limits at launch**
+- Pending user inputs: **S2.T5 continue/stop decision**
 - Stage order: **plan order, S2.T1–T3 before the optional S2.T4 Jev probe (user decision 2026-10-14)**
 - Limits: **suggested at launch from the [compass.md](compass.md) run-type table; confirmed by the user for every live run**
 - Smoke result (S1.T4): **PASS** (2026-10-14, attempt 3, capped at 5 requests; outputs/s1-t4/smoke-result.md)
-- Baseline result (S1.T5): **ACCEPTED, CAPPED** — 150 requests, 20 of 26 trios, 56.9 min; by user decision this is the S1 baseline: running past that budget is not acceptable, so the cap is itself the benchmark; later comparisons check coverage within 150 requests and per-trio rates on trios 1–20 (outputs/s1-t5/baseline-attempt2-report.md). Attempt 1 covered 2 trios (one pipeline pass; harness fixed in da9987a)
+- Baseline result (S1.T5): **ACCEPTED, CAPPED** — 150 requests, 20 of 26 trios, 56.9 min; by user decision this is the S1 baseline: running past that budget is not acceptable, so the cap is itself the benchmark; later comparisons check coverage within 150 requests and per-trio rates on trios 1–20 (outputs/s1-t5/baseline-attempt2-report.md). Attempt 1 covered 2 trios (one pipeline pass; harness fixed in da9987a) Correction (S2.T3, bugs.md P7): the pipeline detects only 20 of the census's 26 trios, so the baseline reached every trio the pipeline can reach; "trios 1–20" is pipeline order, and six trios are lost to a scan bug, not to the cap.
 - Continue/stop decision (end of S2): **pending**
 - Evidence: **outputs/s1-t1/; outputs/s1-t2.3/; outputs/s1-t4/; outputs/s1-t5/; fixtures/sessions/ (frozen July seed + receipt); fixtures/snapshots/s1-start/; scripts/compass/ + tests/compass/**
 - Milestone evidence: **M1 — md/stage-1-task.md T1–T5 and M1 evidence; outputs/ and fixtures/ are local (gitignored)**

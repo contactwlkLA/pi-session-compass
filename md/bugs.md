@@ -1,6 +1,6 @@
 # pi-session-compass — Bug journal
 
-Revision: **0.2.0** · Updated: **2026-10-14**
+Revision: **0.3.0** · Updated: **2026-10-14**
 
 A live record of every bug found while building and running the harness: harness, pipeline, test, or environment. Add an entry when a bug is found; update its status, fix commit, and evidence when it changes. Never delete an entry; a closed bug stays as history. Pipeline behaviors that a stage is meant to change are listed separately under Pipeline findings.
 
@@ -32,11 +32,12 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 | ID | Found | Observation | Evidence | Planned handling |
 |---|---|---|---|---|
 | P1 | 2026-10-14 | 98 of 150 baseline requests came after the attempt's first return-tool call; one build attempt called its return tool 9 times (188 s) | outputs/s1-t5/baseline-attempt2-report.md | S2.T2: fixed 54620a4 (the four return tools set `terminate: true` on success, verified offline); live effect measured in S2.T3 |
-| P2 | 2026-10-14 | 8 zero-output responses (stopReason `stop`, 0 usage), most after 56–69 s; first build attempts failed this way in smoke and baseline | same report; outputs/s1-t4/smoke-result.md | Investigate in S2 |
+| P2 | 2026-10-14 | 8 zero-output responses (no output tokens: 5 `stop`, 2 `aborted`, 1 `toolUse`), most after 56–69 s; first build attempts failed this way in smoke and baseline | same report; outputs/s1-t4/smoke-result.md | Counted in S2 (not fixed): 1 in the compare run (outputs/s2-t3/compare-report.md) |
 | P3 | 2026-10-14 | 9 failed building attempts with the message "LLM did not call the required extraction tool" (the message names extraction for the building stage) | outputs/s1-t5/baseline/traces.jsonl | S2.T2.4: fixed de8b168; user-approved wording `LLM did not return a result through <tool>` |
 | P4 | 2026-10-14 | `runPipelineLoop` returns after its first productive sequence when it came from the last discovered file (`remainingFiles` counts only later files); the rest waits for the next timer tick | src/collector.ts `scanSessions`; B10 | Recorded; S3 replaces the scan position |
 | P5 | 2026-10-12 | `retries: N` means N attempts in total, so `retries: 0` makes no attempt | plan.md S2.T2 | S2.T2: fixed 54620a4 (1 + N attempts); tests/llm-call.test.ts |
 | P6 | 2026-10-14 | Return-tool captures live in closures that are never reset, so a retry or validation round with no valid tool call returns the previous round's capture as a success | outputs/s2-t1/termination-note.md | S2.T2: fixed 54620a4 (results count only after a terminating capture in the current attempt); tests/llm-call.test.ts |
+| P7 | 2026-10-14 | The pipeline examines 20 of the census's 26 trios: after a productive trio, `scanSessions` sets the checkpoint past the trio's closing assistant record (collector.ts, `prevByte + bytesScanned`), and the next pass starts with a fresh detector, so a following trio that opens with that record is never detected. Affects S1 baseline and S2 compare equally; the S1 report's "trios 21–26 not examined" is wrong (the baseline reached every trio the pipeline can reach) | outputs/s2-t3/compare-report.md; outputs/s2-t3/trio-loss-replay.ts | S3.T3 (trio-boundary scan position, adjacent trios) |
 
 ## Environment
 
@@ -52,3 +53,4 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 |---|---|---|
 | 0.1.0 | 2026-10-14 | Initial journal from the S1 sessions. |
 | 0.2.0 | 2026-10-14 | P6 (stale captures) added; P1, P3, P5, P6 fixed in S2.T2. |
+| 0.3.0 | 2026-10-14 | P7 (adjacent trios lost across passes) added; P2 counted in the compare run. |
