@@ -1,6 +1,6 @@
 # Stage 3 — Preserve pending work and safe restore
 
-Project: **pi-session-compass** · Revision: **0.1.0** · Status: **Approved (user, 2026-10-14)**
+Project: **pi-session-compass** · Revision: **0.1.1** · Status: **Approved (user, 2026-10-14)**
 
 Date: **2026-10-14**
 
@@ -40,7 +40,7 @@ Scope guard: any fix beyond these lists is raised with the user before work star
 - [ ] **3.** A corrupt or unsupported snapshot stops processing with an error; it never resets progress. Unit tests cover complete, partial (interrupted write), corrupt, and unsupported-version snapshots.
 - [ ] **4.** The module is not yet wired into the pipeline; the existing checkpoint file stays the scan-position store until Part B.
 
-Protected text expected in Part A: the malformed-record report; the corrupt or unsupported snapshot error.
+Protected text expected in Part A: the truncated-or-rewritten source report; the malformed-record report; the corrupt snapshot error; the unsupported snapshot error.
 
 ### Part A gate
 
@@ -114,3 +114,4 @@ Protected text expected in Part C: the migration notice (including the historica
 | Revision | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-14 | Initial draft from plan.md Stage 3, split into Parts A–C. |
+| 0.1.1 | 2026-10-14 | Part A protected-text list names all four strings. |

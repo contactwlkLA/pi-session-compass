@@ -1,6 +1,6 @@
 # Stage 3 Part A — Pi coding brief
 
-Project: **pi-session-compass** · Revision: **0.2.0** · Status: **Approved (user, 2026-10-14)**
+Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Approved (user, 2026-10-14)**
 
 Date: **2026-10-14**
 
@@ -61,10 +61,10 @@ Expected now: tests 1, 3–10 fail (2 may pass). Report which fail and why, in o
 
 ## Block A-2a — Byte-exact record reader (P9)
 
-1. Create `src/jsonl-reader.ts` exporting an async generator `readCompleteRecords(filePath, startByte)` that yields `{ offset, length, text }` for each complete record: `offset` is the absolute byte offset of the record's first byte, `length` its byte length without the line ending, `text` the UTF-8 decoding of those bytes.
+1. Create `src/jsonl-reader.ts` exporting an async generator `readCompleteRecords(filePath, startByte)` that yields `{ offset, length, text }` for each complete record: `offset` is the absolute byte offset of the record's first byte, `length` its byte length without the line ending (the `\n` and, for CRLF, the `\r`), `text` the UTF-8 decoding of exactly those bytes.
 2. Read raw `Buffer` chunks from `startByte` (no `encoding` option), split on `0x0A`, carry an incomplete segment across chunk boundaries, and decode only after splitting. Strip one trailing `\r` from a record. Skip blank (or whitespace-only) records without yielding them; their bytes still count toward later offsets.
 3. An unterminated final segment is a partial tail: never yield it.
-4. Create `tests/jsonl-reader.test.ts`: offsets on LF, CRLF, and blank lines; multibyte characters split across a chunk boundary (use a small chunk size option or a large record); a partial tail is not yielded; a later append completes it; a non-zero `startByte` at a line start.
+4. Create `tests/jsonl-reader.test.ts`: offsets on LF, CRLF, and blank lines; multibyte characters split across a chunk boundary (use one record larger than the stream's 64 KiB read chunk, with multibyte characters around the boundary; the API has no chunk-size parameter, since the repo lint forbids optional parameters); a partial tail is not yielded; a later append completes it; a non-zero `startByte` at a line start.
 5. Do not change `collector.ts` yet.
 
 Expected: the new reader tests pass; Block A-1 tests are unchanged (still failing).
@@ -73,7 +73,7 @@ Expected: the new reader tests pass; Block A-1 tests are unchanged (still failin
 
 1. In `streamAndExtract`, replace `readline` with `readCompleteRecords`. Keep the `try/catch` and PAUSED handling exactly as they are in this block (A-2c changes them).
 2. **Detector boundary.** Make `TrioDetector` report whether the record just processed set `lastAssistant` (for example a returned flag or a getter); the change is additive and `countPendingTrios` behaves the same.
-3. **Position.** `streamAndExtract` tracks `resumeByte`: the absolute offset of the record that last set `lastAssistant` (initially the start offset). It returns `resumeByte` and its **boundary digest**: sha256 hex of that record's bytes (without the line ending). Save it after each examined trio (replacing `saveMidFileCheckpoint(lastUserBytePos)`) and at the end of the pass. `scanSessions` stores the returned position directly; remove `prevByte + bytesScanned` as the position. Keep the KB/footer progress counters as they are.
+3. **Position.** `streamAndExtract` tracks `resumeByte`: the absolute offset of the record that last set `lastAssistant` (initially the start offset). It returns `resumeByte` and its **boundary digest**: sha256 hex of exactly the `length` bytes the reader reported for that record (no `\n`, no `\r`). Save it after each examined trio (replacing `saveMidFileCheckpoint(lastUserBytePos)`) and at the end of the pass. `scanSessions` stores the returned position directly; remove `prevByte + bytesScanned` as the position. Keep the KB/footer progress counters as they are.
 4. **Checkpoint shape.** Extend `ScanCheckpoint` (src/types.ts) to `{ lastByte: number; boundaryDigest?: string; sessionId?: string }`. `sessionId` is the header's `id` (first record). Save both fields with every position. Old entries without `boundaryDigest` resume from `lastByte` as before (migration comes later). Do not verify them yet (A-2c).
 
 Expected: Block A-1 tests 1–6 pass; 7–10 may still fail. Existing tests pass; update an existing test only if it asserted the old end-of-record checkpoint, and list each such change under Deviations.
@@ -91,10 +91,10 @@ Expected: all Block A-1 tests pass, and all existing tests.
 Create `src/snapshot-store.ts` (not `snapshot.ts`; the harness already has `scripts/compass/snapshot.ts`) and `tests/snapshot-store.test.ts`.
 
 - **Layout** under `<portraitDir>/snapshots/`: one directory per snapshot, `snap-<seq>` with a zero-padded increasing sequence number, and a `CURRENT` file naming the active one.
-- **Content:** `manifest.json` = `{ schemaVersion: 1, seq, createdAt, files: { <relative name>: <sha256 hex> } }`; `state.json` = `{ scanPositions: Record<path, ScanCheckpoint>, pendingCandidates: [], publicationIntent: null }` (types exported; the last two fill in Part B); `files/` = copies of the portrait and archive files passed in by the caller.
+- **Content:** `manifest.json` = `{ schemaVersion: 1, seq, createdAt, files: { <relative name>: <sha256 hex> } }`, where `files` covers every file in the snapshot directory except `manifest.json` itself, including `state.json`; `state.json` = `{ scanPositions: Record<path, ScanCheckpoint>, pendingCandidates: [], publicationIntent: null }` (types exported; the last two fill in Part B); `files/` = copies of the portrait and archive files passed in by the caller.
 - **`writeSnapshot(portraitDir, state, filePaths)`:** write into `snap-<seq>.tmp/`, fsync each file and the directory, rename to `snap-<seq>`, then replace `CURRENT` atomically (write tmp, fsync, rename). Keep the previous snapshot; delete older ones (keep the last two).
 - **`loadLatestSnapshot(portraitDir)`:** returns `null` only when `snapshots/` does not exist. Read `CURRENT`, verify every file in the manifest by sha256, parse `state.json`. A leftover `.tmp` directory is ignored (an interrupted write; the previous snapshot stays current).
-- **Errors:** missing/unreadable `CURRENT` target, digest mismatch, or unparsable JSON → throw `SnapshotCorruptError` with message S3. `schemaVersion !== 1` → `SnapshotUnsupportedError` with message S4. Never return `null` or an empty state for these cases.
+- **Errors:** missing/unreadable `CURRENT` target, digest mismatch, or unparsable JSON → throw `SnapshotCorruptError` with message S3 and the matching S3 reason. `schemaVersion !== 1` → `SnapshotUnsupportedError` with message S4. Never return `null` or an empty state for these cases.
 - **Tests:** round trip; two writes keep the previous; interrupted write (`.tmp` left, `CURRENT` unchanged) loads the previous; corrupt file digest; corrupt JSON; missing target; unsupported version; `null` when no `snapshots/` directory.
 - Do not call this module from the pipeline yet.
 
@@ -105,6 +105,7 @@ Use these exactly (user-approved 2026-10-14). `${...}` are template-literal plac
 - **S1** — rewritten or truncated source: `Stopped scanning ${path}: the file was truncated or rewritten after it was last scanned. Its scan position was kept.`
 - **S2** — malformed complete record: `Stopped scanning ${path}: malformed record at byte ${offset}.`
 - **S3** — corrupt snapshot: `Portrait snapshot ${dir} is corrupt (${reason}); processing stopped. Progress was not reset.`
+- **S3 reasons** (the `${reason}` in S3, one per case): active snapshot missing or unreadable (`CURRENT` absent, unreadable, or naming a missing directory): `the active snapshot is missing or unreadable`; digest mismatch: `checksum mismatch in ${file}`; unparsable JSON: `${file} is not valid JSON`. `${file}` is the name relative to the snapshot directory.
 - **S4** — unsupported snapshot version: `Portrait snapshot ${dir} has unsupported schema version ${version}; processing stopped. Progress was not reset.`
 
 ## Revision history
@@ -113,3 +114,4 @@ Use these exactly (user-approved 2026-10-14). `${...}` are template-literal plac
 |---|---|---|
 | 0.1.0 | 2026-10-14 | Initial Pi brief for Stage 3 Part A (Blocks A-1 to A-3). |
 | 0.2.0 | 2026-10-14 | Block A-2 split into A-2a (reader), A-2b (position), A-2c (identity, catch, stop). |
+| 0.3.0 | 2026-10-14 | Pi audit fixes: chunk-boundary test without a size parameter; exact digest bytes for CRLF; manifest covers state.json; S3 reason texts (user-approved). |
