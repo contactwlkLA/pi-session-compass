@@ -14,7 +14,7 @@ Select the first unchecked stage. A checked stage requires verified milestone ev
 ## Continuation
 
 - Active stage: **S3**
-- Next unfinished step: **S3 Part B (B1 typed outcomes and pending candidates, B2 validated publication and restore, B3 crash tests): write md/stage-3b.md (one plan; Pi parked) for user approval, after the user's go-ahead at the Part A checkpoint**
+- Next unfinished step: **S3 Part B, split into two sessions (user decision 2026-10-15): B-1 = typed outcomes, pending candidates, snapshot wiring (B1 + B2.3, B2.6); B-2 = builder split, validated publication, restore with edit guard, crash tests (B2.1, B2.2, B2.4, B2.5, B3). First write md/stage-3b.md (one plan; Pi parked) for user approval**
 - Last completed step: **S3 Part A complete: A-1..A-2c (47a95b5) scanner 26 of 26 trios; A-3 snapshot store (2edb1ab); gates 420/420, 91/91, single-worker 420/420**
 - Outcome: **S2 COMPLETE: termination, capture reset and retry fixes; compare run 46 requests / 26.0 min on the pipeline's 20 trios; branch s1/harness**
 - Blocker: **none**
