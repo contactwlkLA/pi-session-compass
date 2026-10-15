@@ -1,6 +1,6 @@
 # pi-session-compass — Development Plan
 
-Revision: **0.3.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
+Revision: **0.4.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
 
 Contract: [Architecture specification](architecture.md)
 
@@ -32,7 +32,7 @@ A **stage** groups related work toward one outcome. A **task** is a checkable un
 
 Proceed S1 → S2 → S3 → S4 → S5 → S6. Policy development can use the seed sample without waiting for broader history, but enforce mode cannot pass Stage 5 on that sample alone.
 
-Deferred and outside this plan: workspace/all-scope selection, public selection controls, and branch-aware review. Seams that keep them additive: the selection object’s `scope` field, trio IDs derived from session and entry IDs, and the source path/cwd stored with pending candidates.
+Deferred and outside this plan: workspace/all-scope selection, public selection controls, and branch-aware review. Parked ideas from the user, 2026-10-14, not scheduled: session-length signal from the census trio count; corrections-per-session trend across ~/.pi/agent/sessions (free, offline); Jev per-trio probabilities as usage analytics. Seams that keep them additive: the selection object’s `scope` field, trio IDs derived from session and entry IDs, and the source path/cwd stored with pending candidates.
 
 ## 3. Stage 1 — establish the baseline
 
@@ -164,6 +164,6 @@ Handoff contents: implementation diff/commit, exact dependency versions, test re
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.1.0 | 2026-10-11 | Initial committed draft. |
 | 0.2.0 | 2026-10-12 | Added optional S2.T4 Jev probe and the `probe` run type; checkpoint renumbered to S2.T5. |
 | 0.3.0 | 2026-10-14 | M1 exception: the capped S1 baseline (20 of 26 trios, 150 requests) is the baseline by user decision, the cap being the benchmark; S2.T3 compares coverage within that budget and per-trio rates on trios 1–20. |
+| 0.4.0 | 2026-10-14 | Added the user's parked ideas to the deferred list. |

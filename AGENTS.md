@@ -24,7 +24,7 @@ Once approved, text can be applied directly during implementation. Any subsequen
 
 # pi-session-compass — Agent operating rules
 
-Revision: **0.7.0** · 2026-10-14
+Revision: **0.8.0** · 2026-10-14
 
 Adds to the repository rules above. On conflict, follow the repository rules and ask the user.
 
@@ -75,15 +75,12 @@ Each document carries MAJOR.MINOR.PATCH in its header and history table, startin
 - **1.0.0** (document set approved for implementation) and any later major bump are the user’s call.
 - Documents refer to each other by file name, never by revision.
 - At exit, bump each changed document and add a history row; never bump an unchanged one.
+- Each history table keeps only its last three rows; git holds the full history. Trimming older rows is not a change and needs no bump.
 
 ## Revision history
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.8.0 | 2026-10-14 | History tables keep their last three rows; git holds the rest. |
 | 0.7.0 | 2026-10-14 | Standing approvals (relaunch after a harness-only fix; commit and push after green suites) and push-notify when waiting on the user. |
 | 0.6.0 | 2026-10-14 | Added the bug-journal rule (md/bugs.md). |
-| 0.5.0 | 2026-10-14 | Handoffs are written only after the gates pass; re-entry runs a git status drift check. Condensed the project rules' wording with no other change in meaning. |
-| 0.4.0 | 2026-10-14 | Session start reads stage.md and the task file before the first reply; handoffs do not replace them. Added the repeated-runs rule for order-dependent failures. |
-| 0.3.0 | 2026-10-12 | Added the Reporting to the user section: status board, one instruction set per message, no repeated asks. Added a rule not to enter ./private (the user's scratch directory) |
-| 0.2.0 | 2026-10-12 | Added the verification-reporting rule; Tests bullet names test:compass. |
-| 0.1.0 | 2026-10-11 | Initial committed draft. |

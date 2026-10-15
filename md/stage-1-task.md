@@ -84,10 +84,3 @@ Discover package/runtime details from the Pi checkout before asking for uploads.
 | 0.4.1 | 2026-10-14 | T5.6 evidence states why the capped baseline stands. |
 | 0.4.0 | 2026-10-14 | T5 and M1 checked. By user decision the capped baseline (20 of 26 trios) is the S1 baseline. T1.6 record: an unexplained pipeline.test.ts intermittent failure. |
 | 0.3.2 | 2026-10-14 | T4.1–T4.6 checked with evidence (smoke PASS). |
-| 0.3.1 | 2026-10-14 | T3.7 checked with evidence. |
-| 0.3.0 | 2026-10-14 | T3.6 checked with evidence; T1.6 known-intermittent record marks the llm-call timeouts fixed (rerun rule no longer expected to apply). |
-| 0.2.2 | 2026-10-14 | T3.2 checked with evidence. |
-| 0.2.1 | 2026-10-14 | T2.3 checked with evidence. |
-| 0.2.0  | 2026-10-12 | Status set to In progress; completed tasks checked with evidence references (T2.3, T3.2, T3.6, T3.7 left open with reasons); added the T1.6 baseline record (native-filesystem environment, suite sizes, known-intermittent llm-call backoff signature and rerun rule). |
-| 0.1.1 | 2026-10-12 | S1 verification runs both `npm test` and `npm run test:compass` (harness suite split out of the default run). |
-| 0.1.0 | 2026-10-11 | Initial committed draft. |

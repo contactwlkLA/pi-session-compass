@@ -280,7 +280,6 @@ Official Jev documentation: the API reference, models and version-pinning, and N
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.1.0 | 2026-10-11 | Initial committed draft. |
 | 0.2.0 | 2026-10-12 | Added expected-benefit and break-even reasoning to the outcomes section. |
 | 0.3.0 | 2026-10-12 | Added the `probe` run type to the run-type list. |
 | 0.4.0 | 2026-10-14 | Added the baseline-coverage decision to the verification and decisions table. |

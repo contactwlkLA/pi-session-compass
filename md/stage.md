@@ -1,6 +1,6 @@
 # pi-session-compass — Stage continuation
 
-Revision: **0.3.1** · Updated: **2026-10-14**
+Revision: **0.4.0** · Updated: **2026-10-14**
 
 Select the first unchecked stage. A checked stage requires verified milestone evidence. Unchecked means not started, partial, or blocked; use the continuation fields below. Stop after that stage’s completion or a documented stopping condition.
 
@@ -27,7 +27,6 @@ Select the first unchecked stage. A checked stage requires verified milestone ev
 - Evidence: **outputs/s1-t1/; outputs/s1-t2.3/; outputs/s1-t4/; outputs/s1-t5/; fixtures/sessions/ (frozen July seed + receipt); fixtures/snapshots/s1-start/; scripts/compass/ + tests/compass/**
 - Milestone evidence: **M1 — md/stage-1-task.md T1–T5 and M1 evidence; outputs/ and fixtures/ are local (gitignored)**
 - Harness launch: **`node_modules/.bin/jiti scripts/compass/run.ts execute …` (installed jiti; allowed in .claude/settings.local.json)**
-- Parked ideas (not in the plan): **session-length signal from the census trio count; corrections-per-session trend across ~/.pi/agent/sessions (free, offline); Jev per-trio probabilities as usage analytics**
 - Bug journal: **[bugs.md](bugs.md) — add an entry when a bug is found; update status, fix commit, and evidence when it changes**
 
 At session exit, update these fields and task checkboxes. Record a short evidence reference alongside each completed stage. A cap/blocker leaves its stage unchecked and identifies the next unfinished task. Do not skip it. If the selected task file is missing, report the missing file and stop; do not invent it.
@@ -38,15 +37,6 @@ Stage meanings and dependencies: [plan.md](plan.md). Operating rules: [AGENTS.md
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.4.0 | 2026-10-14 | Parked ideas moved to plan.md (Deferred). |
 | 0.3.1 | 2026-10-14 | Baseline line states why the capped run stands (the cap is the benchmark); bug journal linked in place of the single known-gap line. |
 | 0.3.0 | 2026-10-14 | S1 complete: by user decision the capped baseline (20 of 26 trios) is the baseline; S2 in plan order; parked ideas recorded; next step creates stage-2-task.md. |
-| 0.2.8 | 2026-10-14 | T5 baseline attempt 2 capped (incomplete, 20 of 26 trios); awaiting the user's limit decision. |
-| 0.2.7 | 2026-10-14 | T4 smoke PASS (attempt 3, after the discovery-root and cap-refusal repairs); next step T5.1. |
-| 0.2.6 | 2026-10-14 | Decisions recorded: maintenance backfill calls are tagged "maintenance"; the harness launches with `node --import jiti/register` (installed jiti, no package change); smoke limits approved. |
-| 0.2.5 | 2026-10-14 | T3.7 completed (running table; strings approved); next step T4. |
-| 0.2.4 | 2026-10-14 | Pending inputs: added the maintenance backfill stage-tag decision. |
-| 0.2.3 | 2026-10-14 | T3.6 completed (harness strings approved and applied); next step T3.7. |
-| 0.2.2 | 2026-10-14 | T3.2 completed; next step T3.6. |
-| 0.2.1 | 2026-10-14 | T2.3 completed; next step T3.2. |
-| 0.2.0 | 2026-10-12 | S1 in progress on s1/harness; completed: T1.1–T1.6, T2.1–T2.2, T2.4–T2.6, T3.1, T3.3–T3.5, T3.8. Open: T2.3 (starting-portrait confirmation), T3.2 (validation-round tag), T3.6 (confirmation strings), T3.7 (baseline running table). Blocker: user decisions. |
-| 0.1.0 | 2026-10-11 | Initial committed draft. |
