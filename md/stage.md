@@ -14,11 +14,11 @@ Select the first unchecked stage. A checked stage requires verified milestone ev
 ## Continuation
 
 - Active stage: **S2**
-- Next unfinished step: **S2.T2.4 — P3 message wording (awaiting user approval), then S2.T3.3 compare launch**
-- Last completed step: **S2.T1, S2.T2.1–3, S2.T3.1–2 (termination, capture reset, retries 1 + N; offline-verified)**
+- Next unfinished step: **S2.T3.3 — compare manifest and launch (limits confirmed by the user at launch)**
+- Last completed step: **S2.T1, S2.T2, S2.T3.1–2 (termination, capture reset, retries 1 + N, P3 wording; offline-verified)**
 - Outcome: **S1 COMPLETE: harness, smoke PASS, baseline on trios 1–20; branch s1/harness**
 - Blocker: **none**
-- Pending user inputs: **P3 wording; `compare` limits at launch**
+- Pending user inputs: **`compare` limits at launch**
 - Stage order: **plan order, S2.T1–T3 before the optional S2.T4 Jev probe (user decision 2026-10-14)**
 - Limits: **suggested at launch from the [compass.md](compass.md) run-type table; confirmed by the user for every live run**
 - Smoke result (S1.T4): **PASS** (2026-10-14, attempt 3, capped at 5 requests; outputs/s1-t4/smoke-result.md)

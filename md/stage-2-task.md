@@ -22,8 +22,8 @@ Scope guard: the zero-output responses (P2) are counted and reported in T3, not 
 - [x] **1.** On a successful capture, return `terminate: true` from all four return tools: `return_extraction`, `return_post_extraction`, `return_building`, `return_maintenance`. Extraction's summary validation errors stay nonterminal, so the model can repair in the same attempt. *(evidence: src/collector.ts, builder.ts, maintenance-core.ts; tests/extraction.test.ts, builder.test.ts, maintenance.test.ts)*
 - [x] **2.** Clear the captured response before each retry and each validation round, so a stale capture can never satisfy a later attempt. *(evidence: src/llm-call.ts reads a result only after a terminating capture in the current attempt (bugs.md P6); tests/llm-call.test.ts stale-capture cases, mutation-checked)*
 - [x] **3.** Retry semantics: `retries: N` runs 1 + N attempts, so `retries: 0` runs exactly one (P5). Every resulting request still passes through the counter and limit guard. Update the code comment and the tests. If the README or CONFIGURATION states the old meaning, note the fix for S6. *(evidence: src/llm-call.ts `attempt <= maxRetries`; schema.ts and docs/CONFIGURATION.md already state 1 + N, so no doc change; tests/llm-call.test.ts, scripts/compass/offline-check.ts)*
-- [ ] **4.** P3: the building stage's failure message names "extraction". Fixing it is a protected-text change. Present the exact before and after to the user, apply it only after approval, or leave it recorded as open.
-- [ ] **5.** Record each bug found in bugs.md as it is found. Update P1, P3, and P5 with their fix commits.
+- [x] **4.** P3: the building stage's failure message names "extraction". Fixing it is a protected-text change. Present the exact before and after to the user, apply it only after approval, or leave it recorded as open. *(evidence: user approved 2026-10-14: `LLM did not return a result through ${toolName}`, fallback `the required tool`; de8b168)*
+- [x] **5.** Record each bug found in bugs.md as it is found. Update P1, P3, and P5 with their fix commits. *(evidence: md/bugs.md P1, P3, P5, P6)*
 
 ## T3 — Verify repairs and measure their effect
 

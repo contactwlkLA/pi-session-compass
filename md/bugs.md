@@ -31,12 +31,12 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 
 | ID | Found | Observation | Evidence | Planned handling |
 |---|---|---|---|---|
-| P1 | 2026-10-14 | 98 of 150 baseline requests came after the attempt's first return-tool call; one build attempt called its return tool 9 times (188 s) | outputs/s1-t5/baseline-attempt2-report.md | S2.T2: the four return tools set `terminate: true` on success (verified offline); live effect measured in S2.T3 |
+| P1 | 2026-10-14 | 98 of 150 baseline requests came after the attempt's first return-tool call; one build attempt called its return tool 9 times (188 s) | outputs/s1-t5/baseline-attempt2-report.md | S2.T2: fixed 54620a4 (the four return tools set `terminate: true` on success, verified offline); live effect measured in S2.T3 |
 | P2 | 2026-10-14 | 8 zero-output responses (stopReason `stop`, 0 usage), most after 56–69 s; first build attempts failed this way in smoke and baseline | same report; outputs/s1-t4/smoke-result.md | Investigate in S2 |
-| P3 | 2026-10-14 | 9 failed building attempts with the message "LLM did not call the required extraction tool" (the message names extraction for the building stage) | outputs/s1-t5/baseline/traces.jsonl | S2.T2 (message wording is protected text) |
+| P3 | 2026-10-14 | 9 failed building attempts with the message "LLM did not call the required extraction tool" (the message names extraction for the building stage) | outputs/s1-t5/baseline/traces.jsonl | S2.T2.4: fixed de8b168; user-approved wording `LLM did not return a result through <tool>` |
 | P4 | 2026-10-14 | `runPipelineLoop` returns after its first productive sequence when it came from the last discovered file (`remainingFiles` counts only later files); the rest waits for the next timer tick | src/collector.ts `scanSessions`; B10 | Recorded; S3 replaces the scan position |
-| P5 | 2026-10-12 | `retries: N` means N attempts in total, so `retries: 0` makes no attempt | plan.md S2.T2 | S2.T2: fixed (1 + N attempts); tests/llm-call.test.ts |
-| P6 | 2026-10-14 | Return-tool captures live in closures that are never reset, so a retry or validation round with no valid tool call returns the previous round's capture as a success | outputs/s2-t1/termination-note.md | S2.T2: fixed (results count only after a terminating capture in the current attempt); tests/llm-call.test.ts |
+| P5 | 2026-10-12 | `retries: N` means N attempts in total, so `retries: 0` makes no attempt | plan.md S2.T2 | S2.T2: fixed 54620a4 (1 + N attempts); tests/llm-call.test.ts |
+| P6 | 2026-10-14 | Return-tool captures live in closures that are never reset, so a retry or validation round with no valid tool call returns the previous round's capture as a success | outputs/s2-t1/termination-note.md | S2.T2: fixed 54620a4 (results count only after a terminating capture in the current attempt); tests/llm-call.test.ts |
 
 ## Environment
 
@@ -51,4 +51,4 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 | Revision | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-14 | Initial journal from the S1 sessions. |
-| 0.2.0 | 2026-10-14 | P6 (stale captures) added; P1, P5, P6 handled in S2.T2. |
+| 0.2.0 | 2026-10-14 | P6 (stale captures) added; P1, P3, P5, P6 fixed in S2.T2. |
