@@ -20,6 +20,7 @@ Select the first unchecked stage. A checked stage requires verified milestone ev
 - Outcome: **S2 COMPLETE: termination, capture reset and retry fixes; compare run 46 requests / 26.0 min on the pipeline's 20 trios; branch s1/harness**
 - Blocker: **none**
 - Pending user inputs: **none for B-1; B-2 protected text (restore conflict report) when the B-2 specs are written**
+- User direction (2026-10-15): **do not over-engineer crash safety; it is not that important. Before writing the B-2 specs, propose a trimmed B-2 (what to keep from B2.1, B2.2, B2.3(b), B2.4, B2.5, B3) for user approval**
 - Stage order: **plan order, S2.T1–T3 before the optional S2.T4 Jev probe (user decision 2026-10-14)**
 - Limits: **suggested at launch from the [compass.md](compass.md) run-type table; confirmed by the user for every live run**
 - Smoke result (S1.T4): **PASS** (2026-10-14, attempt 3, capped at 5 requests; outputs/s1-t4/smoke-result.md)
