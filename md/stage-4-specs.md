@@ -1,6 +1,6 @@
 # Stage 4 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.2.0** · Status: **Approved (user, 2026-10-16)**
+Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Approved (user, 2026-10-16)**
 
 Date: **2026-10-16**
 
@@ -25,8 +25,8 @@ Add the Jev gate to the plugin: a transport-and-policy module, a gate step befor
      start = now(); attempts = 0
      loop (at most 2 attempts):
        if !beforeAttempt(): return bypass("limit_refused")          // no request made
-       attempts++
        remaining = start + deadlineMs - now(); if remaining <= 0: return bypass("timeout")
+       attempts++                                                   // counts POSTs actually sent
        POST with AbortController aborted after `remaining` ms; headers Authorization Bearer, Content-Type json; body { model, state, questions }
        abort → bypass("timeout")
        other fetch throw → transient "network"
@@ -48,7 +48,7 @@ Add the Jev gate to the plugin: a transport-and-policy module, a gate step befor
      - Key = `process.env.TYPESAFE_API_KEY`. Missing or empty → U1 once per run via `reportError(U1, "gate error")`, bypass `no_key`, extract.
      - `disabledForRun` → bypass `gate_disabled`, extract, no request.
      - `buildGateState` oversized → bypass `oversized_state`, extract, no request; does not count as a failure.
-     - Otherwise `callJev` with the real transport (`globalThis.fetch`, `Date.now`, a `setTimeout` sleep) and `beforeAttempt = emitGateAttempt`. A bypass other than `oversized_state` and `limit_refused` adds 1 to `consecutiveFailures`; a scored result sets it to 0. On reaching 3: `disabledForRun = true` and U2 once via `reportError(U2, "gate error")`.
+     - Otherwise `callJev` with the real transport (`globalThis.fetch`, `Date.now`, a `setTimeout` sleep) and `beforeAttempt = emitGateAttempt`. A bypass after a real request attempt (`timeout`, `network`, `http_<status>`, `invalid_response`) adds 1 to `consecutiveFailures`; `no_key`, `oversized_state`, `limit_refused` and `gate_disabled` never count; a scored result sets it to 0. On reaching 3: `disabledForRun = true` and U2 once via `reportError(U2, "gate error")`.
      - Decision: `skip` only when `mode === "enforce"` and `routeGate` says `reject`; otherwise `extract`.
      - Emit `emitGateResult(event)` for every non-off call (including bypasses) and return the event too.
    - `GateResultEvent`: `{ sourcePath, mode, policyHash, decision: "reject" | "pass" | "bypass", routed: "extract" | "skip", answers: Record<string, number> | null, bypassReason: string | null, model: string | null, attempts, latencyMs, usage }`.
@@ -57,21 +57,21 @@ Add the Jev gate to the plugin: a transport-and-policy module, a gate step befor
 5. **src/collector.ts, `tryExtractTrio`.** First step: `const gate = await checkTrio(trio, settings.gateMode, sessionFile)`. When `gate.decision === "skip"`: call `savePosition()` (the same save as a successful empty extraction, no candidates), do not call `emitTrioExamined`, and return `"continue"`. Otherwise continue exactly as today.
 6. **src/pipeline.ts.** Call `resetGateRun()` at the start of `runPipelineLoop`, before the first scan.
 
-**Edge cases to cover:** a 200 with a non-JSON body; an answer of `"0.05"` (string) or `1.2`; `Retry-After: 0`; `Retry-After` as an HTTP date (falls back to the default wait); a 429 whose wait does not fit the deadline (one attempt, bypass `http_429`); `beforeAttempt` false on the retry (bypass `limit_refused` after one attempt); an empty `TYPESAFE_API_KEY`; three consecutive bypasses followed by a fourth trio (no request); a scored result between two failures resets the count; `oversized_state` never counts toward the three.
+**Edge cases to cover:** a 200 with a non-JSON body; an answer of `"0.05"` (string) or `1.2`; `Retry-After: 0`; `Retry-After` as an HTTP date (falls back to the default wait); a 429 whose wait does not fit the deadline (one attempt, bypass `http_429`); `beforeAttempt` false on the retry (bypass `limit_refused` after one attempt); an empty `TYPESAFE_API_KEY`; three consecutive request failures followed by a fourth trio (no request); a keyless run of five trios (U1 once, no U2, no request); a scored result between two failures resets the count; `oversized_state` never counts toward the three.
 
 **Audit answers (CC, 2026-10-16; part of this spec):** (1) Blocker: add `tests/pipeline.test.ts` and `tests/extraction-outcomes.test.ts` to Allowed scope, but only for the one-line `gateMode: "off"` type fix. (2) `limit_refused` is a real bypass reason and does not count toward the three; stage-4-task.md design 6 and 8 are synced. (3) Risk 5: `no_key` does **not** count toward the three either. A keyless run reports U1 once and makes no requests; U2 never fires without a request. Only bypasses that follow a real request attempt count (`timeout`, `network`, `http_<status>`, `invalid_response`). (4) Noise 2: `attempts` counts POSTs actually sent. Increment it after `beforeAttempt` and the deadline check, right before `fetch`, so a first-iteration timeout reports 0. (5) Acceptance 2: don't parse the md file at runtime. Put the approved strings as literals in tests/jev.test.ts and assert the serialized body against them; CC checks those literals byte-exact against stage-4-task.md in review. (6) Risks 1, 2, 4: type-only imports both ways. In each gate test, call `resetGateRun()` in `beforeEach`, stub `globalThis.fetch` with a mock that rejects by default (so a leak can never reach the network), and set/restore `TYPESAFE_API_KEY` per test. Use fake timers for the abort path. (7) Noise 3, 4, 5, 7: as you propose (branch on `kind` before `routeGate`; deep-freeze; hash literal order; your extra tests). (8) Risk 3 (an enforce skip is not counted as an examined trio) is left for S4-02.
 
 **Acceptance criteria:**
 
 1. `callJev` follows the control flow above; tests cover every edge case listed and every bypass reason, with a mocked `fetch`, `now` and `sleep` (no real timers or network).
-2. The request body is exactly `{ model: "jev-1.13.0", state, questions }` with the approved Q texts byte-exact; a test compares the serialized `questions` with the stage-4-task.md table.
+2. The request body is exactly `{ model: "jev-1.13.0", state, questions }` with the approved Q texts byte-exact; tests/jev.test.ts holds the approved strings as literals and asserts the serialized body against them (no runtime parsing of md files; CC checks the literals against stage-4-task.md in review).
 3. `routeGate` rejects only when all four answers are ≤ 0.10; 0.10 itself rejects, 0.1000001 passes.
 4. Off makes no `fetch` call; shadow always extracts; enforce skips extraction only on `reject` and saves the scan position with no candidates; every bypass extracts.
 5. U1 and U2 appear once per run each, byte-exact, with source `gate error`; `resetGateRun` clears both.
 6. No test output, result, or error contains the API key (a test uses a recognizable fake key and searches all results and `reportError` calls for it).
 7. Existing tests pass; the `gateMode` default is `off`, so existing scans make no gate call.
 
-**Allowed scope:** src/jev.ts (new), src/gate.ts (new), src/instrument.ts, src/schema.ts, src/collector.ts (`tryExtractTrio` only), src/pipeline.ts (the reset call only), tests/jev.test.ts (new), tests/gate.test.ts (new), tests/setup.ts (only if a central mock must learn the new modules), and tests that assert the settings count or the General tab list.
+**Allowed scope:** src/jev.ts (new), src/gate.ts (new), src/instrument.ts, src/schema.ts, src/collector.ts (`tryExtractTrio` only), src/pipeline.ts (the reset call only), tests/jev.test.ts (new), tests/gate.test.ts (new), tests/setup.ts (only if a central mock must learn the new modules), and, for the one-line `gateMode: "off"` type fix only, tests/pipeline.test.ts and tests/extraction-outcomes.test.ts.
 
 **Constraints:** no new dependencies; no SDK. Only the approved Q, U1, U2 and S texts. No harness changes. Do not touch extraction, building, snapshots, or the scan loop beyond the `tryExtractTrio` step.
 
@@ -95,3 +95,4 @@ Planner difficulty: S4-01 medium.
 |---|---|---|
 | 0.1.0 | 2026-10-16 | S4-01 spec. |
 | 0.2.0 | 2026-10-16 | S4-01 audit answers. |
+| 0.3.0 | 2026-10-16 | Body synced with the audit answers (re-audit round 2). |
