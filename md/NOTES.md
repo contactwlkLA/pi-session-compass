@@ -1,6 +1,6 @@
 # Coder comparison: discussion notes (2026-10-15)
 
-Revision: **0.2.0** · Updated: **2026-10-15**
+Revision: **0.3.0** · Updated: **2026-10-15**
 
 Short reminder of what was decided before starting Stage 3 work in `/home/wai/compass-ext4`.
 
@@ -21,7 +21,7 @@ Short reminder of what was decided before starting Stage 3 work in `/home/wai/co
 - **Cost:** Pi's estimate is good enough; ballpark only. Keep raw tokens beside it, label `cost_source`, compare as ratios.
 - **Harness fields:** filled by hand from Pi session logs (`~/.pi/agent/sessions/<project>/*.jsonl`) when convenient; null is fine. No probe script; no separate tooling project.
   - Peak context per call = input + cacheRead + cacheWrite (Pi's `input` excludes cached tokens).
-- **Thinking level:** `high` for every coder (MiMo offers only high; it also suits Haiku for coding). Keep it fixed within a block.
+- **Thinking level:** a level name is only a relative label within one model; it does not mean the same reasoning budget across models. MiMo v2.6 offers only `high` or none, and runs at `high`. Haiku ran S3-B1-01 at `high` and runs at `xhigh` from its next session (user, 2026-10-15). Keep it fixed within a task attempt; the ledger records it per attempt.
 - **Speed:** the user expects Haiku to be much faster than MiMo 2.6 flash at similar quality. If only one HARNESS field gets filled, make it `coder_active_s` (from Pi timestamps; includes test run time).
 - **MiMo variants:** 2.6 flash is the planned coder; 2.6 pro ranks higher on Artificial Analysis and may be added later as its own block.
 - **`reasoning` token field:** a measured count, not a setting; optional, null is fine.
@@ -51,3 +51,4 @@ The comparison is a side quest. Where it conflicts with the project rules (AGENT
 |---|---|---|
 | 0.1.0 | 2026-10-15 | Discussion notes. |
 | 0.2.0 | 2026-10-15 | Roles, one model per Pi session, file locations, project-first conflict resolutions. |
+| 0.3.0 | 2026-10-15 | Thinking levels are per-model labels; Haiku moves to xhigh from its next session. |

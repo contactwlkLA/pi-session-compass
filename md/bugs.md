@@ -1,6 +1,6 @@
 # pi-session-compass — Bug journal
 
-Revision: **0.6.0** · Updated: **2026-10-14**
+Revision: **0.7.0** · Updated: **2026-10-15**
 
 A live record of every bug found while building and running the harness: harness, pipeline, test, or environment. Add an entry when a bug is found; update its status, fix commit, and evidence when it changes. Never delete an entry; a closed bug stays as history. Pipeline behaviors that a stage is meant to change are listed separately under Pipeline findings.
 
@@ -41,7 +41,8 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 | P7 | 2026-10-14 | The pipeline examines 20 of the census's 26 trios: after a productive trio, `scanSessions` sets the checkpoint past the trio's closing assistant record (collector.ts, `prevByte + bytesScanned`), and the next pass starts with a fresh detector, so a following trio that opens with that record is never detected. Affects S1 baseline and S2 compare equally; the S1 report's "trios 21–26 not examined" is wrong (the baseline reached every trio the pipeline can reach) | outputs/s2-t3/compare-report.md; outputs/s2-t3/trio-loss-replay.ts | FIXED 47a95b5: 26 of 26 census trios examined (outputs/s3-a/scan-check.md) |
 | P8 | 2026-10-14 | The scanner's `catch` around each record wraps both `JSON.parse` and the trio's extraction, post-review, `onTrio`, and checkpoint save; any error other than PAUSED is swallowed as a "malformed line", the scan continues, and the next productive trio moves the checkpoint past the failed one | src/collector.ts streamAndExtract (try/catch around `detector.process` and `tryExtractTrio`) | FIXED 47a95b5: only `JSON.parse` is guarded (tests/scan-position.test.ts) |
 | P9 | 2026-10-14 | Scanner byte accounting can put the resume offset mid-record: an unterminated final line (a record still being written) is parsed, fails, and is counted as `length + 1` bytes; blank lines are skipped without counting; CRLF line ends count one byte short | src/collector.ts streamAndExtract `bytesRead`, scanSessions `prevByte + bytesScanned` | FIXED 47a95b5: src/jsonl-reader.ts (tests/jsonl-reader.test.ts) |
-| P10 | 2026-10-14 | A failed extraction (no valid return after retries) returns empty notes, so it is recorded as an empty result and the checkpoint advances past the trio | src/collector.ts callExtractionLlm `if (!result)` | S3 Part B (B1: typed outcomes) |
+| P10 | 2026-10-14 | A failed extraction (no valid return after retries) returns empty notes, so it is recorded as an empty result and the checkpoint advances past the trio | src/collector.ts callExtractionLlm `if (!result)` | FIXED 78b8ffd (S3-B1-01): failed extraction or review keeps the scan position and stops the run (tests/extraction-outcomes.test.ts) |
+| P11 | 2026-10-15 | A user record before a file's first assistant text stays pending in the detector, so two later assistant texts with no user turn between them complete a trio in an uninterrupted scan; a scan restarted at the first of those assistant records has no pending user and emits nothing. Restart is not equivalent in this case | Reported by the coder in outputs/s3-b/handoff/S3-B1-01-r1.md (Uncertain 3); not reproduced | WATCH; the uninterrupted trio pairs a user turn with the reply after the agent's answer to it, so the detector, not the restart, may be wrong. Decide in Part C or S5 |
 
 ## Environment
 
@@ -57,6 +58,6 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.4.0 | 2026-10-14 | P8–P10 (scanner catch scope, byte accounting, failed extraction recorded as empty) added. |
 | 0.5.0 | 2026-10-14 | E3 updated (Pi CLI 1.2.0); E4 (two Pi installs) and E5 (Pi context overflow) added. |
 | 0.6.0 | 2026-10-15 | P7–P9 fixed; B17 (order-dependent suite) found and fixed; B12 explained by B17. |
+| 0.7.0 | 2026-10-15 | P10 fixed (S3-B1-01); P11 (restart after a leading user record) added as WATCH. |
