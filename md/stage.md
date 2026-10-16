@@ -1,25 +1,25 @@
 # pi-session-compass — Stage continuation
 
-Revision: **0.16.0** · Updated: **2026-10-16**
+Revision: **0.17.0** · Updated: **2026-10-16**
 
 Select the first unchecked stage. A checked stage requires verified milestone evidence. Unchecked means not started, partial, or blocked; use the continuation fields below. Stop after that stage’s completion or a documented stopping condition.
 
 - [x] **S1 — Baseline:** [stage-1-task.md](stage-1-task.md) · M1 · COMPLETE 2026-10-14 · baseline covers trios 1–20 of 26 by user decision · evidence outputs/s1-t5/baseline-attempt2-report.md
 - [x] **S2 — Termination and retries:** [stage-2-task.md](stage-2-task.md) · M2 · COMPLETE 2026-10-14 · same 20 trios in 46 requests / 26.0 min (baseline 150 / 56.9 min) · user decision: proceed to S3 · evidence outputs/s2-t3/compare-report.md
 - [x] **S3 — Recovery:** [stage-3-task.md](stage-3-task.md) · M3 · COMPLETE 2026-10-16 · user: proceed to S4 · Parts A, B, C done (simple rollback, user-approved trims); evidence outputs/s3-a/, outputs/s3-b/handoff/, outputs/s3-c/handoff/
-- [ ] **S4 — Jev gate and limits:** [stage-4-task.md](stage-4-task.md) · M4 · VERIFIED 2026-10-16, user checkpoint pending · specs in [stage-4-specs.md](stage-4-specs.md) · evidence outputs/s4/s4-03-wire-check.md
-- [ ] **S5 — Quality and savings:** `stage-5-task.md` · M5 · NOT_STARTED · task file not yet created
+- [x] **S4 — Jev gate and limits:** [stage-4-task.md](stage-4-task.md) · M4 · COMPLETE 2026-10-16 · user: proceed to S5 · specs in [stage-4-specs.md](stage-4-specs.md) · evidence outputs/s4/s4-03-wire-check.md
+- [ ] **S5 — Quality and savings:** [stage-5-task.md](stage-5-task.md) · M5 · IN_PROGRESS · pilot approved 2026-10-16 (TxnHunter-3 + agy-sessions-3)
 - [ ] **S6 — Settings, acceptance, and handoff:** `stage-6-task.md` · M6 · NOT_STARTED · task file not yet created
 
 ## Continuation
 
-- Active stage: **S4**
-- Next unfinished step: **S4 user checkpoint (S4-04 item 3), then S5 planning (write stage-5-task.md for approval)**
+- Active stage: **S5**
+- Next unfinished step: **S5-01 (corpus freeze, session split, gate scoring): CC writes the spec in stage-5-specs.md; Pi audits and codes in a fresh session**
 - Roles (user, 2026-10-15): **Pi is no longer parked. Pi codes, one model per Pi session (the user switches models between sessions). Claude Code plans, writes task specs, reviews, keeps the ledger (md/ledger.jsonl, schema md/ledger.schema.json), verifies, and commits; it writes no implementation. The coder comparison is a side quest: where it conflicts with the project, the project wins (resolutions in NOTES.md)**
 - Last completed step: **S4-03 PASS (shadow smoke, 2 Jev calls scored, jev-1.13.0, no key in artifacts; outputs/s4/s4-03-wire-check.md); S4 gate green (549/123, single-worker, concurrent). Before that: S4-02 accepted first pass (mimo-v2.6-flash): src/gate-config.ts holds every gate value (policy hash unchanged, ad7880acdc3b); harness `--gate-mode`, gate request counting, receipt/trace/sheet gate records; npm test 549/549, test:compass 123/123. Probe (0a7ef53, live): 26 trios, 0 `no_lesson` at threshold 0.1**
 - Outcome: **S2 COMPLETE: termination, capture reset and retry fixes; compare run 46 requests / 26.0 min on the pipeline's 20 trios; branch s1/harness**
 - Blocker: **none**
-- Pending user inputs: **S4 checkpoint decision**
+- Pending user inputs: **none**
 - User direction (2026-10-15/16): **do not over-engineer crash safety. Simple-rollback trim approved 2026-10-16 and applied to architecture.md §6, plan.md S3 and stage-3-task.md Part B: no publication intent, no automatic restore or edit guard, no per-boundary crash tests; B-2 = S3-B2-01. Part C gets the same simplicity check before its spec. Extraction cache and prefix runs wait for S5 (user, 2026-10-16)**
 - Stage order: **plan order, S2.T1–T3 before the optional S2.T4 Jev probe (user decision 2026-10-14)**
 - Limits: **suggested at launch from the [compass.md](compass.md) run-type table; confirmed by the user for every live run**
@@ -39,6 +39,6 @@ Stage meanings and dependencies: [plan.md](plan.md). Operating rules: [AGENTS.md
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.14.0 | 2026-10-16 | S3 complete (user checkpoint); S4 task file drafted. |
 | 0.15.0 | 2026-10-16 | S4-02 accepted; next S4-03. |
 | 0.16.0 | 2026-10-16 | S4-03 passed; M4 verified; checkpoint pending. |
+| 0.17.0 | 2026-10-16 | S4 complete; S5 pilot plan approved. |

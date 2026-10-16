@@ -98,7 +98,7 @@ No live call before S4-03. S4-03 needs `TYPESAFE_API_KEY` in the environment.
 
 - [x] **1.** Both full suites, single-worker, and a concurrent run of both suites pass; commit and push. *(2026-10-16: `npm test` 25 files / 549 passed; `npm run test:compass` 9 files / 123 passed; single-worker 549 and 123 passed; concurrent run of both suites green)*
 - [x] **2.** S4-03 passed, or is recorded as blocked on the key (M4 then waits on it). *(2026-10-16: PASS, shadow smoke capped at 5 requests; 2 Jev calls scored, model jev-1.13.0, 114–201 ms; evidence outputs/s4/s4-03-wire-check.md)*
-- [ ] **3.** Sync this file, stage.md, bugs.md, and the ledger. Checkpoint with the user before S5.
+- [x] **3.** Sync this file, stage.md, bugs.md, and the ledger. Checkpoint with the user before S5. *(2026-10-16: user: proceed to S5)*
 
 ## Out of scope
 
