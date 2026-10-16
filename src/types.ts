@@ -127,6 +127,28 @@ export interface ExtractionResult {
   entryIds: (string | null)[];
 }
 
+// Pending candidate (a saved rule awaiting post-review or building)
+export interface PendingCandidate {
+  /** `${trioId}:${index}` in the rule list the candidate came from. */
+  candidateId: string;
+  /** Stable identity of the examined trio (sha256 hex). */
+  trioId: string;
+  /** path.resolve() of the session file. */
+  sourcePath: string;
+  /** Working directory from the file's header record. */
+  cwd: string | null;
+  /** Session id from the file's header record. */
+  sessionId: string | null;
+  /** Record ids of the trio's [before, user, after] records; null where a record has no id. */
+  entryIds: (string | null)[];
+  /** EXTRACTION_POLICY_REVISION in force when the rule was extracted. */
+  policyRevision: string;
+  text: string;
+  stage: "needsPostReview" | "needsBuild";
+  /** The extraction summary; set only for needsPostReview. */
+  reviewContext: InteractionSequence | null;
+}
+
 // Building LLM
 export interface BuildingDecision {
   candidate: string;

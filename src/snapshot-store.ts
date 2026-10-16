@@ -16,7 +16,7 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ScanCheckpoint } from "./types.js";
+import type { PendingCandidate, ScanCheckpoint } from "./types.js";
 
 export const SNAPSHOT_SCHEMA_VERSION = 1;
 
@@ -33,7 +33,7 @@ const NO_SNAPSHOT_SEQ = 0;
 /** Progress held by a snapshot. */
 export interface SnapshotState {
   scanPositions: Record<string, ScanCheckpoint>;
-  pendingCandidates: unknown[];
+  pendingCandidates: PendingCandidate[];
   publicationIntent: Record<string, string> | null;
 }
 
