@@ -2011,6 +2011,7 @@ import * as collector from "../src/collector.js";
 // collect cancellation tests
 // ============================================================================
 import { collect } from "../src/commands/collect.js";
+import { EXTRACTION_POLICY_REVISION, loadWorkState, saveWorkState } from "../src/work-state.js";
 
 describe("collect cancellation", () => {
   const tmpDir = () => {
@@ -2193,23 +2194,40 @@ describe("collect cancellation", () => {
     setupState(dir);
     setupTestSettings({ rateLimitMs: 0 });
     try {
-      vi.spyOn(collector, "scanSessions").mockResolvedValue({
-        results: [
-          {
-            behaviorNotes: ["test rule"],
-            sessionPath: "test.jsonl",
-            source: "main",
-            trioId: "t1",
-            candidateIds: ["t1:0"],
-            sessionId: null,
-            cwd: null,
-            entryIds: [null, null, null],
-          },
-        ],
-        triosProcessed: 1,
-        totalKnownTrios: 1,
-        remainingFiles: 0,
-        stopReason: null,
+      vi.spyOn(collector, "scanSessions").mockImplementation(async () => {
+        // The scan saved its rule as a pending candidate at its examined-trio boundary.
+        const work = loadWorkState(dir);
+        work.pendingCandidates.push({
+          candidateId: "t1:0",
+          trioId: "t1",
+          sourcePath: path.resolve("test.jsonl"),
+          cwd: null,
+          sessionId: null,
+          entryIds: [null, null, null],
+          policyRevision: EXTRACTION_POLICY_REVISION,
+          text: "test rule",
+          stage: "needsBuild",
+          reviewContext: null,
+        });
+        saveWorkState(dir, work);
+        return {
+          results: [
+            {
+              behaviorNotes: ["test rule"],
+              sessionPath: "test.jsonl",
+              source: "main",
+              trioId: "t1",
+              candidateIds: ["t1:0"],
+              sessionId: null,
+              cwd: null,
+              entryIds: [null, null, null],
+            },
+          ],
+          triosProcessed: 1,
+          totalKnownTrios: 1,
+          remainingFiles: 0,
+          stopReason: null,
+        };
       });
       vi.spyOn(builder, "buildPortrait").mockRejectedValue(new Error("PAUSED"));
 

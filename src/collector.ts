@@ -78,6 +78,7 @@ function recordDigest(text: string): string {
 
 const FILE_START = 0;
 const NO_REVIEW_CONTEXT: null = null;
+const NO_DUMP_PATH: null = null;
 const SCAN_ERROR_SOURCE = "scan error";
 
 /** Stops scanning one session file; the scan reports it and continues with other files. */
@@ -680,6 +681,72 @@ async function streamAndExtract(opts: StreamAndExtractOptions): Promise<StreamAn
     sessionId,
     stopReason: null,
   };
+}
+
+/** The `needsPostReview` candidates grouped by trioId, in stored order; `sourcePath` filters by source. */
+function pendingReviewGroups(pending: PendingCandidate[], sourcePath: string | null): PendingCandidate[][] {
+  const groups: PendingCandidate[][] = [];
+  const groupByTrio = new Map<string, PendingCandidate[]>();
+  for (const candidate of pending) {
+    if (candidate.stage !== "needsPostReview") continue;
+    if (sourcePath !== null && candidate.sourcePath !== sourcePath) continue;
+    const group = groupByTrio.get(candidate.trioId);
+    if (group === undefined) {
+      const created = [candidate];
+      groupByTrio.set(candidate.trioId, created);
+      groups.push(created);
+    } else {
+      group.push(candidate);
+    }
+  }
+  return groups;
+}
+
+/**
+ * Review every `needsPostReview` group (candidates sharing a trioId) with the review context it was
+ * saved with, and replace the group with its kept rules as `needsBuild` candidates. Stops at the
+ * first failed review and keeps that group's raw rules pending. With a `sourceFilter` path, only
+ * the groups whose sourcePath equals its resolved form are reviewed.
+ */
+export async function reviewPendingCandidates(
+  portraitDir: string,
+  sourceFilter: string | null,
+): Promise<PipelineStopReason | null> {
+  const settings = getPortraitSettings();
+  const sourcePath = sourceFilter === null ? null : path.resolve(sourceFilter);
+  const work = loadWorkState(portraitDir);
+  for (const group of pendingReviewGroups(work.pendingCandidates, sourcePath)) {
+    const first = group[0];
+    const reviewContext = first.reviewContext;
+    // A group is always saved with its extraction summary; there is nothing to review without it.
+    if (reviewContext === null) continue;
+    const rawRules = group.map((candidate) => candidate.text);
+    const review: ReviewOutcome = await postExtractRules(
+      rawRules,
+      reviewContext,
+      NO_DUMP_PATH,
+      settings.postExtractionModel || undefined,
+    );
+    if (review.kind === "failed") {
+      const rawCount = rawRules.length;
+      reportError(
+        `Rule review failed; ${rawCount} extracted ${rawCount === 1 ? "rule was" : "rules were"} kept and will be reviewed on the next run.`,
+        "review error",
+      );
+      return "review_failed";
+    }
+    const identity: TrioIdentity = {
+      trioId: first.trioId,
+      sourcePath: first.sourcePath,
+      cwd: first.cwd,
+      sessionId: first.sessionId,
+      entryIds: first.entryIds,
+    };
+    work.pendingCandidates = work.pendingCandidates.filter((candidate) => !group.includes(candidate));
+    work.pendingCandidates.push(...candidatesFor(review.notes, identity, "needsBuild", NO_REVIEW_CONTEXT));
+    saveWorkState(portraitDir, work);
+  }
+  return null;
 }
 
 /**

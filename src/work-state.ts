@@ -18,6 +18,7 @@ import * as path from "node:path";
 import { EXTRACTION_PROMPT } from "./prompts.js";
 import { loadLatestSnapshot, type SnapshotState, writeSnapshot } from "./snapshot-store.js";
 import { loadScanCheckpoints, saveScanCheckpoints } from "./storage.js";
+import type { PendingCandidate } from "./types.js";
 
 const WORK_FILES = ["portrait.md", "evicted.md", "dropped.md"];
 const POLICY_REVISION_LENGTH = 12;
@@ -41,6 +42,17 @@ export function loadWorkState(portraitDir: string): SnapshotState {
     pendingCandidates: [],
     publicationIntent: null,
   };
+}
+
+/**
+ * The `needsBuild` candidates in stored order. When `sourceFilter` is a path, only the candidates
+ * whose sourcePath equals its resolved form are selected.
+ */
+export function selectPendingForBuild(state: SnapshotState, sourceFilter: string | null): PendingCandidate[] {
+  const sourcePath = sourceFilter === null ? null : path.resolve(sourceFilter);
+  return state.pendingCandidates.filter(
+    (candidate) => candidate.stage === "needsBuild" && (sourcePath === null || candidate.sourcePath === sourcePath),
+  );
 }
 
 /**

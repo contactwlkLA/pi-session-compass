@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 avtc <tarasenkov@gmail.com>
 
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // config.js + llm-call.js are mocked centrally in tests/setup.ts. The remaining dependencies
@@ -15,6 +18,9 @@ import { runMaintenance } from "../src/maintenance-core.js";
 import { resetPipelineState, runPipelineLoop } from "../src/pipeline.js";
 import type { PortraitSettings } from "../src/schema.js";
 import { loadPortraitState, parsePortraitRules, readPortrait } from "../src/storage.js";
+import type { PendingCandidate } from "../src/types.js";
+import { EXTRACTION_POLICY_REVISION, loadWorkState, saveWorkState } from "../src/work-state.js";
+import { setupTestSettings, teardownTestSettings } from "./settings-helpers.js";
 import { getStubPortraitState, setTestConfig, useStubs } from "./setup.js";
 
 const mockScanSessions = scanSessions as unknown as ReturnType<typeof vi.fn>;
@@ -23,6 +29,38 @@ const mockLoadPortraitState = loadPortraitState as unknown as ReturnType<typeof 
 const mockReadPortrait = readPortrait as unknown as ReturnType<typeof vi.fn>;
 const mockCountPendingTrios = countPendingTrios as unknown as ReturnType<typeof vi.fn>;
 const mockParsePortraitRules = parsePortraitRules as unknown as ReturnType<typeof vi.fn>;
+
+let portraitDir: string;
+
+/**
+ * Make every scan pass save one pending `needsBuild` candidate per text — what the scan does at
+ * its examined-trio boundary — and return the texts as that pass's results.
+ */
+function scanSavingCandidates(texts: string[]): void {
+  mockScanSessions.mockImplementation(async () => {
+    const work = loadWorkState(portraitDir);
+    const candidates: PendingCandidate[] = texts.map((text, index) => ({
+      candidateId: `saved:${index}`,
+      trioId: `saved-${index}`,
+      sourcePath: "/tmp/s1.jsonl",
+      cwd: null,
+      sessionId: null,
+      entryIds: [null, null, null],
+      policyRevision: EXTRACTION_POLICY_REVISION,
+      text,
+      stage: "needsBuild",
+      reviewContext: null,
+    }));
+    work.pendingCandidates.push(...candidates);
+    saveWorkState(portraitDir, work);
+    return {
+      results: [{ behaviorNotes: texts, sessionPath: "/tmp/s1.jsonl", source: "main" }],
+      remainingFiles: 0,
+      triosProcessed: 1,
+      totalKnownTrios: 1,
+    };
+  });
+}
 
 // ============================================================================
 // runPipelineLoop tests
@@ -63,8 +101,10 @@ describe("runPipelineLoop", () => {
       maintenanceCore: true,
       error: true,
     });
-    // Redirect the central config mock to the fixed paths this suite expects.
-    setTestConfig({ portraitDir: "/tmp/portrait", sessionDirs: ["/tmp/sessions"] });
+    // Redirect the central config mock to the work dir this suite uses.
+    portraitDir = fs.mkdtempSync(path.join(os.tmpdir(), "pipeline-loop-"));
+    setTestConfig({ portraitDir, sessionDirs: [path.join(portraitDir, "sessions")] });
+    setupTestSettings(null);
     resetPipelineState(); // Reset pendingBgScan for test isolation
 
     // Reset mock state counter (centralized storage stub state)
@@ -84,10 +124,12 @@ describe("runPipelineLoop", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    teardownTestSettings();
+    fs.rmSync(portraitDir, { recursive: true, force: true });
   });
 
   it("processes one batch and returns stats", async () => {
-    const stats = await runPipelineLoop(defaultSettings, Infinity, () => false);
+    const stats = await runPipelineLoop(defaultSettings, Infinity, () => false, null);
     expect(stats.totalSequences).toBe(1);
     expect(mockScanSessions).toHaveBeenCalledTimes(1);
   });
@@ -100,7 +142,7 @@ describe("runPipelineLoop", () => {
       totalKnownTrios: 10,
     });
 
-    const stats = await runPipelineLoop(defaultSettings, 1, () => false);
+    const stats = await runPipelineLoop(defaultSettings, 1, () => false, null);
     expect(stats.totalSequences).toBe(1);
     expect(mockScanSessions).toHaveBeenCalledTimes(1);
   });
@@ -113,7 +155,7 @@ describe("runPipelineLoop", () => {
       totalKnownTrios: 10,
     });
 
-    const stats = await runPipelineLoop(defaultSettings, Infinity, () => true);
+    const stats = await runPipelineLoop(defaultSettings, Infinity, () => true, null);
     expect(stats.totalSequences).toBe(0);
     expect(mockScanSessions).not.toHaveBeenCalled();
   });
@@ -128,7 +170,7 @@ describe("runPipelineLoop", () => {
     });
 
     const start = Date.now();
-    const promise = runPipelineLoop(settingsWithRateLimit, Infinity, () => false);
+    const promise = runPipelineLoop(settingsWithRateLimit, Infinity, () => false, null);
     await vi.advanceTimersByTimeAsync(2000); // Fast-forward through delays
     const stats = await promise;
     const elapsed = Date.now() - start;
@@ -137,7 +179,7 @@ describe("runPipelineLoop", () => {
   }, 10000);
 
   it("resets progress counters before loop", async () => {
-    await runPipelineLoop(defaultSettings, Infinity, () => false);
+    await runPipelineLoop(defaultSettings, Infinity, () => false, null);
     const state = mockLoadPortraitState.mock.results[0]?.value;
     expect(state.totalKnownTrios).toBe(0);
     expect(state.triosProcessed).toBe(0);
@@ -145,7 +187,7 @@ describe("runPipelineLoop", () => {
   });
 
   it("finalizes state to idle after loop", async () => {
-    await runPipelineLoop(defaultSettings, Infinity, () => false);
+    await runPipelineLoop(defaultSettings, Infinity, () => false, null);
     const state = mockLoadPortraitState.mock.results[0]?.value;
     expect(state.pipelinePhase).toBe("idle");
     expect(state.remainingFiles).toBe(0);
@@ -155,7 +197,7 @@ describe("runPipelineLoop", () => {
 
   it("does not rate limit when rateLimit is 0s", async () => {
     // With fake timers, if there's no delay, the promise resolves immediately
-    const promise = runPipelineLoop(defaultSettings, Infinity, () => false);
+    const promise = runPipelineLoop(defaultSettings, Infinity, () => false, null);
     const stats = await promise;
     expect(stats.totalSequences).toBe(1);
   });
@@ -176,8 +218,8 @@ describe("runPipelineLoop", () => {
       }),
     );
 
-    const p1 = runPipelineLoop(defaultSettings, Infinity, () => false);
-    const p2 = runPipelineLoop(defaultSettings, Infinity, () => false);
+    const p1 = runPipelineLoop(defaultSettings, Infinity, () => false, null);
+    const p2 = runPipelineLoop(defaultSettings, Infinity, () => false, null);
     // Both calls started before bg scan finished — only one spawn
     resolveBgScan?.();
     await p1;
@@ -186,15 +228,10 @@ describe("runPipelineLoop", () => {
   });
 
   it("counts totalInserted from buildPortrait result", async () => {
-    mockScanSessions.mockResolvedValue({
-      results: [{ behaviorNotes: ["rule-1"], sessionPath: "/tmp/s1.jsonl", source: "main" }],
-      remainingFiles: 0,
-      triosProcessed: 1,
-      totalKnownTrios: 1,
-    });
+    scanSavingCandidates(["rule-1"]);
     mockBuildPortrait.mockResolvedValue({ inserted: 2, evicted: 1, rules: [], evictedRules: [], droppedRules: [] });
 
-    const stats = await runPipelineLoop(defaultSettings, Infinity, () => false);
+    const stats = await runPipelineLoop(defaultSettings, Infinity, () => false, null);
     expect(stats.totalInserted).toBe(2);
     expect(stats.totalEvicted).toBe(1);
   });
@@ -202,19 +239,14 @@ describe("runPipelineLoop", () => {
   it("propagates errors from scanSessions", async () => {
     mockScanSessions.mockRejectedValue(new Error("scan failed"));
 
-    await expect(runPipelineLoop(defaultSettings, Infinity, () => false)).rejects.toThrow("scan failed");
+    await expect(runPipelineLoop(defaultSettings, Infinity, () => false, null)).rejects.toThrow("scan failed");
   });
 
   it("propagates errors from buildPortrait", async () => {
-    mockScanSessions.mockResolvedValue({
-      results: [{ behaviorNotes: ["rule-1"], sessionPath: "/tmp/s1.jsonl", source: "main" }],
-      remainingFiles: 0,
-      triosProcessed: 1,
-      totalKnownTrios: 1,
-    });
+    scanSavingCandidates(["rule-1"]);
     mockBuildPortrait.mockRejectedValue(new Error("build failed"));
 
-    await expect(runPipelineLoop(defaultSettings, Infinity, () => false)).rejects.toThrow("build failed");
+    await expect(runPipelineLoop(defaultSettings, Infinity, () => false, null)).rejects.toThrow("build failed");
   });
 
   it("respects mid-loop cancellation", async () => {
@@ -239,7 +271,7 @@ describe("runPipelineLoop", () => {
       return false;
     };
 
-    const stats = await runPipelineLoop(defaultSettings, Infinity, cancelCb);
+    const stats = await runPipelineLoop(defaultSettings, Infinity, cancelCb, null);
     expect(stats.totalSequences).toBe(1); // stopped after first iteration
   });
 
@@ -252,7 +284,7 @@ describe("runPipelineLoop", () => {
       totalKnownTrios: 0,
     });
 
-    await runPipelineLoop(defaultSettings, Infinity, () => false);
+    await runPipelineLoop(defaultSettings, Infinity, () => false, null);
 
     // Advance timers to let bg scan microtask complete
     await vi.advanceTimersByTimeAsync(10);
@@ -262,15 +294,10 @@ describe("runPipelineLoop", () => {
   });
 
   it("increments rulesInsertedSinceMaintenance counter on buildPortrait", async () => {
-    mockScanSessions.mockResolvedValue({
-      results: [{ behaviorNotes: ["rule-1"], sessionPath: "/tmp/s1.jsonl", source: "main" }],
-      remainingFiles: 0,
-      triosProcessed: 1,
-      totalKnownTrios: 1,
-    });
+    scanSavingCandidates(["rule-1"]);
     mockBuildPortrait.mockResolvedValue({ inserted: 3, evicted: 0, rules: [], evictedRules: [], droppedRules: [] });
 
-    await runPipelineLoop(defaultSettings, Infinity, () => false);
+    await runPipelineLoop(defaultSettings, Infinity, () => false, null);
 
     expect(getStubPortraitState().rulesInsertedSinceMaintenance).toBe(3);
   });
@@ -283,15 +310,10 @@ describe("runPipelineLoop", () => {
       maintenanceEveryNRulesInserted: 5,
     };
 
-    mockScanSessions.mockResolvedValue({
-      results: [{ behaviorNotes: ["rule-1"], sessionPath: "/tmp/s1.jsonl", source: "main" }],
-      remainingFiles: 0,
-      triosProcessed: 1,
-      totalKnownTrios: 1,
-    });
+    scanSavingCandidates(["rule-1"]);
     mockBuildPortrait.mockResolvedValue({ inserted: 6, evicted: 0, rules: [], evictedRules: [], droppedRules: [] });
 
-    await runPipelineLoop(settingsWithMaintenance, Infinity, () => false);
+    await runPipelineLoop(settingsWithMaintenance, Infinity, () => false, null);
 
     expect(mockRunMaintenance).toHaveBeenCalledTimes(1);
   });
@@ -304,15 +326,10 @@ describe("runPipelineLoop", () => {
       maintenanceEveryNRulesInserted: 10,
     };
 
-    mockScanSessions.mockResolvedValue({
-      results: [{ behaviorNotes: ["rule-1"], sessionPath: "/tmp/s1.jsonl", source: "main" }],
-      remainingFiles: 0,
-      triosProcessed: 1,
-      totalKnownTrios: 1,
-    });
+    scanSavingCandidates(["rule-1"]);
     mockBuildPortrait.mockResolvedValue({ inserted: 3, evicted: 0, rules: [], evictedRules: [], droppedRules: [] });
 
-    await runPipelineLoop(settingsWithMaintenance, Infinity, () => false);
+    await runPipelineLoop(settingsWithMaintenance, Infinity, () => false, null);
 
     expect(mockRunMaintenance).not.toHaveBeenCalled();
   });
@@ -325,15 +342,10 @@ describe("runPipelineLoop", () => {
       maintenanceEveryNRulesInserted: 0,
     };
 
-    mockScanSessions.mockResolvedValue({
-      results: [{ behaviorNotes: ["rule-1"], sessionPath: "/tmp/s1.jsonl", source: "main" }],
-      remainingFiles: 0,
-      triosProcessed: 1,
-      totalKnownTrios: 1,
-    });
+    scanSavingCandidates(["rule-1"]);
     mockBuildPortrait.mockResolvedValue({ inserted: 100, evicted: 0, rules: [], evictedRules: [], droppedRules: [] });
 
-    await runPipelineLoop(settingsNoMaintenance, Infinity, () => false);
+    await runPipelineLoop(settingsNoMaintenance, Infinity, () => false, null);
 
     expect(mockRunMaintenance).not.toHaveBeenCalled();
   });

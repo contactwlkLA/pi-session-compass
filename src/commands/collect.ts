@@ -10,6 +10,9 @@ import { getPortraitSettings } from "../settings-ui.js";
 import { loadPortraitState, parsePortraitRules, readPortrait, savePortraitState } from "../storage.js";
 import { getErrorMessage } from "../utils.js";
 
+/** Sentinel: no source filter (every source's pending work). */
+const NO_SOURCE_FILTER: null = null;
+
 export async function collect(limit: number | undefined): Promise<string> {
   const state = globalThis.__piPortrait;
   const acquireCollectLock = globalThis.__piPortraitAcquireCollectLock;
@@ -40,6 +43,7 @@ export async function collect(limit: number | undefined): Promise<string> {
       settings,
       maxSequences,
       () => state.collectCancelled,
+      NO_SOURCE_FILTER,
     );
 
     if (state.collectCancelled) {

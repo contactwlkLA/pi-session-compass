@@ -25,6 +25,9 @@ export interface SinkError {
   error: string;
 }
 
+/** Sentinel: no source filter (every source's pending work). */
+const NO_SOURCE_FILTER: null = null;
+
 /** Wrap instrumentation callbacks so a throwing sink is recorded instead of breaking the run. */
 export function createSinkGuard(): {
   sinkErrors: SinkError[];
@@ -275,7 +278,12 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
     const pipelineStats = { totalSequences: 0, totalInserted: 0, totalEvicted: 0, passes: 0 };
     while (!counter.exhausted()) {
       const examinedBefore = stats.triosExamined;
-      const pass = await runPipelineLoop(runSettings, Number.POSITIVE_INFINITY, () => counter.exhausted());
+      const pass = await runPipelineLoop(
+        runSettings,
+        Number.POSITIVE_INFINITY,
+        () => counter.exhausted(),
+        NO_SOURCE_FILTER,
+      );
       pipelineStats.passes++;
       pipelineStats.totalSequences += pass.totalSequences;
       pipelineStats.totalInserted += pass.totalInserted;

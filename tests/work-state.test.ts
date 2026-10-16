@@ -15,7 +15,7 @@ import {
   writeSnapshot,
 } from "../src/snapshot-store.js";
 import type { PendingCandidate } from "../src/types.js";
-import { EXTRACTION_POLICY_REVISION, loadWorkState, saveWorkState } from "../src/work-state.js";
+import { EXTRACTION_POLICY_REVISION, loadWorkState, saveWorkState, selectPendingForBuild } from "../src/work-state.js";
 
 let portraitDir: string;
 
@@ -167,5 +167,29 @@ describe("work state", () => {
 
   it("uses the extraction prompt digest prefix as the policy revision", () => {
     expect(EXTRACTION_POLICY_REVISION).toBe(createHash("sha256").update(EXTRACTION_PROMPT).digest("hex").slice(0, 12));
+  });
+});
+
+describe("selectPendingForBuild", () => {
+  it("returns the needsBuild candidates in stored order and skips the other stages", () => {
+    const first = needsBuildCandidate();
+    const second: PendingCandidate = { ...needsBuildCandidate(), candidateId: "abc123:2", text: "Second rule." };
+    const state = stateWithCandidates([needsPostReviewCandidate(), first, second]);
+    expect(selectPendingForBuild(state, null)).toEqual([first, second]);
+  });
+
+  it("returns only the selected source's candidates when a filter path is given", () => {
+    const first = needsBuildCandidate();
+    const other: PendingCandidate = {
+      ...needsBuildCandidate(),
+      candidateId: "abc123:2",
+      sourcePath: "/sessions/b.jsonl",
+      text: "Other source rule.",
+    };
+    const state = stateWithCandidates([first, needsPostReviewCandidate(), other]);
+    expect(selectPendingForBuild(state, "/sessions/a.jsonl")).toEqual([first]);
+    expect(selectPendingForBuild(state, "/sessions/./a.jsonl")).toEqual([first]);
+    expect(selectPendingForBuild(state, "/sessions/b.jsonl")).toEqual([other]);
+    expect(selectPendingForBuild(state, null)).toEqual([first, other]);
   });
 });

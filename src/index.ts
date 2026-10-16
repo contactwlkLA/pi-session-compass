@@ -26,6 +26,8 @@ import { getErrorMessage } from "./utils.js";
 // Idempotent wiring guard. portrait can be bundled into the avtc-pi umbrella
 // AND installed standalone — whichever copy loads first wires, the rest no-op.
 const WIRED_KEY = "__avtcPiPortraitWired";
+/** Sentinel: no source filter (every source's pending work). */
+const NO_SOURCE_FILTER: null = null;
 type GlobalWithWired = typeof globalThis & { [WIRED_KEY]?: boolean };
 
 // globalThis state (survives /reload)
@@ -175,7 +177,7 @@ async function runProfilingCycle(): Promise<void> {
 
   try {
     // : SQLite mutex crash-releases on process death — no heartbeat/lease to keep alive.
-    await runPipelineLoop(settings, Infinity, () => false);
+    await runPipelineLoop(settings, Infinity, () => false, NO_SOURCE_FILTER);
   } catch (error) {
     const errorMsg = getErrorMessage(error);
     if (errorMsg === "PAUSED") {

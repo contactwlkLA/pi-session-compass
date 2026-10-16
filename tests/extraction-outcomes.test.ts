@@ -21,8 +21,9 @@ import { resetPipelineState, runPipelineLoop } from "../src/pipeline.js";
 import type { PortraitSettings } from "../src/schema.js";
 import { loadLatestSnapshot } from "../src/snapshot-store.js";
 import { loadPortraitState } from "../src/storage.js";
-import type { PortraitPipelineState } from "../src/types.js";
+import type { PendingCandidate, PortraitPipelineState } from "../src/types.js";
 import { DEFAULT_PIPELINE_STATE } from "../src/types.js";
+import { EXTRACTION_POLICY_REVISION, loadWorkState, saveWorkState } from "../src/work-state.js";
 import { setupTestSettings, teardownTestSettings } from "./settings-helpers.js";
 import { getStubPortraitState, setTestConfig, useStubs } from "./setup.js";
 
@@ -262,33 +263,50 @@ describe("pipeline stop", () => {
       maintenanceCore: true,
       error: true,
     });
-    setTestConfig({ portraitDir: "/tmp/portrait", sessionDirs: ["/tmp/sessions"] });
     resetPipelineState();
     getStubPortraitState().rulesInsertedSinceMaintenance = 0;
     mockBuildPortrait.mockResolvedValue({ inserted: 1, evicted: 0, rules: [], evictedRules: [], droppedRules: [] });
   });
 
   it("builds the results already returned, makes no further scan, skips maintenance, and reports the stop", async () => {
-    mockScanSessions.mockResolvedValueOnce({
-      results: [
-        {
-          behaviorNotes: ["rule-1", "rule-2"],
-          sessionPath: "/tmp/s1.jsonl",
-          source: "main",
-          trioId: "t",
-          candidateIds: ["t:0", "t:1"],
-          sessionId: null,
-          cwd: null,
-          entryIds: [null, null, null],
-        },
-      ],
-      remainingFiles: 3,
-      triosProcessed: 1,
-      totalKnownTrios: 1,
-      stopReason: "extraction_failed",
+    mockScanSessions.mockImplementationOnce(async () => {
+      // The failing pass saved its results' candidates at the examined-trio boundary.
+      const work = loadWorkState(portraitDir);
+      const candidates: PendingCandidate[] = ["rule-1", "rule-2"].map((text, index) => ({
+        candidateId: `t:${index}`,
+        trioId: "t",
+        sourcePath: "/tmp/s1.jsonl",
+        cwd: null,
+        sessionId: null,
+        entryIds: [null, null, null],
+        policyRevision: EXTRACTION_POLICY_REVISION,
+        text,
+        stage: "needsBuild",
+        reviewContext: null,
+      }));
+      work.pendingCandidates.push(...candidates);
+      saveWorkState(portraitDir, work);
+      return {
+        results: [
+          {
+            behaviorNotes: ["rule-1", "rule-2"],
+            sessionPath: "/tmp/s1.jsonl",
+            source: "main",
+            trioId: "t",
+            candidateIds: ["t:0", "t:1"],
+            sessionId: null,
+            cwd: null,
+            entryIds: [null, null, null],
+          },
+        ],
+        remainingFiles: 3,
+        triosProcessed: 1,
+        totalKnownTrios: 1,
+        stopReason: "extraction_failed",
+      };
     });
 
-    const stats = await runPipelineLoop(settings, Infinity, () => false);
+    const stats = await runPipelineLoop(settings, Infinity, () => false, null);
 
     expect(stats.stopReason).toBe("extraction_failed");
     expect(mockScanSessions).toHaveBeenCalledTimes(1);
@@ -309,7 +327,7 @@ describe("pipeline stop", () => {
       stopReason: null,
     });
 
-    const stats = await runPipelineLoop(settings, Infinity, () => false);
+    const stats = await runPipelineLoop(settings, Infinity, () => false, null);
     expect(stats.stopReason).toBeNull();
   });
 });
