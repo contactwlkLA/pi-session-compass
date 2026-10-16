@@ -19,6 +19,7 @@ import { callPortraitLlm } from "../src/llm-call.js";
 import { runMaintenance } from "../src/maintenance-core.js";
 import { resetPipelineState, runPipelineLoop } from "../src/pipeline.js";
 import type { PortraitSettings } from "../src/schema.js";
+import { loadLatestSnapshot } from "../src/snapshot-store.js";
 import { loadPortraitState } from "../src/storage.js";
 import type { PortraitPipelineState } from "../src/types.js";
 import { DEFAULT_PIPELINE_STATE } from "../src/types.js";
@@ -84,6 +85,7 @@ function readCheckpoint(filePath: string): number | undefined {
 /** Forget every saved scan position, so the next pass scans the file from its start. */
 function forgetPositions(): void {
   fs.rmSync(checkpointFile(), { force: true });
+  fs.rmSync(path.join(portraitDir, "snapshots"), { recursive: true, force: true });
 }
 
 function freshState(): PortraitPipelineState {
@@ -169,10 +171,10 @@ describe("failed extraction", () => {
 });
 
 describe("failed review", () => {
-  it("stops with the review message and keeps the position of the trio's start", async () => {
+  it("stops with the review message; the trio's raw rules stay pending and its position is kept", async () => {
     setup({ postExtractionEnabled: true });
     const file = path.join(sessionDir, "review-failure.jsonl");
-    writeSession(file, [
+    const offsets = writeSession(file, [
       HEADER,
       assistantRecord("A1 plan", null),
       userRecord("U1 feedback", null),
@@ -192,8 +194,13 @@ describe("failed review", () => {
       "Rule review failed; 2 extracted rules were kept and will be reviewed on the next run.",
       "review error",
     );
-    // Nothing was examined, so no position is saved (the file is scanned from its start).
-    expect(readCheckpoint(file) ?? 0).toBe(0);
+    // The trio was examined: its position and its raw rules are saved, and the rules await review.
+    expect(readCheckpoint(file)).toBe(offsets[3]);
+    const pending = loadLatestSnapshot(portraitDir)?.state.pendingCandidates ?? [];
+    expect(pending.map((candidate) => [candidate.stage, candidate.text])).toEqual([
+      ["needsPostReview", "rule one"],
+      ["needsPostReview", "rule two"],
+    ]);
   });
 });
 

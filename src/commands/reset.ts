@@ -49,6 +49,9 @@ export async function reset(): Promise<string> {
     // Reset processed-sessions.json
     fs.writeFileSync(path.join(portraitDir, "processed-sessions.json"), "{}", "utf-8");
 
+    // Remove the work-state snapshots (scan positions and pending candidates) so the scan restarts
+    fs.rmSync(path.join(portraitDir, "snapshots"), { recursive: true, force: true });
+
     // Reset trios counters in state
     const portraitState = loadPortraitState(portraitDir);
     portraitState.triosProcessed = 0;

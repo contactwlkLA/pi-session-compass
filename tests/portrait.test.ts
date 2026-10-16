@@ -10,6 +10,7 @@ import { applyDecisions, validateDecisions } from "../src/builder.js";
 import { summarizeToolCall, summarizeToolResult } from "../src/collector.js";
 import { extractAssistantText, extractContent, isApproval } from "../src/filtering.js";
 import { initGit, resetGitExec, setGitExec } from "../src/git.js";
+import { writeSnapshot } from "../src/snapshot-store.js";
 import { parsePortraitRules } from "../src/storage.js";
 import type { BuildingDecision, PortraitState } from "../src/types.js";
 import { installRecordingGit } from "./git-recorder.js";
@@ -1671,6 +1672,20 @@ describe("reset", () => {
     } as PortraitState;
     setTestConfig({ portraitDir: dir, ...TEST_LOCK_PATHS });
   };
+
+  it("removes the work-state snapshots so the scan restarts", async () => {
+    const dir = tmpDir();
+    setupState(dir, "Yes, reset");
+    writeSnapshot(dir, { scanPositions: {}, pendingCandidates: [], publicationIntent: null }, []);
+    try {
+      expect(fs.existsSync(path.join(dir, "snapshots"))).toBe(true);
+      await reset();
+      expect(fs.existsSync(path.join(dir, "snapshots"))).toBe(false);
+    } finally {
+      delete globalThis.__piPortrait;
+      cleanup(dir);
+    }
+  });
 
   it("clears portrait.md, evicted.md, checkpoints and resets counters", async () => {
     const dir = tmpDir();

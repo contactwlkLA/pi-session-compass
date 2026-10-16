@@ -18,18 +18,20 @@ import { type CompleteRecord, readCompleteRecords } from "./jsonl-reader.js";
 import { buildSingleUserMessage, callPortraitLlm, PAUSED } from "./llm-call.js";
 import { EXTRACTION_PROMPT, POST_EXTRACTION_PROMPT } from "./prompts.js";
 import { getPortraitSettings } from "./settings-ui.js";
-import { loadPortraitState, loadScanCheckpoints, savePortraitState, saveScanCheckpoints } from "./storage.js";
+import type { SnapshotState } from "./snapshot-store.js";
+import { loadPortraitState, loadScanCheckpoints, savePortraitState } from "./storage.js";
 import { type SessionEntry, TrioDetector } from "./trio-detector.js";
 import type {
   BgScanCheckpoints,
   ExtractionResult,
   InteractionSequence,
+  PendingCandidate,
   PipelineStopReason,
   PortraitPipelineState,
   ScanCheckpoint,
-  ScanCheckpoints,
   ScanResults,
 } from "./types.js";
+import { EXTRACTION_POLICY_REVISION, loadWorkState, saveWorkState } from "./work-state.js";
 
 interface DiscoveredFile {
   path: string;
@@ -75,6 +77,7 @@ function recordDigest(text: string): string {
 }
 
 const FILE_START = 0;
+const NO_REVIEW_CONTEXT: null = null;
 const SCAN_ERROR_SOURCE = "scan error";
 
 /** Stops scanning one session file; the scan reports it and continues with other files. */
@@ -149,13 +152,24 @@ async function verifyScanPosition(filePath: string, checkpoint: ScanCheckpoint):
   }
 }
 
+/** Whether the saved position is already the position `next`. */
+function sameCheckpoint(saved: ScanCheckpoint | undefined, next: ScanCheckpoint): boolean {
+  return (
+    saved !== undefined &&
+    saved.lastByte === next.lastByte &&
+    saved.boundaryDigest === next.boundaryDigest &&
+    saved.sessionId === next.sessionId
+  );
+}
+
 export async function scanSessions(
   portraitDir: string,
   state: PortraitPipelineState,
   maxFilesPerCycle: number,
   maxResults: number,
 ): Promise<ScanResults> {
-  const checkpoints = loadScanCheckpoints(portraitDir);
+  const work = loadWorkState(portraitDir);
+  const checkpoints = work.scanPositions;
   const settings = getPortraitSettings();
   const maxAgeMs = settings.maxAgeDays * 24 * 60 * 60 * 1000;
   const cutoff = Date.now() - maxAgeMs;
@@ -180,7 +194,6 @@ export async function scanSessions(
   for (const file of allFiles) {
     // Catch-up batching: stop after maxFilesPerCycle
     if (filesProcessed >= maxFilesPerCycle) {
-      saveScanCheckpoints(portraitDir, checkpoints);
       const remaining = allFiles.length - allFiles.indexOf(file);
       return { results, triosProcessed, totalKnownTrios, remainingFiles: remaining, stopReason: null };
     }
@@ -196,7 +209,7 @@ export async function scanSessions(
         source: file.source,
         state,
         portraitDir,
-        checkpoints,
+        work,
         onProgress: (_trioCount: number, totalNonEmpty: number, bytesRead: number) => {
           // Progress callback — update session KB for footer
           state.lastProcessedFile = file.path;
@@ -234,6 +247,7 @@ export async function scanSessions(
         (msg.includes("ENOENT") || msg.includes("EPERM") || msg.includes("EBUSY") || msg.includes("EACCES"))
       ) {
         delete checkpoints[file.path];
+        saveWorkState(portraitDir, work);
         continue;
       }
       throw err;
@@ -241,8 +255,7 @@ export async function scanSessions(
 
     const { totalNonEmpty, bytesScanned, resumeByte, boundaryDigest, sessionId, stopReason } = scanResult;
     if (stopReason !== null) {
-      // The file keeps the position of its last examined trio; the pass ends here.
-      saveScanCheckpoints(portraitDir, checkpoints);
+      // The failed trio saved nothing; the file keeps the position of its last examined trio.
       state.triosProcessed = triosProcessed;
       setCachedPipelineState(state);
       const remaining = allFiles.length - allFiles.indexOf(file);
@@ -251,8 +264,13 @@ export async function scanSessions(
     filesProcessed++;
 
     // Store the scan position the pass ended at: the record boundary a fresh
-    // detector restarts from to rebuild this detector's state.
-    checkpoints[file.path] = { lastByte: resumeByte, boundaryDigest, sessionId };
+    // detector restarts from to rebuild this detector's state. A trio that moved it has
+    // already saved it, so the work state is written only when the position changed.
+    const endPosition: ScanCheckpoint = { lastByte: resumeByte, boundaryDigest, sessionId };
+    if (!sameCheckpoint(checkpoints[file.path], endPosition)) {
+      checkpoints[file.path] = endPosition;
+      saveWorkState(portraitDir, work);
+    }
     if (bytesScanned > 0) {
       sessionKB += Math.round(bytesScanned / 1024);
     }
@@ -265,7 +283,6 @@ export async function scanSessions(
 
     // Stop early if we have enough results
     if (results.length >= maxResults) {
-      saveScanCheckpoints(portraitDir, checkpoints);
       state.triosProcessed = triosProcessed;
       const remaining = allFiles.length - allFiles.indexOf(file) - 1;
       return { results, triosProcessed, totalKnownTrios, remainingFiles: remaining, stopReason: null };
@@ -277,7 +294,6 @@ export async function scanSessions(
     }
   }
 
-  saveScanCheckpoints(portraitDir, checkpoints);
   state.triosProcessed = triosProcessed;
 
   return { results, triosProcessed, totalKnownTrios, remainingFiles: 0, stopReason: null };
@@ -428,7 +444,7 @@ interface StreamAndExtractOptions {
   source: "main" | "subagent";
   state: PortraitPipelineState;
   portraitDir: string;
-  checkpoints: ScanCheckpoints;
+  work: SnapshotState;
   onProgress: (trios: number, totalNonEmpty: number, bytesRead: number) => void;
   onTrio: (result: ExtractionResult) => Promise<void>;
   maxTrios: number;
@@ -471,8 +487,29 @@ function trioIdentity(sessionId: string | undefined, records: readonly TrioRecor
   return createHash("sha256").update(input).digest("hex");
 }
 
+/** A trio's identity, as every candidate of the trio records it. */
+type TrioIdentity = Pick<PendingCandidate, "trioId" | "sourcePath" | "cwd" | "sessionId" | "entryIds">;
+
+/** A trio's rules as pending candidates, with ids `${trioId}:${index}` in list order. */
+function candidatesFor(
+  rules: string[],
+  trio: TrioIdentity,
+  stage: PendingCandidate["stage"],
+  reviewContext: InteractionSequence | null,
+): PendingCandidate[] {
+  return rules.map((text, index) => ({
+    ...trio,
+    candidateId: `${trio.trioId}:${index}`,
+    policyRevision: EXTRACTION_POLICY_REVISION,
+    text,
+    stage,
+    reviewContext,
+  }));
+}
+
 async function streamAndExtract(opts: StreamAndExtractOptions): Promise<StreamAndExtractResult> {
-  const { sessionFile, source, portraitDir, checkpoints, onProgress, onTrio, maxTrios } = opts;
+  const { sessionFile, source, portraitDir, work, onProgress, onTrio, maxTrios } = opts;
+  const checkpoints = work.scanPositions;
 
   const savedCheckpoint = checkpoints[sessionFile];
   if (savedCheckpoint) await verifyScanPosition(sessionFile, savedCheckpoint);
@@ -495,14 +532,14 @@ async function streamAndExtract(opts: StreamAndExtractOptions): Promise<StreamAn
   let lastAssistantRecord: TrioRecord | undefined;
   let lastUserRecord: TrioRecord | undefined;
 
-  // Helper to save checkpoint mid-file (after each trio extraction)
-  function saveMidFileCheckpoint() {
+  // Records the scan position and saves the work state; every examined trio calls it.
+  function savePosition() {
     checkpoints[sessionFile] = {
       lastByte: resumeByte,
       boundaryDigest,
       sessionId,
     };
-    saveScanCheckpoints(portraitDir, checkpoints);
+    saveWorkState(portraitDir, work);
   }
 
   // Helper to try extracting a complete trio (agent→user→agent)
@@ -522,41 +559,54 @@ async function streamAndExtract(opts: StreamAndExtractOptions): Promise<StreamAn
       );
       return "extraction_failed";
     }
-    const review: ReviewOutcome = settings.postExtractionEnabled
-      ? await postExtractRules(
-          extraction.notes,
-          extraction.summary,
-          extraction.dumpPath,
-          settings.postExtractionModel || undefined,
-        )
-      : { kind: "success", notes: extraction.notes };
-    if (review.kind === "failed") {
-      const rawCount = extraction.notes.length;
-      reportError(
-        `Rule review failed; ${rawCount} extracted ${rawCount === 1 ? "rule was" : "rules were"} kept and will be reviewed on the next run.`,
-        "review error",
+    const identity: TrioIdentity = {
+      trioId: trioIdentity(sessionId, records),
+      sourcePath: path.resolve(sessionFile),
+      cwd: header.cwd,
+      sessionId: sessionId ?? null,
+      entryIds: records.map((record) => record.id),
+    };
+    let validated = extraction.notes;
+    if (settings.postExtractionEnabled && extraction.notes.length > 0) {
+      // The raw rules and the new position are saved before the review, so a failed review keeps them.
+      const rawCandidates = candidatesFor(extraction.notes, identity, "needsPostReview", extraction.summary);
+      work.pendingCandidates.push(...rawCandidates);
+      savePosition();
+      const review: ReviewOutcome = await postExtractRules(
+        extraction.notes,
+        extraction.summary,
+        extraction.dumpPath,
+        settings.postExtractionModel || undefined,
       );
-      return "review_failed";
+      if (review.kind === "failed") {
+        const rawCount = extraction.notes.length;
+        reportError(
+          `Rule review failed; ${rawCount} extracted ${rawCount === 1 ? "rule was" : "rules were"} kept and will be reviewed on the next run.`,
+          "review error",
+        );
+        return "review_failed";
+      }
+      validated = review.notes;
+      work.pendingCandidates = work.pendingCandidates.filter((candidate) => !rawCandidates.includes(candidate));
     }
-    const validated = review.notes;
+    work.pendingCandidates.push(...candidatesFor(validated, identity, "needsBuild", NO_REVIEW_CONTEXT));
     emitTrioExamined({ sessionPath: sessionFile, notes: validated.length, notesText: validated });
     if (validated.length > 0) {
-      const trioId = trioIdentity(sessionId, records);
       const result: ExtractionResult = {
         behaviorNotes: validated,
         sessionPath: sessionFile,
         source,
-        trioId,
-        candidateIds: validated.map((_, index) => `${trioId}:${index}`),
-        sessionId: sessionId ?? null,
-        cwd: header.cwd,
-        entryIds: records.map((record) => record.id),
+        trioId: identity.trioId,
+        candidateIds: validated.map((_, index) => `${identity.trioId}:${index}`),
+        sessionId: identity.sessionId,
+        cwd: identity.cwd,
+        entryIds: identity.entryIds,
       };
       await onTrio(result);
       triosFound++;
     }
-    // Save the scan position after every examined trio (even if no notes — prevents re-extraction)
-    saveMidFileCheckpoint();
+    // Every examined trio saves its scan position with its candidates, even when it yields none.
+    savePosition();
     return triosFound >= maxTrios ? "limit" : "continue";
   }
 
