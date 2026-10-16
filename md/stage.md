@@ -1,6 +1,6 @@
 # pi-session-compass — Stage continuation
 
-Revision: **0.10.0** · Updated: **2026-10-15**
+Revision: **0.11.0** · Updated: **2026-10-16**
 
 Select the first unchecked stage. A checked stage requires verified milestone evidence. Unchecked means not started, partial, or blocked; use the continuation fields below. Stop after that stage’s completion or a documented stopping condition.
 
@@ -14,13 +14,13 @@ Select the first unchecked stage. A checked stage requires verified milestone ev
 ## Continuation
 
 - Active stage: **S3**
-- Next unfinished step: **User decision on md/proposal-s3-trim.md (architecture §6 cleanup to simple rollback; plan.md and stage-3-task.md edits; B-2 reduced to one task S3-B2-01, builder validation + all-skip without writes). On approval: apply the edits, delete the proposal file, write the S3-B2-01 spec (speed mode: bigger tasks, fresh Pi session per task, docs synced at part gates)**
+- Next unfinished step: **Part C simplicity check (locking, migration, lifecycle) as a short before/after proposal for the user; then Part C specced as one bigger task (speed mode: bigger tasks, fresh Pi session per task, docs synced at part gates)**
 - Roles (user, 2026-10-15): **Pi is no longer parked. Pi codes, one model per Pi session (the user switches models between sessions). Claude Code plans, writes task specs, reviews, keeps the ledger (md/ledger.jsonl, schema md/ledger.schema.json), verifies, and commits; it writes no implementation. The coder comparison is a side quest: where it conflicts with the project, the project wins (resolutions in NOTES.md)**
-- Last completed step: **S3 B-1 complete: S3-B1-01..04 (78b8ffd, 335eb32, bd56689, afc2712, S3-B1-04 commit below), all accepted first pass; gate: npm test 457/457, test:compass 101/101, single-worker 457/457**
+- Last completed step: **S3 Part B complete: B-1 (S3-B1-01..04) and B-2 (S3-B2-01, mimo-v2.6-flash, accepted first pass); Part B gate: npm test 476/476, test:compass 101/101, single-worker 476/476**
 - Outcome: **S2 COMPLETE: termination, capture reset and retry fixes; compare run 46 requests / 26.0 min on the pipeline's 20 trios; branch s1/harness**
 - Blocker: **none**
-- Pending user inputs: **none for B-1; B-2 protected text (restore conflict report) when the B-2 specs are written**
-- User direction (2026-10-15): **do not over-engineer crash safety; it is not that important. Before writing the B-2 specs, propose a trimmed B-2 (what to keep from B2.1, B2.2, B2.3(b), B2.4, B2.5, B3) for user approval, together with a cleaned-up architecture.md §6 (simple rollback to the last snapshot; drop crash machinery that contradicts it) and the matching stage-3-task.md and plan.md changes, as one before/after proposal**
+- Pending user inputs: **none until the Part C proposal**
+- User direction (2026-10-15/16): **do not over-engineer crash safety. Simple-rollback trim approved 2026-10-16 and applied to architecture.md §6, plan.md S3 and stage-3-task.md Part B: no publication intent, no automatic restore or edit guard, no per-boundary crash tests; B-2 = S3-B2-01. Part C gets the same simplicity check before its spec. Extraction cache and prefix runs wait for S5 (user, 2026-10-16)**
 - Stage order: **plan order, S2.T1–T3 before the optional S2.T4 Jev probe (user decision 2026-10-14)**
 - Limits: **suggested at launch from the [compass.md](compass.md) run-type table; confirmed by the user for every live run**
 - Smoke result (S1.T4): **PASS** (2026-10-14, attempt 3, capped at 5 requests; outputs/s1-t4/smoke-result.md)
@@ -39,6 +39,6 @@ Stage meanings and dependencies: [plan.md](plan.md). Operating rules: [AGENTS.md
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.11.0 | 2026-10-16 | Simple-rollback trim applied; S3 Part B complete (S3-B2-01); next: Part C simplicity check. |
 | 0.10.0 | 2026-10-16 | B-1 complete (S3-B1-01 to 04); next: trimmed-B-2 proposal awaiting approval. |
 | 0.9.0 | 2026-10-15 | Pi un-parked: Pi codes, CC plans and reviews; coder ledger added. |
-| 0.8.0 | 2026-10-15 | S3 Part A complete; next Part B. |

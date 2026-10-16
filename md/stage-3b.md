@@ -1,6 +1,6 @@
 # Stage 3 Part B — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.5.0** · Status: **Approved (user, 2026-10-15)**
+Project: **pi-session-compass** · Revision: **0.6.0** · Status: **Approved (user, 2026-10-15; S3-B2-01 and V1–V6, 2026-10-16)**
 
 Date: **2026-10-15**
 
@@ -12,7 +12,7 @@ Parent: [stage-3-task.md](stage-3-task.md) Part B. Contract: [architecture.md](a
 
 `Read md/stage-3b.md, sections "Coder rules" and "S3-B1-0N", and do that task only. Write the handoff file, then stop.`
 
-**Session split (user, 2026-10-15).** B-1 = S3-B1-01, S3-B1-02a, S3-B1-02b, S3-B1-03, S3-B1-04 (stage-3-task B1, B2.3 boundaries (a) and (c), B2.6). B-2 = builder split, validated publication, boundary (b), restore with edit guard, crash tests (B2.1, B2.2, B2.3(b), B2.4, B2.5, B3). B-2 specs are written after B-1 is committed, since they build on its code.
+**Session split (user, 2026-10-15).** B-1 = S3-B1-01, S3-B1-02a, S3-B1-02b, S3-B1-03, S3-B1-04 (stage-3-task B1, B2.3 boundaries (a) and (c), B2.6). B-2 = S3-B2-01 only (stage-3-task B2.1, B3.1), after the simple-rollback trim (user-approved 2026-10-16): no builder split, no publication intent, no restore or edit guard, no per-boundary crash tests.
 
 ## Design decisions fixed before coding (CC)
 
@@ -21,7 +21,7 @@ These hold for every B-1 task; a coder may not change them.
 1. **Outcomes.** Extraction and post-review return a typed outcome, `success` (zero or more rules) or `failed`. PAUSED keeps propagating as now. Only a successful extraction advances the scan position (a failed post-review after a successful extraction keeps the advanced position and the raw rules; see As built). A failed extraction is never recorded as an empty result (P10).
 2. **Trio ID.** sha256 hex of `${sessionId}\n${idBefore}\n${idUser}\n${idAfter}` when the header session id and all three record `id`s are strings; otherwise sha256 hex of the three records' texts joined by `\n`. Candidate ID: `${trioId}:${ordinal}`, ordinal from 0 in the rule list it came from.
 3. **Work state lives in the snapshot.** `SnapshotState.scanPositions` and `pendingCandidates` (src/snapshot-store.ts) become the authority. When no snapshot exists yet, the first load seeds positions from `processed-sessions.json` (read only). After every snapshot write, positions are also written to `processed-sessions.json` as a mirror, read only by the background counter; Part C replaces the seed with a proper migration and retires the mirror.
-4. **Snapshot boundaries in B-1.** (a) after each examined trio: the new scan position plus that trio's candidates, in one snapshot; (c) after a build batch has written its files: those candidates removed. Boundary (b), the publication intent, is B-2. Until B-2, a crash between a build's file writes and boundary (c) can insert the same rules twice; that window is known and B-2 closes it.
+4. **Snapshot boundaries in B-1.** (a) after each examined trio: the new scan position plus that trio's candidates, in one snapshot; (c) after a build batch has written its files: those candidates removed. A crash between a build's file writes and boundary (c) builds those candidates again next run; the builder normally skips or merges rules already in the portrait, and a rare duplicate is accepted (architecture.md §6 Recovery).
 5. **A failed extraction, review, or build stops the run cleanly:** the pipeline reports one approved message, keeps all pending candidates, sets phase idle, skips auto-maintenance, and returns a `stopReason`.
 6. **Reset (interim).** `/portrait:reset` also removes `<portraitDir>/snapshots/`, so a reset still restarts the scan. No reset text changes until Part C.
 
@@ -293,6 +293,61 @@ npm test
 npm run test:compass
 ```
 
+## S3-B2-01 — Whole-batch builder validation; all-skip writes nothing
+
+`validateDecisions` checks each decision on its own today. A batch can still leave a candidate without a decision, give one candidate two decisions, use a reference that is not a candidate, or have two decisions fight over the same existing rule; `applyDecisions` then quietly drops or double-applies them. This task rejects such batches before anything is written (the existing validation retry then asks the model again), and makes a batch where every decision is `skip` write nothing.
+
+**Read:** src/builder.ts (whole file, 524 lines), src/types.ts (`BuildingDecision`, `BuildingResponse`), src/maintenance-core.ts lines 285–345 (the backfill caller: it passes `skipPersist: true` and writes `result.rules` itself), tests/builder.test.ts (template for `buildPortrait` tests with the mocked `callPortraitLlm`), tests/portrait.test.ts `describe("validateDecisions")` (line ~261), `describe("validateDecisions merge action")` (~538) and `describe("applyDecisions skipPersist")` (~1537).
+
+**Where and how (CC's plan):**
+
+1. **src/builder.ts, `validateDecisions`.** Keep every existing per-decision check and its message unchanged, and keep them first. After the per-decision loop, and only when `candidateCount !== undefined` (callers that pass `undefined` keep today's behavior; `buildPortrait` always passes `candidates.length`), add the whole-batch checks below, in this order, returning the first failure. Extend the numbered rule list in the doc comment (rules 15–20).
+   - **15 Unknown reference:** each `decision.candidate` must match `CANDIDATE_REF_RE` with an index in `[1, candidateCount]`. Message V1.
+   - **16 Duplicate:** no candidate reference appears in two decisions (this also covers "inserted and merged"). Message V2, naming the first duplicate.
+   - **17 Missing:** every `C1`…`C${candidateCount}` has a decision. Message V3, listing all missing references in order, comma-separated.
+   - **18 Merge clash:** no two `merge` decisions share a `mergePosition`. Message V4 with the first two candidates found.
+   - **19 Merge and evict clash:** no numeric position is a `mergePosition` of one decision and in another decision's `evictPositions` (rule 14 already covers the same decision). Message V5.
+   - **20 Double evict:** no numeric position appears in the `evictPositions` of two different decisions. Message V6.
+   Run 18–20 over numeric positions only; string (candidate) refs in `evictPositions` keep their existing checks.
+2. **src/builder.ts, all-skip.** In `applyDecisions`, before Phase 1: if `decisions.length > 0` and every decision's action is `skip`, return at once with `inserted: 0, merged: 0, evicted: 0`, `rules: options?.skipPersist ? [...existingRules] : []`, `evictedRules: []`, `droppedRules: []`. No `writePortrait`, no `appendDropped`/`appendEvicted`, no commit. With `skipPersist`, `rules` must be the unchanged existing rules, because the backfill caller writes `result.rules` back as the portrait. `buildPortrait` still calls `emitBuild` and returns the result, so the pipeline acknowledges the batch as today.
+3. **Do not change** the `response.decisions.length === 0` branch in `buildPortrait` (an empty list stays a failure without a validation retry), the retry count, the prompt, or the tool schema.
+
+**Approved strings (the validation messages go to the builder model as the retry message; use exactly):**
+
+| ID | Rule | Message |
+|---|---|---|
+| V1 | 15 | `Decision candidate "${ref}" is not a candidate reference. Use C1 to C${candidateCount}.` |
+| V2 | 16 | `Candidate ${ref} has more than one decision. Return exactly one decision per candidate.` |
+| V3 | 17 | `Missing decisions for ${missing.join(", ")}. Return exactly one decision for each candidate C1 to C${candidateCount}.` |
+| V4 | 18 | `Candidates ${a} and ${b} both merge into rule ${pos}. Only one candidate may merge into a rule; skip the other or give it a different action.` |
+| V5 | 19 | `Rule ${pos} is merged into by ${a} and evicted by ${b}. A rule cannot be both merged into and evicted.` |
+| V6 | 20 | `Rule ${pos} is evicted by both ${a} and ${b}. List each evicted rule in one decision only.` |
+
+**Edge cases to cover:** a bare text reference such as `"candidate one"` is unknown (V1); `C0` and `C${n+1}` are unknown; a batch of one candidate with one `skip` is valid and all-skip; a mixed batch (one skip, one insert) writes as today; `candidateCount: undefined` with a partial list still passes; a per-decision error in a batch that is also incomplete reports the per-decision error (existing tests at tests/portrait.test.ts ~340 and ~346 depend on this order).
+
+**Audit answers (CC, 2026-10-16; part of this spec):** (1) Rule 15 also requires canonical digits (`match[1] === String(idx)`), so `C01` is unknown and gets V1. (2) Your order is right: scan decisions in response order and evict lists in listed order, with rules 18, 19 and 20 as three separate passes in that order. V4: `a` is the earlier merge, `b` the later one. V5: `a` merges, `b` evicts. V6: `a` is the earlier evict, `b` the later one. (3) In tests/portrait.test.ts, add tests inside the existing `validateDecisions` / `applyDecisions` describes; a new describe is fine only if it tests those two functions. tests/builder.test.ts is open. (4) Yes: in tests/builder.test.ts, use the recording git (`installRecordingGit`, `setGitExec`/`resetGitExec`, `initGit` in the fixture dir, as in portrait.test.ts) and assert the commit log is unchanged for all-skip; the "retried and applied" test commits through it. Add your Noise 5 tests. Accepted as is: an all-skip batch skips mechanical trimming too (Risk 4); `validateDecisions([], 0, k)` with k ≥ 1 gives V3, noted in the doc comment, no test.
+
+**Acceptance criteria:**
+
+1. Rules 15–20 reject the batches above with V1–V6 exactly; existing validation messages and their order are unchanged.
+2. A valid all-skip batch through `buildPortrait` writes no file: portrait.md content and mtime unchanged, no dropped.md or evicted.md created, no commit attempted; the result has zero counts and is not `undefined`.
+3. With `skipPersist: true`, an all-skip result returns the existing rules unchanged in `rules`.
+4. In `buildPortrait`, a batch failing rule 15–20 is retried with that message as the follow-up user message (existing loop), and a valid second reply is applied.
+5. Tests: in tests/portrait.test.ts, one test per rule 15–20 (assert `ok: false` and the exact message), one that a complete batch with `candidateCount` passes, and one that `candidateCount: undefined` with a partial list still passes; an `applyDecisions` all-skip test with and without `skipPersist`. In tests/builder.test.ts, an all-skip `buildPortrait` leaves portrait.md byte-identical with an unchanged mtime and creates no dropped.md/evicted.md, and a missing-candidate reply followed by a complete one is retried and applied (round tags 1 then 2). The existing builder.test.ts mocks use the text `"candidate one"` as the reference; change them to `"C1"` (adapted tests, list them under `Done`).
+6. Existing tests pass.
+
+**Allowed scope:** src/builder.ts, tests/builder.test.ts, tests/portrait.test.ts (the `validateDecisions` and `applyDecisions` describe blocks only).
+
+**Constraints:** no changes to `buildPortrait`'s signature, the prompt, the tool schema, `src/maintenance-core.ts`, or the pipeline. V1–V6 exactly as quoted. Existing messages unchanged.
+
+**Verification:**
+
+```
+npx vitest run tests/builder.test.ts tests/portrait.test.ts tests/maintenance.test.ts tests/pending-build.test.ts
+npm test
+npm run test:compass
+```
+
 ## CC review and gate (not for the coder)
 
 Per task, following planner-prompt.md Step 2: handoff check, claim check against `git diff` and pasted output, scope check against Allowed scope, unrequested hunks, constraints, verification run, acceptance criteria, verdict; then the ledger entry in md/ledger.jsonl. At most two correction rounds per task.
@@ -302,12 +357,11 @@ Per task, following planner-prompt.md Step 2: handoff check, claim check against
 - **S3-B1-02b:** one snapshot per examined trio (two with review); no remaining `saveScanCheckpoints` in the scan path; corrupt snapshot never seeds from legacy.
 - **S3-B1-03:** acknowledgement removes only the built batch; failure path removes nothing; start-of-run drain precedes scanning.
 - **S3-B1-04:** receipt never says completed after a stop; `hashes.json` covers snapshot files.
+- **S3-B2-01:** whole-batch checks run only after the per-decision ones and only with a `candidateCount`; the all-skip return happens before any write, including with `skipPersist`; V1–V6 byte-exact; maintenance backfill unaffected except by stricter validation.
 
 Commits: S3-B1-01, S3-B1-02a, and S3-B1-04 each on their own; S3-B1-02b and S3-B1-03 together (S3-B1-02b alone leaves candidates pending that nothing builds). Each after CC's re-run of `npm test`, `npm run test:compass`, and `npx vitest run --maxWorkers=1` (standing approval b).
 
-Planner difficulty (fixed before each task starts, for the ledger): S3-B1-01 medium; S3-B1-02a easy; S3-B1-02b medium; S3-B1-03 medium; S3-B1-04 easy. Sizing: S3-B1-01 peaked at 143,667 tokens of context, so each later spec keeps a shorter read list.
-
-**Carried to B-2 (CC, 2026-10-15):** a snapshot's `manifest.sources` holds absolute paths of the directory it was written in. Once S3-B1-04 copies `snapshots/` into a run's output dir, those paths point back at the source portrait dir (the user's live one for a live start). B-2's restore must write each copy into the snapshot's own portrait dir by file name and never follow `sources`, or a harness run could overwrite the live portrait.
+Planner difficulty (fixed before each task starts, for the ledger): S3-B1-01 medium; S3-B1-02a easy; S3-B1-02b medium; S3-B1-03 medium; S3-B1-04 easy; S3-B2-01 easy. Sizing: S3-B1-01 peaked at 143,667 tokens of context, so each later spec keeps a shorter read list.
 
 **B-1 gate:** all five accepted and committed; P10 in bugs.md FIXED with commit and evidence; stage-3-task.md B1.1–B1.4, B2.3 (a, c), B2.6 checked; stage.md synced; report to the user before B-2.
 
@@ -315,6 +369,6 @@ Planner difficulty (fixed before each task starts, for the ledger): S3-B1-01 med
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.3.0 | 2026-10-15 | S3-B1-02 split into 02a (module) and 02b (scanner wiring, reset) for the ~100K context target; type-fix scope added (user-approved). |
 | 0.4.0 | 2026-10-15 | S3-B1-04 rewritten with CC's where/how plan; spec-audit step with a Noise section (user-approved). |
 | 0.5.0 | 2026-10-15 | Pi audit of this file: As built section, test-adaptation and reference rules for the coder, wording fixes (user-approved). |
+| 0.6.0 | 2026-10-16 | B-2 cut to S3-B2-01 (simple rollback, user-approved); S3-B2-01 spec added. |

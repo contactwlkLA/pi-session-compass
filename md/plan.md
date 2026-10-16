@@ -1,6 +1,6 @@
 # pi-session-compass — Development Plan
 
-Revision: **0.5.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
+Revision: **0.6.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
 
 Contract: [Architecture specification](architecture.md)
 
@@ -24,7 +24,7 @@ A **stage** groups related work toward one outcome. A **task** is a checkable un
 |---|---|---|---|
 | S1 | Verify runtime, implement file selection with isolated output, instrument requests and limit controls, smoke-test, then measure the baseline | Passed smoke test with results sheet, baseline receipt with running table, and isolated selector/harness | 2–4 h |
 | S2 | Correct return-tool termination and retry semantics, then check in with the user | Request trace showing successful tool calls end; retry-zero works; user continue/stop decision | 1–2 h (+0.5–1 h if the optional S2.T4 probe is taken) |
-| S3 | Implement snapshot-and-restore recovery, trio-boundary scan position, locking, and migration | Interrupted or failed work restores the last snapshot and redoes the step without losing candidates | 4–6 h |
+| S3 | Implement snapshot recovery, trio-boundary scan position, locking, and migration | Interrupted or failed work resumes from the last snapshot without losing candidates | 4–6 h |
 | S4 | Add TypeSafe adapter, policy, modes, and bounded execution | Mocked off/shadow/enforce behavior and fail-open routing pass | 3–5 h |
 | S5 | Build the evaluation set and run shadow comparisons | Held-out quality/cost report with raw counts and observed outputs | 3–5 h |
 | S6 | Settings/diagnostics, operating instructions, acceptance, and handoff | Reviewable release candidate, rollback instructions, and evidence | 3–5 h |
@@ -67,37 +67,35 @@ Deferred and outside this plan: workspace/all-scope selection, public selection 
 
 **Milestone M2:** the repaired ungated baseline is established and the user’s continue/stop decision is recorded. All later savings compare primarily against this version, not the original wasteful loop.
 
-## 5. Stage 3 — preserve pending work and safe restore
+## 5. Stage 3 — preserve pending work
 
 ### Tasks
 
 - [ ] **S3.T1 — Implement snapshot storage.** Implement the architecture’s snapshot: a directory under the output directory holding a schema version, state, and copies of the portrait and archive files. Write each snapshot beside the previous one, flush it, then switch; at startup use the newest complete snapshot. A corrupt or unsupported snapshot stops processing, never resets progress.
 
-- [ ] **S3.T2 — Preserve typed outcomes and pending candidates.** Split extraction success-empty from failure. Derive trio IDs from the session header ID and entry IDs (or a hash of the trio’s own records), never a whole-file hash; derive candidate IDs from trio ID and ordinal. Preserve raw candidates before optional post-review. Store source path/cwd with pending candidates; in file mode drain only those matching the selected file. Take snapshots at the three boundaries: after a trio’s candidates are saved with the scan position, after builder decisions are validated and the intended file digests are recorded (before any portrait file is written), and after publication completes. A failed review/build keeps its candidates and stops cleanly.
+- [ ] **S3.T2 — Preserve typed outcomes and pending candidates.** Split extraction success-empty from failure. Derive trio IDs from the session header ID and entry IDs (or a hash of the trio’s own records), never a whole-file hash; derive candidate IDs from trio ID and ordinal. Preserve raw candidates before optional post-review. Store source path/cwd with pending candidates; in file mode drain only those matching the selected file. Take snapshots at two boundaries: after a trio’s candidates are saved with the scan position, and after a build batch’s files are written (removing its candidates). A failed review/build keeps its candidates and stops cleanly.
 
 - [ ] **S3.T3 — Implement the trio-boundary scan position.** Save the scan position only at a trio boundary, at the start of the trio’s closing assistant record, so the next scan can reconstruct the assistant message before the next user turn. Handle complete JSONL boundaries, Unicode byte offsets, partial tails, appended records, source identity mismatch, and adjacent trios. Limit parse-error catches to parsing so they cannot swallow extraction or snapshot failures; report malformed complete records.
 
-- [ ] **S3.T4 — Implement validated build publication and restore.** Separate builder decision calculation from file writes. Strengthen whole-batch validation: exactly one action per candidate, valid references, and no conflicting operations. On restart, restore the last snapshot’s state and files and redo what followed it, after a per-file edit guard: each portrait/archive file must equal the snapshot copy or the recorded intended digest, otherwise stop and report a conflict without overwriting. A valid all-skip batch completes without file writes. Git remains an optional audit layer; a Git failure never discards candidates.
+- [ ] **S3.T4 — Validate builds.** Strengthen whole-batch validation: exactly one action per candidate, valid references, and no conflicting operations. A valid all-skip batch completes without file writes. Git remains an optional audit layer; a Git failure never discards candidates.
 
-- [ ] **S3.T5 — Integrate shared locking, migration, and reset.** Make migration, reset, maintenance, and restore use the collection mutex. Import old offsets once with a backup, reconstructed assistant context, and a legacy cutoff preventing automatic re-extraction. Preserve the existing portrait and make the legacy progress files nonauthoritative. Include the snapshot in the reset confirmation. Teach advisory background counters about the new scan position without letting them write progress.
+- [ ] **S3.T5 — Integrate shared locking, migration, and reset.** Make migration, reset, and maintenance use the collection mutex. Import old offsets once with a backup, reconstructed assistant context, and a legacy cutoff preventing automatic re-extraction. Preserve the existing portrait and make the legacy progress files nonauthoritative. Include the snapshot in the reset confirmation. Teach advisory background counters about the new scan position without letting them write progress.
 
 - [ ] **S3.T6 — Verify lifecycle and cancellation behavior.** Ensure stop/pause/reload/shutdown do not release the mutation lock while a writer remains active. Do not promise immediate abort for operations that cannot be interrupted; retain the existing “stop after current step” behavior with bounded remote calls. Existing cache/injection semantics stay intact.
 
 ### Verification
 
-Necessary failure tests, using simulated crashes at each snapshot boundary:
+Necessary failure tests:
 
 - Extraction failure leaves the trio eligible for retry and is never recorded as an empty result.
-- Crash after the first snapshot resumes from the saved candidates without re-extraction.
-- Invalid builder output and exhausted retries retain the candidates.
-- Crash before, during, and after the portrait file writes restores the snapshot’s files and redoes the build, with no duplicate insertion.
-- An external edit to a portrait file stops the restore with a conflict instead of overwriting.
+- A run stopped after candidates were saved builds them next run without re-extraction.
+- Invalid builder output (missing, duplicate, or unknown candidate IDs; conflicting operations) is rejected before any write and retried; exhausted retries keep the candidates.
 - An all-skip result completes without file writes; an optional-review failure preserves raw rules.
 - Restarted scanning emits the same trios as uninterrupted scanning, including append-at-EOF cases.
 - File-mode runs leave pending candidates from other sources untouched.
 - Migration imports old offsets once, reset clears the snapshot under the mutex, and legacy checkpoint files are no longer authoritative.
 
-**Milestone M3:** restore invariants pass in isolated fixtures. Old offsets cannot establish historical completeness; migration must state this explicitly.
+**Milestone M3:** pending-work and validation tests pass in isolated fixtures. Old offsets cannot establish historical completeness; migration must state this explicitly.
 
 ## 6. Stage 4 — add the Jev gate and run limits
 
@@ -141,7 +139,7 @@ Necessary failure tests, using simulated crashes at each snapshot boundary:
 
 - [ ] **S6.T1 — Update user-facing settings and diagnostics.** Update settings/status help with actual candidate-batch units, run stop reasons, pending work, mode, bypass count, and evaluated policy/model. Correct the debug-path description and remove inert builder-prompt HTML comments in an isolated change. Verify prompt cleanup separately from gate effects.
 
-- [ ] **S6.T2 — Write operating and rollback instructions.** Document how to enable shadow, inspect evidence, activate enforce after evaluation, turn the gate off, restore after a failure, select an input file and an independent output directory, inspect selected paths, rescan explicitly, and migrate back safely. Gate-off rollback retains the recovery improvements. Downgrade rollback requires preserving pending candidates from the snapshot and using the migration backup; it is not just replacing package files.
+- [ ] **S6.T2 — Write operating and rollback instructions.** Document how to enable shadow, inspect evidence, activate enforce after evaluation, turn the gate off, roll back by hand from a snapshot after a failure, select an input file and an independent output directory, inspect selected paths, rescan explicitly, and migrate back safely. Gate-off rollback retains the recovery improvements. Downgrade rollback requires preserving pending candidates from the snapshot and using the migration backup; it is not just replacing package files.
 
 - [ ] **S6.T3 — Validate the release candidate.** Run the exit checks below and retain the results.
 
@@ -157,7 +155,7 @@ Complete these checks once against the release candidate; repeat only when a rel
 2. Successful return-tool calls terminate as verified by request-boundary evidence; `retries: 0` makes one attempt.
 3. Gate-off and shadow preserve the repaired baseline’s extraction opportunity and pending-work semantics.
 4. Enforce rejects only valid all-low answers under the evaluated policy; failure paths bypass or stop recoverably.
-5. Snapshot, scan-position, and restore tests pass without silent loss or duplicate application.
+5. Snapshot, scan-position, and recovery tests pass without silent loss of candidates.
 6. Run budgets stop unproductive scans and model retries without skipping unfinished work, and no live run starts without confirmed finite limits.
 7. Migration/lifecycle/maintenance/reset and file-selection checks pass in temporary directories; tests leave the live portrait untouched.
 8. Evaluation evidence supports activation, or the delivered configuration remains off/shadow with the limitation stated.
@@ -170,6 +168,6 @@ Handoff contents: implementation diff/commit, exact dependency versions, test re
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.3.0 | 2026-10-14 | M1 exception: the capped S1 baseline (20 of 26 trios, 150 requests) is the baseline by user decision, the cap being the benchmark; S2.T3 compares coverage within that budget and per-trio rates on trios 1–20. |
 | 0.4.0 | 2026-10-14 | Added the user's parked ideas to the deferred list. |
 | 0.5.0 | 2026-10-16 | Stage 5 planning notes: prefix runs, extraction cache, parallel harness calls. |
+| 0.6.0 | 2026-10-16 | Stage 3 simple rollback (user-approved trim): two snapshot boundaries; S3.T4 is build validation only, with no restore or edit guard; verification and M3 match. |

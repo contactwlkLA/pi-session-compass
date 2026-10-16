@@ -1,6 +1,6 @@
 # pi-session-compass — Architecture Specification
 
-Revision: **0.4.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
+Revision: **0.5.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
 
 Companion: [Development plan](plan.md)
 
@@ -19,7 +19,7 @@ Required outcomes:
 - Fewer generative extraction requests for interactions without behavioral lessons.
 - Conservative handling of corrections, preferences, workflow steering, and confusion.
 - Measured quality and cost before rejection is enabled.
-- Recoverable scan and build progress through snapshot-and-restore, without silently losing candidates.
+- Recoverable scan and build progress through snapshots and simple rollback, without silently losing candidates.
 - Bounded runs even when useful rules are rare, with finite limits the user confirms before every live run.
 - Explicit session-file selection, with isolated test output and no fallback to a wider scope.
 
@@ -64,12 +64,11 @@ flowchart TD
     G -->|"positive, uncertain, or unavailable"| E["Extract rules"]
     E -->|"successful empty result"| C
     E -->|"candidate rules"| Q["Snapshot: candidates and scan position"]
-    E -->|"failure"| H["Stop; restore last snapshot on restart"]
+    E -->|"failure"| H["Stop; resume from the last snapshot next run"]
     Q --> B["Build decisions"]
-    B -->|"valid complete decisions"| I["Snapshot: publication intent"]
+    B -->|"valid complete decisions"| P["Write portrait files"]
     B -->|"failure"| H
-    I --> P["Write portrait files"]
-    P --> A["Snapshot: acknowledge candidates"]
+    P --> A["Snapshot: remove built candidates"]
 ```
 
 | Component | Responsibility |
@@ -81,9 +80,9 @@ flowchart TD
 | Controller | Own mode, threshold, limits, retry policy, cancellation, and routing. |
 | Existing generative extractor | Produce single-line candidate rules; decide their abstraction and usefulness. |
 | Builder | Produce one insert/merge/skip decision per candidate against the current portrait. |
-| Snapshot/restore layer | Save snapshots, restore the last one on restart, and publish validated results. |
+| Snapshot layer | Save snapshots and publish validated results. |
 
-Maintain the existing collection mutex. Collection, maintenance, reset, migration, and restore must all hold this same mutex before changing shared portrait or snapshot files. The instance lock is not a substitute for the mutation lock. This change does not introduce internal worker concurrency.
+Maintain the existing collection mutex. Collection, maintenance, reset, and migration must all hold this same mutex before changing shared portrait or snapshot files. The instance lock is not a substitute for the mutation lock. This change does not introduce internal worker concurrency.
 
 ### Source selection and output contract
 
@@ -168,17 +167,16 @@ Limits are per-run settings, not design constants. Every live run has a declared
 
 Verify the selector, isolated output, request counter, deadline, and confirmation controls offline before making a live request. Check capacity before every model request, including Jev, follow-up turns, retries, post-extraction, and automatic maintenance. Abort at the run deadline. If the limit is reached before extraction completes, the scan position stays at the last snapshot; if it is reached before building, pending candidates stay in the snapshot. Budget/cancellation checks must run inside scanning, not only after a productive result returns. Do not silently change cooldown, thinking level, or extractor model while benchmarking the gate. The `smoke` row is a harness check, not a promise to complete a whole session or a statistically useful benchmark. Report LIMIT_REACHED; outside `smoke`, leave unfinished task/stage checkboxes unchecked and preserve partial evidence without claiming M1 or silently restarting.
 
-## 6. Durable work: snapshot and restore
+## 6. Durable work: snapshot and recovery
 
-An interruption or a failed call must not lose pending candidates or leave the portrait half-written. The design prefers simple rollback over exact mid-step continuity: restore the last snapshot and redo what followed it. Redone steps may cost extra model calls, and the redone output may differ from the first attempt; both are accepted. This application does not need fine-grained state recovery.
+An interruption or a failed call must not lose pending candidates or leave the portrait half-written. The design prefers simple rollback over exact mid-step continuity: resume from the last snapshot and redo what followed it. Redone steps may cost extra model calls, and the redone output may differ from the first attempt; both are accepted. This application does not need fine-grained state recovery.
 
 ### Snapshot
 
 A snapshot directory under the output directory holds a schema version, `state.json`, and copies of the portrait and archive files. `state.json` holds:
 
 - per-source scan positions (see below);
-- pending candidates: stable trio ID, normalized source path and header cwd, source session and entry IDs, extraction-policy revision, candidate strings, and stage (`needsPostReview` or `needsBuild`);
-- at most one publication intent: the intended digest of each portrait/archive file about to be written.
+- pending candidates: stable trio ID, normalized source path and header cwd, source session and entry IDs, extraction-policy revision, candidate strings, and stage (`needsPostReview` or `needsBuild`).
 
 Each snapshot is written beside the previous one, flushed to disk, then switched in; at startup the newest complete snapshot is used. A corrupt or unsupported snapshot stops processing with diagnostics and is never treated as empty. Keep a recoverable migration backup.
 
@@ -188,9 +186,8 @@ If optional post-extraction review is enabled, persist raw rules first as `needs
 
 ### Snapshot boundaries
 
-1. After a trio’s candidates are saved together with the new scan position, in one snapshot. This removes the gap between “candidate saved” and “scanner advanced.” A successful empty extraction advances the scan position the same way without candidates; a failed extraction advances nothing.
-2. After the builder’s decisions are validated and the intended digests of the files to write are recorded, before any portrait file is written.
-3. After publication completes and the candidates are acknowledged.
+1. After a trio’s candidates are saved together with the new scan position, in one snapshot. A successful empty extraction advances the scan position the same way without candidates; a failed extraction advances nothing.
+2. After a build batch’s files are written: the batch’s candidates are removed, in one snapshot.
 
 ### Scan position
 
@@ -200,23 +197,15 @@ Filtered user turns and successful gate rejections advance the position only to 
 
 ### Publishing a build
 
-Separate builder decisions from file writes. Validate exactly one recognized action for every submitted candidate; reject duplicate, unknown, or missing candidate IDs, bad references, and conflicting operations before mutation. Compute the final file contents without writing them, record their digests (snapshot boundary 2), then, under the collection mutex, atomically replace each affected file. Attempt the existing optional Git commit; record failure without repeating the semantic build, and never discard candidates because of it. Then take snapshot boundary 3. A valid all-skip batch completes without file writes.
+Validate the builder’s whole batch before writing anything: exactly one recognized action per submitted candidate; no duplicate, unknown, or missing candidate IDs; valid references; no conflicting operations. A valid all-skip batch completes without file writes. Write each affected file atomically, attempt the existing optional Git commit (a failure is recorded and never drops candidates), then take boundary 2.
 
-### Restore on restart
+### Recovery
 
-Under the collection mutex, before scanning, building, maintenance, or reset:
+A restart needs no restore step. The newest complete snapshot holds the scan position and the pending candidates; the next run re-extracts what follows the position and builds what is pending. Portrait files are written atomically, so they are never half-written.
 
-1. Select the newest complete snapshot.
-2. Edit guard, per file: the current portrait/archive file must equal the snapshot’s copy or the recorded intended digest. Otherwise stop and report a conflict; do not overwrite external edits or unknown state.
-3. If every file passes, restore the snapshot’s files and state, then redo what followed: re-extract trios after the scan position, and re-run the builder for pending candidates.
+If a crash falls between a build’s file writes and boundary 2, the next run builds those candidates again; the builder sees the rules already in the portrait and normally skips or merges them. A rare duplicate rule is accepted: this is background data.
 
-| Interrupted point | Result |
-|---|---|
-| Before extraction succeeds | The trio after the last snapshot is extracted again. |
-| After boundary 1 | Resume from the pending candidates and build; no re-extraction. |
-| After boundary 2, before or during file writes | Per-file guard passes; the snapshot’s files are restored and the builder runs again. |
-| After the file writes, before boundary 3 | Same: the files are restored to the snapshot copies and the build is redone, so the same rules are not inserted twice. |
-| Invalid builder result or exhausted retries | Candidates stay pending; the run stops with diagnostics. |
+To undo a bad state by hand, copy the portrait and archive files back from the newest snapshot (`snapshots/<CURRENT>/files/`) or use the portrait’s Git history. Nothing restores files automatically, so external edits to the portrait are never overwritten by a restore.
 
 In file mode, pending candidates from other sources stay pending and untouched.
 
@@ -236,7 +225,7 @@ First measure the existing pipeline, then the termination/retry repair, then sha
 
 The seed fixture supplies examples for policy development. Expand to a frozen evaluation set with useful interactions, ordinary requests, ambiguous refusals, mixed requests/preferences, and short corrections from other sessions. Record human judgments of whether each trio contains a potential reusable lesson. Tune on a development split; keep a held-out split for activation.
 
-Proposed activation criteria: zero missed labeled corrections in the held-out set; at least 95% of human-labeled useful trios retained; measured total cost lower than the repaired ungated baseline; and all restore tests passing. Set minimum sample sizes before tuning: zero misses in n labeled cases supports only a miss rate of about 3/n at 95% confidence (rule of three), so bounding the miss rate at 5% needs about 60 labeled positives, and 1% about 300. Report numerators, denominators, the resulting bound, and limitations. These are proposal values requiring review, not established guarantees. Compare with extractor positives as an additional measure, not the sole definition of truth.
+Proposed activation criteria: zero missed labeled corrections in the held-out set; at least 95% of human-labeled useful trios retained; measured total cost lower than the repaired ungated baseline; and all recovery tests passing. Set minimum sample sizes before tuning: zero misses in n labeled cases supports only a miss rate of about 3/n at 95% confidence (rule of three), so bounding the miss rate at 5% needs about 60 labeled positives, and 1% about 300. Report numerators, denominators, the resulting bound, and limitations. These are proposal values requiring review, not established guarantees. Compare with extractor positives as an additional measure, not the sole definition of truth.
 
 Separately audit a uniform random sample of up to 200 predicted rejections, or all if fewer. Report useful lessons found among rejected trios; this measures rejection quality, not recall by itself. Include the cost of shadow extraction and labeling in the evaluation budget; labeling effort is not yet estimated. If the available corpus is too small or too narrow, remain in shadow mode and label the result preliminary.
 
@@ -249,7 +238,7 @@ Use [stage.md](stage.md) as the continuation index and each `stage-N-task.md` as
 | Item | Status / implementation handling |
 |---|---|
 | Broad-rule scope | Working assumption; preserve current extraction intent. |
-| Durability repair | Stage 3, sequenced after the S1–S2 foundation at user direction, as snapshot-and-restore. The design is approved in outline; details remain for review. |
+| Durability repair | Stage 3, sequenced after the S1–S2 foundation at user direction, as snapshots with simple rollback (no automatic restore). The design is approved in outline; details remain for review. |
 | Source scope and output | File selection plus isolated output in Stage 1; `all` unchanged as default. Workspace scope and public selection controls are deferred, with seams recorded in §3. |
 | Exact installed Pi/core/package versions | Obtain manifest/lockfile or dependency report in baseline task. |
 | Pi launch syntax and AGENTS.md auto-loading | Inherited from earlier drafts, unverified; checked in S1.T1. |
@@ -280,6 +269,6 @@ Official Jev documentation: the API reference, models and version-pinning, and N
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.2.0 | 2026-10-12 | Added expected-benefit and break-even reasoning to the outcomes section. |
 | 0.3.0 | 2026-10-12 | Added the `probe` run type to the run-type list. |
 | 0.4.0 | 2026-10-14 | Added the baseline-coverage decision to the verification and decisions table. |
+| 0.5.0 | 2026-10-16 | §6 simple rollback (user-approved trim): two snapshot boundaries, no publication intent, no automatic restore or edit guard; §3 flow and components match. |

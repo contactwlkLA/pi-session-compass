@@ -530,6 +530,146 @@ describe("validateDecisions", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain("99");
   });
+
+  // --- whole-batch checks (rules 15-20) ---
+
+  it("rejects a bare text reference as an unknown candidate", () => {
+    const result = validateDecisions([{ candidate: "candidate one", action: "insert" }], 10, 2);
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.error).toBe(`Decision candidate "candidate one" is not a candidate reference. Use C1 to C2.`);
+  });
+
+  it("rejects C0 as an unknown candidate", () => {
+    const result = validateDecisions([{ candidate: "C0", action: "insert" }], 10, 1);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(`Decision candidate "C0" is not a candidate reference. Use C1 to C1.`);
+  });
+
+  it("rejects a reference past the last candidate", () => {
+    const result = validateDecisions([{ candidate: "C3", action: "insert" }], 10, 2);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(`Decision candidate "C3" is not a candidate reference. Use C1 to C2.`);
+  });
+
+  it("rejects a non-canonical candidate reference", () => {
+    const result = validateDecisions([{ candidate: "C01", action: "insert" }], 10, 1);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(`Decision candidate "C01" is not a candidate reference. Use C1 to C1.`);
+  });
+
+  it("rejects an unknown reference on a skip decision", () => {
+    const result = validateDecisions([{ candidate: "C9", action: "skip" }], 10, 1);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(`Decision candidate "C9" is not a candidate reference. Use C1 to C1.`);
+  });
+
+  it("rejects two decisions for the same candidate", () => {
+    const result = validateDecisions(
+      [
+        { candidate: "C1", action: "insert", beforePosition: 1 },
+        { candidate: "C1", action: "insert" },
+      ],
+      10,
+      1,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.error).toBe("Candidate C1 has more than one decision. Return exactly one decision per candidate.");
+  });
+
+  it("rejects one candidate inserted and merged", () => {
+    const result = validateDecisions(
+      [
+        { candidate: "C1", action: "insert", beforePosition: 1 },
+        { candidate: "C1", action: "merge", mergePosition: 1, text: "combined" },
+      ],
+      10,
+      1,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.error).toBe("Candidate C1 has more than one decision. Return exactly one decision per candidate.");
+  });
+
+  it("rejects a batch that leaves candidates without decisions", () => {
+    const result = validateDecisions([{ candidate: "C1", action: "insert" }], 10, 3);
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.error).toBe(
+        "Missing decisions for C2, C3. Return exactly one decision for each candidate C1 to C3.",
+      );
+  });
+
+  it("rejects two merges into the same rule, naming the first two candidates", () => {
+    const result = validateDecisions(
+      [
+        { candidate: "C1", action: "merge", mergePosition: 2, text: "first" },
+        { candidate: "C2", action: "merge", mergePosition: 2, text: "second" },
+        { candidate: "C3", action: "merge", mergePosition: 2, text: "third" },
+      ],
+      10,
+      3,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.error).toBe(
+        "Candidates C1 and C2 both merge into rule 2. Only one candidate may merge into a rule; skip the other or give it a different action.",
+      );
+  });
+
+  it("rejects a rule merged into by one decision and evicted by another", () => {
+    const result = validateDecisions(
+      [
+        { candidate: "C1", action: "merge", mergePosition: 2, text: "combined" },
+        { candidate: "C2", action: "insert", beforePosition: 1, evictPositions: [2] },
+      ],
+      10,
+      2,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.error).toBe(
+        "Rule 2 is merged into by C1 and evicted by C2. A rule cannot be both merged into and evicted.",
+      );
+  });
+
+  it("rejects a rule evicted by two decisions", () => {
+    const result = validateDecisions(
+      [
+        { candidate: "C1", action: "insert", beforePosition: 1, evictPositions: [3] },
+        { candidate: "C2", action: "insert", beforePosition: 1, evictPositions: [3] },
+      ],
+      10,
+      2,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.error).toBe("Rule 3 is evicted by both C1 and C2. List each evicted rule in one decision only.");
+  });
+
+  it("accepts a complete batch with candidateCount", () => {
+    const result = validateDecisions(
+      [
+        { candidate: "C1", action: "insert", beforePosition: 1 },
+        { candidate: "C2", action: "skip" },
+        { candidate: "C3", action: "merge", mergePosition: 1, text: "combined" },
+      ],
+      10,
+      3,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("accepts a one-candidate all-skip batch", () => {
+    const result = validateDecisions([{ candidate: "C1", action: "skip" }], 10, 1);
+    expect(result.ok).toBe(true);
+  });
+
+  it("accepts a partial list when candidateCount is undefined", () => {
+    const result = validateDecisions([{ candidate: "C1", action: "insert" }], 10, undefined);
+    expect(result.ok).toBe(true);
+  });
 });
 
 // ============================================================================
@@ -1379,9 +1519,10 @@ describe("applyDecisions with evictPositions (insert-then-evict by text)", () =>
         { candidate: "C1", action: "skip" },
         { candidate: "C2", action: "skip" },
       ];
+      const portraitBefore = fs.readFileSync(path.join(dir, "portrait.md"), "utf-8");
       applyDecisions(dir, ["R1", "R2"], ["SKIP1", "SKIP2"], decisions, undefined);
-      const rules = parsePortraitRules(fs.readFileSync(path.join(dir, "portrait.md"), "utf-8"));
-      expect(rules).toEqual(["R1", "R2"]);
+      // All-skip writes nothing: portrait.md keeps exactly the bytes it had.
+      expect(fs.readFileSync(path.join(dir, "portrait.md"), "utf-8")).toBe(portraitBefore);
       // No new commit should be created — only the init commit exists
       const log = recording.getCommitLog(dir).toString().trim();
       const lines = log.split("\n").filter((l) => l.length > 0);
@@ -1605,6 +1746,73 @@ describe("applyDecisions skipPersist", () => {
       expect(result.rules).toEqual([]);
       expect(result.evictedRules).toEqual([]);
       expect(result.droppedRules).toEqual([]);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it("all-skip without skipPersist writes nothing", () => {
+    const dir = tmpDir();
+    try {
+      const portraitPath = path.join(dir, "portrait.md");
+      const bytesBefore = fs.readFileSync(portraitPath);
+      const mtimeBefore = fs.statSync(portraitPath).mtimeMs;
+      const logBefore = recording.getCommitLog(dir);
+      // initGit seeds dropped.md and evicted.md with headers — they must stay untouched.
+      const droppedBefore = fs.readFileSync(path.join(dir, "dropped.md"), "utf-8");
+      const evictedBefore = fs.readFileSync(path.join(dir, "evicted.md"), "utf-8");
+      const decisions: BuildingDecision[] = [
+        { candidate: "C1", action: "skip" },
+        { candidate: "C2", action: "skip" },
+      ];
+      // ruleLimit 2 would trim a three-rule portrait; an all-skip batch leaves it alone.
+      const result = applyDecisions(dir, ["R1", "R2", "R3"], ["S1", "S2"], decisions, { ruleLimit: 2 });
+      expect(result).toEqual({ inserted: 0, merged: 0, evicted: 0, rules: [], evictedRules: [], droppedRules: [] });
+      expect(fs.readFileSync(portraitPath)).toEqual(bytesBefore);
+      expect(fs.statSync(portraitPath).mtimeMs).toBe(mtimeBefore);
+      expect(fs.readFileSync(path.join(dir, "dropped.md"), "utf-8")).toBe(droppedBefore);
+      expect(fs.readFileSync(path.join(dir, "evicted.md"), "utf-8")).toBe(evictedBefore);
+      expect(recording.getCommitLog(dir)).toBe(logBefore);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it("all-skip with skipPersist returns the existing rules unchanged", () => {
+    const dir = tmpDir();
+    try {
+      const decisions: BuildingDecision[] = [{ candidate: "C1", action: "skip" }];
+      const result = applyDecisions(dir, ["R1", "R2", "R3"], ["S1"], decisions, { skipPersist: true });
+      expect(result).toEqual({
+        inserted: 0,
+        merged: 0,
+        evicted: 0,
+        rules: ["R1", "R2", "R3"],
+        evictedRules: [],
+        droppedRules: [],
+      });
+      expect(parsePortraitRules(fs.readFileSync(path.join(dir, "portrait.md"), "utf-8"))).toEqual(["R1", "R2", "R3"]);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it("a mixed skip-and-insert batch still writes", () => {
+    const dir = tmpDir();
+    try {
+      const decisions: BuildingDecision[] = [
+        { candidate: "C1", action: "skip" },
+        { candidate: "C2", action: "insert", beforePosition: 1 },
+      ];
+      const result = applyDecisions(dir, ["R1", "R2", "R3"], ["S1", "NEW"], decisions, undefined);
+      expect(result.inserted).toBe(1);
+      expect(parsePortraitRules(fs.readFileSync(path.join(dir, "portrait.md"), "utf-8"))).toEqual([
+        "NEW",
+        "R1",
+        "R2",
+        "R3",
+      ]);
+      expect(recording.getLatestCommit(dir)).toContain("1 rule added");
     } finally {
       cleanup(dir);
     }

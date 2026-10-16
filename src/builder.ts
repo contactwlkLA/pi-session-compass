@@ -203,6 +203,20 @@ export function applyDecisions(
   decisions: BuildingDecision[],
   options: { ruleLimit?: number; skipPersist?: boolean } | undefined,
 ): BuildResult {
+  // All-skip batch: nothing to apply — leave portrait.md, dropped.md and evicted.md untouched
+  // and skip the commit. With skipPersist the caller writes `rules` back as the portrait, so it
+  // must receive the unchanged existing rules.
+  if (decisions.length > 0 && decisions.every((d) => d.action === "skip")) {
+    return {
+      inserted: 0,
+      merged: 0,
+      evicted: 0,
+      rules: options?.skipPersist ? [...existingRules] : [],
+      evictedRules: [],
+      droppedRules: [],
+    };
+  }
+
   const ruleLimit = options?.ruleLimit ?? getPortraitSettings().ruleLimit;
   const rules = [...existingRules];
 
@@ -354,6 +368,17 @@ export function applyDecisions(
  * 12. merge requires non-empty single-line text
  * 13. merge must not set beforePosition (it replaces in place)
  * 14. merge must not evict its own mergePosition
+ *
+ * Whole-batch checks run after every per-decision check and only when candidateCount is provided
+ * (buildPortrait always provides it; callers that pass undefined keep per-decision checks only):
+ * 15. every decision's candidate is a canonical reference with index in [1, candidateCount]
+ * 16. no candidate reference appears in two decisions
+ * 17. every candidate C1…C{candidateCount} has a decision — an empty decision list with a
+ *     nonzero candidateCount fails here (buildPortrait treats an empty list as a failure before
+ *     validation)
+ * 18. no two merge decisions share a mergePosition
+ * 19. no numeric position is one decision's mergePosition and another decision's evictPosition
+ * 20. no numeric position appears in the evictPositions of two different decisions
  */
 export function validateDecisions(
   decisions: BuildingDecision[],
@@ -516,6 +541,95 @@ export function validateDecisions(
             }
           }
         }
+      }
+    }
+  }
+
+  // Whole-batch checks (rules 15-20); skipped entirely when candidateCount was not provided.
+  if (candidateCount !== undefined) {
+    // Rule 15: every decision must reference an existing candidate, canonically (C1..Cn).
+    for (const decision of decisions) {
+      const digits = CANDIDATE_REF_RE.test(decision.candidate) ? decision.candidate.slice(1) : "";
+      const idx = digits === "" ? -1 : parseInt(digits, 10);
+      if (digits !== String(idx) || idx < 1 || idx > candidateCount) {
+        return {
+          ok: false,
+          error: `Decision candidate "${decision.candidate}" is not a candidate reference. Use C1 to C${candidateCount}.`,
+        };
+      }
+    }
+
+    // Rule 16: one decision per candidate reference (seenRefs now holds every reference in the batch).
+    const seenRefs = new Set<string>();
+    for (const decision of decisions) {
+      if (seenRefs.has(decision.candidate)) {
+        return {
+          ok: false,
+          error: `Candidate ${decision.candidate} has more than one decision. Return exactly one decision per candidate.`,
+        };
+      }
+      seenRefs.add(decision.candidate);
+    }
+
+    // Rule 17: every candidate in the batch must carry a decision.
+    const missing: string[] = [];
+    for (let i = 1; i <= candidateCount; i++) {
+      const ref = `C${i}`;
+      if (!seenRefs.has(ref)) missing.push(ref);
+    }
+    if (missing.length > 0) {
+      return {
+        ok: false,
+        error: `Missing decisions for ${missing.join(", ")}. Return exactly one decision for each candidate C1 to C${candidateCount}.`,
+      };
+    }
+
+    // Rule 18: at most one merge decision may target any given rule.
+    const mergeByPosition = new Map<number, string>();
+    for (const decision of decisions) {
+      if (decision.action !== "merge" || decision.mergePosition === undefined) continue;
+      const position = decision.mergePosition;
+      const earlier = mergeByPosition.get(position);
+      if (earlier !== undefined) {
+        return {
+          ok: false,
+          error: `Candidates ${earlier} and ${decision.candidate} both merge into rule ${position}. Only one candidate may merge into a rule; skip the other or give it a different action.`,
+        };
+      }
+      mergeByPosition.set(position, decision.candidate);
+    }
+
+    // Rule 19: a rule cannot be the merge target of one decision and evicted by another
+    // (one decision doing both is rejected by rule 14 above).
+    for (const merge of decisions) {
+      if (merge.action !== "merge" || merge.mergePosition === undefined) continue;
+      for (const evictor of decisions) {
+        if (evictor === merge || !evictor.evictPositions) continue;
+        for (const position of evictor.evictPositions) {
+          if (typeof position === "number" && position === merge.mergePosition) {
+            return {
+              ok: false,
+              error: `Rule ${position} is merged into by ${merge.candidate} and evicted by ${evictor.candidate}. A rule cannot be both merged into and evicted.`,
+            };
+          }
+        }
+      }
+    }
+
+    // Rule 20: at most one decision may evict any given numeric rule.
+    const evictedByPosition = new Map<number, string>();
+    for (const decision of decisions) {
+      if (!decision.evictPositions) continue;
+      for (const position of decision.evictPositions) {
+        if (typeof position !== "number") continue;
+        const earlier = evictedByPosition.get(position);
+        if (earlier !== undefined) {
+          return {
+            ok: false,
+            error: `Rule ${position} is evicted by both ${earlier} and ${decision.candidate}. List each evicted rule in one decision only.`,
+          };
+        }
+        evictedByPosition.set(position, decision.candidate);
       }
     }
   }

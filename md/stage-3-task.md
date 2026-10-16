@@ -1,19 +1,19 @@
-# Stage 3 — Preserve pending work and safe restore
+# Stage 3 — Preserve pending work
 
-Project: **pi-session-compass** · Revision: **0.5.0** · Status: **Approved (user, 2026-10-14)**
+Project: **pi-session-compass** · Revision: **0.6.0** · Status: **Approved (user, 2026-10-14)**
 
 Date: **2026-10-14**
 
 Parent: [Development plan](plan.md), Stage 3. Contract: [Architecture](architecture.md) §6. Operating rules: [AGENTS.md](../AGENTS.md). Bugs and findings: [bugs.md](bugs.md).
 
-**Goal:** interrupted or failed work restores the last snapshot and redoes the step without losing candidates, and the scanner reaches every trio (P7). This stage edits `src/` (scanner, collector, storage, builder, pipeline, lifecycle) plus tests and the harness. It adds no gate and no new settings.
+**Goal:** interrupted or failed work resumes from the last snapshot without losing candidates, and the scanner reaches every trio (P7). This stage edits `src/` (scanner, collector, storage, builder, pipeline, lifecycle) plus tests and the harness. It adds no gate and no new settings.
 
 Use [stage.md](stage.md) for continuation. The stage runs in three parts, **A → B → C**, one part per session. Each part ends with both full suites green, a commit and push, and a checkpoint with the user before the next part starts. All six plan tasks are in scope; none is deferred.
 
 | Part | Plan tasks | Outcome | Estimate |
 |---|---|---|---|
 | A — Scan position and snapshot store | S3.T3, S3.T1 | Scanner reaches all 26 census trios; snapshot module exists and is tested, not yet wired | ~2 h |
-| B — Pending work, publication, restore | S3.T2, S3.T4 | Candidates survive failures and crashes; builds publish only after validation; restart restores and redoes | ~2.5 h |
+| B — Pending work, build validation | S3.T2, S3.T4 | Candidates survive failures and crashes; builds publish only after whole-batch validation; a restart resumes from the snapshot | ~2.5 h |
 | C — Locking, migration, lifecycle, M3 | S3.T5, S3.T6 | Shared lock, one-time legacy import, reset covers the snapshot; lifecycle safe; M3 verified | ~1.5 h |
 
 Pair setup (user, 2026-10-14): Pi writes the code from a per-part brief; Claude Code plans, reviews, verifies, and commits. Part A: [stage-3a-pi.md](stage-3a-pi.md) (Pi) and [stage-3a-cc.md](stage-3a-cc.md) (CC). Pi wrote Blocks A-1 to A-2b; the user then parked Pi over Pi/mimo configuration problems (bugs.md E5), so Claude Code coded A-2c and A-3, with the same brief and review gates. From Part B (user, 2026-10-15), Pi codes again from per-task specs and Claude Code plans, reviews, keeps the coder ledger, and commits; see [NOTES.md](NOTES.md) and [planner-prompt.md](planner-prompt.md).
@@ -47,7 +47,7 @@ Protected text expected in Part A: the truncated-or-rewritten source report; the
 - [x] **1.** Both full suites pass (`npm test`, `npm run test:compass`), raw results quoted. Commit and push. *(2026-10-15: `npm test` 19 files / 420 passed; `npm run test:compass` 8 files / 91 passed; single-worker 420 passed; 47a95b5, 2edb1ab)*
 - [x] **2.** Sync this file, stage.md, and bugs.md. Report to the user and wait before Part B.
 
-## Part B — Pending work, publication, restore
+## Part B — Pending work, build validation
 
 ### B1 — Typed outcomes and pending candidates (S3.T2)
 
@@ -56,34 +56,30 @@ Protected text expected in Part A: the truncated-or-rewritten source report; the
 - [x] **3.** Store pending candidates with source path and cwd. Preserve raw candidates before the optional post-review. In file mode, drain only candidates from the selected file. *(335eb32, bd56689, afc2712; the harness passes the file filter in S3-B1-04)*
 - [x] **4.** A failed review or build keeps its candidates and stops cleanly. *(bd56689, afc2712; tests/pending-build.test.ts)*
 
-### B2 — Validated publication and restore (S3.T4)
+### B2 — Build validation (S3.T4)
 
-- [ ] **1.** Separate builder decision calculation from file writes.
-- [ ] **2.** Whole-batch validation: exactly one action per candidate, valid references, no conflicting operations. A valid all-skip batch completes without file writes.
-- [ ] **3.** *(B-1: (a) bd56689 and (c) afc2712 done; (b) in B-2)* Wire the snapshot (A2) as the scan-position and pending-work authority, taken at the three boundaries: (a) after a trio's candidates are saved with the scan position; (b) after builder decisions are validated and the intended file digests are recorded, before any portrait file is written; (c) after publication completes.
-- [ ] **4.** On restart, restore the last snapshot's state and files and redo what followed it, after a per-file edit guard: each portrait/archive file must equal the snapshot copy or the recorded intended digest; otherwise stop and report a conflict without overwriting.
-- [ ] **5.** Git stays an optional audit layer; a Git failure never discards candidates.
-- [x] **6.** Update the harness trio counter and reports to read the scan position from the snapshot. *(S3-B1-04: start snapshots carry `snapshots/`; no harness code reads scan positions; receipts report a pipeline stop)*
+- [x] **1.** Whole-batch validation: exactly one action per candidate; no duplicate, unknown, or missing candidate IDs; no conflicting operations. A valid all-skip batch completes without file writes. *(S3-B2-01)*
+- [x] **2.** Snapshot boundaries: after a trio's candidates are saved with the scan position; after a build batch's files are written. *(bd56689, afc2712)*
+- [x] **3.** Git stays an optional audit layer; a Git failure never discards candidates. *(afc2712; buildPortrait ignores the commit result)*
+- [x] **4.** The harness reads the work state from the snapshot. *(4badf3a)*
 
-### B3 — Crash and failure tests
+### B3 — Failure tests
 
-- [ ] **1.** Simulated crashes at each snapshot boundary: after (a) resume from saved candidates without re-extraction; before, during, and after the portrait writes, restore the snapshot's files and redo the build with no duplicate insertion.
-- [ ] **2.** Invalid builder output and exhausted retries keep the candidates; an optional-review failure preserves the raw rules.
-- [ ] **3.** An external edit to a portrait file stops the restore with a conflict.
-- [ ] **4.** File-mode runs leave pending candidates from other sources untouched.
+- [x] **1.** Invalid builder output and exhausted retries keep the candidates. *(S3-B2-01; a resumed stopped run is covered by tests/pending-build.test.ts)*
+- [x] **2.** File-mode runs leave pending candidates from other sources untouched. *(afc2712)*
 
-Protected text expected in Part B: the restore conflict report; the failed review/build stop message.
+Protected text expected in Part B: the failed review/build stop message. New validation messages go to the builder model, not the user; they follow the existing ones in `validateDecisions`, and their exact text is approved in the S3-B2-01 spec.
 
 ### Part B gate
 
-- [ ] **1.** Both full suites pass, raw results quoted. Commit and push.
-- [ ] **2.** Sync this file, stage.md, and bugs.md. Report to the user and wait before Part C.
+- [x] **1.** Both full suites pass, raw results quoted. Commit and push. *(2026-10-16: `npm test` 23 files / 476 passed; `npm run test:compass` 8 files / 101 passed; single-worker 476 passed; S3-B2-01 commit)*
+- [x] **2.** Sync this file, stage.md, and bugs.md. Report to the user and wait before Part C.
 
 ## Part C — Locking, migration, lifecycle, M3
 
 ### C1 — Shared locking, migration, and reset (S3.T5)
 
-- [ ] **1.** Migration, reset, maintenance, and restore use the collection mutex.
+- [ ] **1.** Migration, reset, and maintenance use the collection mutex.
 - [ ] **2.** Import old offsets once, with a backup, reconstructed assistant context, and a legacy cutoff that prevents automatic re-extraction. Old offsets point past a closing assistant record, so the import moves them back to the trio boundary or records the cutoff.
 - [ ] **3.** Preserve the existing portrait; the legacy progress files become nonauthoritative. Migration states that old offsets cannot establish historical completeness.
 - [ ] **4.** The reset confirmation includes the snapshot; reset clears it under the mutex.
@@ -113,6 +109,6 @@ Protected text expected in Part C: the migration notice (including the historica
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.3.0 | 2026-10-15 | Part A complete (A1, A2, gate). |
 | 0.4.0 | 2026-10-15 | Pi codes again from Part B; CC plans, reviews, and keeps the coder ledger. |
 | 0.5.0 | 2026-10-16 | B1 done; B2.3 boundaries (a) and (c) and B2.6 done (S3-B1-01 to 04). |
+| 0.6.0 | 2026-10-16 | Simple rollback (user-approved trim): B2 is build validation only; no publication intent, restore, edit guard, or per-boundary crash tests. Part B complete (S3-B2-01). |
