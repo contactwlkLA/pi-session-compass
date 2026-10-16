@@ -12,6 +12,7 @@ import { type LlmProgressInfo, NO_LLM_PROGRESS_SINK, setLlmProgressSink } from "
 import { NO_CANCEL_CHECK, runMaintenance } from "./maintenance-core.js";
 import type { PortraitSettings } from "./schema.js";
 import { loadPortraitState, savePortraitState } from "./storage.js";
+import type { PipelineStopReason } from "./types.js";
 import { getErrorMessage } from "./utils.js";
 
 /** Sentinel: no build options (use defaults) */
@@ -39,6 +40,8 @@ export interface PipelineStats {
   totalSequences: number;
   totalInserted: number;
   totalEvicted: number;
+  /** Set when the run stopped on a failure before its scan was exhausted. */
+  stopReason: PipelineStopReason | null;
 }
 
 /**
@@ -116,10 +119,12 @@ export async function runPipelineLoop(
     let totalInserted = 0;
     let totalEvicted = 0;
     let remaining = 1;
+    let stopReason: PipelineStopReason | null = null;
 
-    while (remaining > 0 && totalSequences < maxSequences && !shouldCancel()) {
+    while (stopReason === null && remaining > 0 && totalSequences < maxSequences && !shouldCancel()) {
       const scanResults = await scanSessions(portraitDir, pipelineState, 100, SINGLE_RESULT);
       remaining = scanResults.remainingFiles;
+      if (scanResults.stopReason) stopReason = scanResults.stopReason;
 
       if (scanResults.results.length === 0) break;
       totalSequences += scanResults.results.length;
@@ -160,7 +165,7 @@ export async function runPipelineLoop(
       }
 
       // Back to scanning for next file
-      if (remaining > 0 && totalSequences < maxSequences && !shouldCancel()) {
+      if (stopReason === null && remaining > 0 && totalSequences < maxSequences && !shouldCancel()) {
         pipelineState.pipelinePhase = "scanning";
         savePortraitState(portraitDir, pipelineState);
         setCachedPipelineState(pipelineState);
@@ -185,6 +190,7 @@ export async function runPipelineLoop(
 
     // Auto-maintenance check
     if (
+      stopReason === null &&
       settings.maintenanceEveryNRulesInserted > 0 &&
       (pipelineState.rulesInsertedSinceMaintenance ?? 0) >= settings.maintenanceEveryNRulesInserted &&
       !shouldCancel()
@@ -196,7 +202,7 @@ export async function runPipelineLoop(
       }
     }
 
-    return { totalSequences, totalInserted, totalEvicted };
+    return { totalSequences, totalInserted, totalEvicted, stopReason };
   } finally {
     // Release the sink so it doesn't outlive the collect cycle.
     // (Auto-maintenance, if it ran, already cleared+restored its own sink.)

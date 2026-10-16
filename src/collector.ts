@@ -24,6 +24,7 @@ import type {
   BgScanCheckpoints,
   ExtractionResult,
   InteractionSequence,
+  PipelineStopReason,
   PortraitPipelineState,
   ScanCheckpoint,
   ScanCheckpoints,
@@ -105,13 +106,24 @@ async function firstRecordAt(filePath: string, startByte: number): Promise<Compl
   return undefined;
 }
 
-function headerSessionId(record: CompleteRecord | undefined): string | undefined {
-  if (!record) return undefined;
+/** Session id and working directory from a file's header record; null where absent. */
+interface SessionHeader {
+  id: string | null;
+  cwd: string | null;
+}
+
+function sessionHeader(record: CompleteRecord | undefined): SessionHeader {
+  const none: SessionHeader = { id: null, cwd: null };
+  if (!record) return none;
   try {
     const header = JSON.parse(record.text);
-    return header?.type === "session" && typeof header.id === "string" ? header.id : undefined;
+    if (header?.type !== "session") return none;
+    return {
+      id: typeof header.id === "string" ? header.id : null,
+      cwd: typeof header.cwd === "string" ? header.cwd : null,
+    };
   } catch {
-    return undefined;
+    return none;
   }
 }
 
@@ -124,7 +136,7 @@ async function verifyScanPosition(filePath: string, checkpoint: ScanCheckpoint):
   if (checkpoint.boundaryDigest === undefined) return;
   if (fs.statSync(filePath).size < checkpoint.lastByte) throw sourceChangedError(filePath);
   if (checkpoint.sessionId !== undefined) {
-    const currentId = headerSessionId(await firstRecordAt(filePath, FILE_START));
+    const currentId = sessionHeader(await firstRecordAt(filePath, FILE_START)).id;
     if (currentId !== checkpoint.sessionId) throw sourceChangedError(filePath);
   }
   const boundary = await firstRecordAt(filePath, checkpoint.lastByte);
@@ -170,7 +182,7 @@ export async function scanSessions(
     if (filesProcessed >= maxFilesPerCycle) {
       saveScanCheckpoints(portraitDir, checkpoints);
       const remaining = allFiles.length - allFiles.indexOf(file);
-      return { results, triosProcessed, totalKnownTrios, remainingFiles: remaining };
+      return { results, triosProcessed, totalKnownTrios, remainingFiles: remaining, stopReason: null };
     }
 
     const _lastByte = file.checkpoint?.lastByte ?? 0;
@@ -227,7 +239,15 @@ export async function scanSessions(
       throw err;
     }
 
-    const { totalNonEmpty, bytesScanned, resumeByte, boundaryDigest, sessionId } = scanResult;
+    const { totalNonEmpty, bytesScanned, resumeByte, boundaryDigest, sessionId, stopReason } = scanResult;
+    if (stopReason !== null) {
+      // The file keeps the position of its last examined trio; the pass ends here.
+      saveScanCheckpoints(portraitDir, checkpoints);
+      state.triosProcessed = triosProcessed;
+      setCachedPipelineState(state);
+      const remaining = allFiles.length - allFiles.indexOf(file);
+      return { results, triosProcessed, totalKnownTrios, remainingFiles: remaining, stopReason };
+    }
     filesProcessed++;
 
     // Store the scan position the pass ended at: the record boundary a fresh
@@ -248,7 +268,7 @@ export async function scanSessions(
       saveScanCheckpoints(portraitDir, checkpoints);
       state.triosProcessed = triosProcessed;
       const remaining = allFiles.length - allFiles.indexOf(file) - 1;
-      return { results, triosProcessed, totalKnownTrios, remainingFiles: remaining };
+      return { results, triosProcessed, totalKnownTrios, remainingFiles: remaining, stopReason: null };
     }
 
     // Yield to event loop every 10 files
@@ -260,7 +280,7 @@ export async function scanSessions(
   saveScanCheckpoints(portraitDir, checkpoints);
   state.triosProcessed = triosProcessed;
 
-  return { results, triosProcessed, totalKnownTrios, remainingFiles: 0 };
+  return { results, triosProcessed, totalKnownTrios, remainingFiles: 0, stopReason: null };
 }
 
 /** Load bg scan checkpoints from dedicated file (avoids race with main state file) */
@@ -414,6 +434,9 @@ interface StreamAndExtractOptions {
   maxTrios: number;
 }
 
+/** Stop reasons a scan pass can end with (the build stop is set by the pipeline). */
+type ScanStopReason = Extract<PipelineStopReason, "extraction_failed" | "review_failed">;
+
 /** What one streaming pass over a session file reports back. */
 interface StreamAndExtractResult {
   triosFound: number;
@@ -422,6 +445,30 @@ interface StreamAndExtractResult {
   resumeByte: number;
   boundaryDigest: string | undefined;
   sessionId: string | undefined;
+  /** Set when the pass ended at a failed trio; the saved position is then not updated from this result. */
+  stopReason: ScanStopReason | null;
+}
+
+/** A record a trio is built from: its id when present, and its exact text. */
+interface TrioRecord {
+  id: string | null;
+  text: string;
+}
+
+/** What the trio loop does after one trio: keep going, reach the pass limit, or stop on a failure. */
+type TrioStep = "continue" | "limit" | ScanStopReason;
+
+/**
+ * Stable identity of a trio (sha256 hex). Uses the session id and the three record ids when all
+ * are present; otherwise the three record texts, so the same trio keeps its identity across passes.
+ */
+function trioIdentity(sessionId: string | undefined, records: readonly TrioRecord[]): string {
+  const ids = records.map((record) => record.id);
+  const input =
+    sessionId !== undefined && ids.every((id) => id !== null)
+      ? [sessionId, ...ids].join("\n")
+      : records.map((record) => record.text).join("\n");
+  return createHash("sha256").update(input).digest("hex");
 }
 
 async function streamAndExtract(opts: StreamAndExtractOptions): Promise<StreamAndExtractResult> {
@@ -431,6 +478,9 @@ async function streamAndExtract(opts: StreamAndExtractOptions): Promise<StreamAn
   if (savedCheckpoint) await verifyScanPosition(sessionFile, savedCheckpoint);
   const checkpointByte = savedCheckpoint?.lastByte ?? FILE_START;
   const records = readCompleteRecords(sessionFile, checkpointByte);
+  // The header is read on every pass, so a resumed pass knows the session id and cwd too.
+  const header = sessionHeader(await firstRecordAt(sessionFile, FILE_START));
+  const sessionId = header.id ?? undefined;
 
   let triosFound = 0;
   let bytesRead = 0; // bytes read since resume (for progress)
@@ -441,7 +491,9 @@ async function streamAndExtract(opts: StreamAndExtractOptions): Promise<StreamAn
   const detector = new TrioDetector();
   let resumeByte = checkpointByte;
   let boundaryDigest = checkpoints[sessionFile]?.boundaryDigest;
-  let sessionId = checkpoints[sessionFile]?.sessionId;
+  // The most recent records that set the trio's agent-before and user texts.
+  let lastAssistantRecord: TrioRecord | undefined;
+  let lastUserRecord: TrioRecord | undefined;
 
   // Helper to save checkpoint mid-file (after each trio extraction)
   function saveMidFileCheckpoint() {
@@ -454,28 +506,58 @@ async function streamAndExtract(opts: StreamAndExtractOptions): Promise<StreamAn
   }
 
   // Helper to try extracting a complete trio (agent→user→agent)
-  async function tryExtractTrio(trio: {
-    agentBefore: string;
-    userFeedback: string;
-    agentAfter: string;
-  }): Promise<boolean> {
+  async function tryExtractTrio(
+    trio: InteractionSequence,
+    records: [TrioRecord, TrioRecord, TrioRecord],
+  ): Promise<TrioStep> {
     const settings = getPortraitSettings();
-    const { notes, summary, dumpPath } = await callExtractionLlm(
+    const extraction = await callExtractionLlm(
       { agentBefore: trio.agentBefore, userFeedback: trio.userFeedback, agentAfter: trio.agentAfter },
       settings.debugDumpLimit,
     );
-    const validated = settings.postExtractionEnabled
-      ? await postExtractRules(notes, summary, dumpPath, settings.postExtractionModel || undefined)
-      : notes;
+    if (extraction.kind === "failed") {
+      reportError(
+        `Rule extraction failed for a trio in ${sessionFile}. Its scan position was kept; the trio will be extracted again on the next run.`,
+        "extraction error",
+      );
+      return "extraction_failed";
+    }
+    const review: ReviewOutcome = settings.postExtractionEnabled
+      ? await postExtractRules(
+          extraction.notes,
+          extraction.summary,
+          extraction.dumpPath,
+          settings.postExtractionModel || undefined,
+        )
+      : { kind: "success", notes: extraction.notes };
+    if (review.kind === "failed") {
+      const rawCount = extraction.notes.length;
+      reportError(
+        `Rule review failed; ${rawCount} extracted ${rawCount === 1 ? "rule was" : "rules were"} kept and will be reviewed on the next run.`,
+        "review error",
+      );
+      return "review_failed";
+    }
+    const validated = review.notes;
     emitTrioExamined({ sessionPath: sessionFile, notes: validated.length, notesText: validated });
     if (validated.length > 0) {
-      const result: ExtractionResult = { behaviorNotes: validated, sessionPath: sessionFile, source };
+      const trioId = trioIdentity(sessionId, records);
+      const result: ExtractionResult = {
+        behaviorNotes: validated,
+        sessionPath: sessionFile,
+        source,
+        trioId,
+        candidateIds: validated.map((_, index) => `${trioId}:${index}`),
+        sessionId: sessionId ?? null,
+        cwd: header.cwd,
+        entryIds: records.map((record) => record.id),
+      };
       await onTrio(result);
       triosFound++;
     }
     // Save the scan position after every examined trio (even if no notes — prevents re-extraction)
     saveMidFileCheckpoint();
-    return triosFound >= maxTrios;
+    return triosFound >= maxTrios ? "limit" : "continue";
   }
 
   for await (const record of records) {
@@ -491,22 +573,23 @@ async function streamAndExtract(opts: StreamAndExtractOptions): Promise<StreamAn
       throw malformedRecordError(sessionFile, record.offset);
     }
     if (entry === null || typeof entry !== "object") throw malformedRecordError(sessionFile, record.offset);
-    // Session id comes from the file's header record (first record); a resumed
-    // pass keeps the id saved by the pass that saw the header.
-    if (entry.type === "session" && typeof entry.id === "string") {
-      sessionId = entry.id;
-    }
     if (entry.type === "message") {
+      const current: TrioRecord = { id: typeof entry.id === "string" ? entry.id : null, text: record.text };
+      // Captured before this record updates the detector's state: they are the trio's before and user records.
+      const beforeRecord = lastAssistantRecord;
+      const userRecord = lastUserRecord;
       // Delegate trio detection to TrioDetector
       const trio = detector.process(entry);
+      if (detector.lastRecordSetLastUser) lastUserRecord = current;
       if (detector.lastRecordSetLastAssistant) {
+        lastAssistantRecord = current;
         resumeByte = record.offset;
         boundaryDigest = recordDigest(record.text);
       }
-      if (trio) {
-        const limitReached = await tryExtractTrio(trio);
+      if (trio && beforeRecord && userRecord) {
+        const step = await tryExtractTrio(trio, [beforeRecord, userRecord, current]);
         onProgress(triosFound, bytesRead, bytesRead);
-        if (limitReached) {
+        if (step === "limit") {
           return {
             triosFound,
             totalNonEmpty: bytesRead,
@@ -514,6 +597,18 @@ async function streamAndExtract(opts: StreamAndExtractOptions): Promise<StreamAn
             resumeByte,
             boundaryDigest,
             sessionId,
+            stopReason: null,
+          };
+        }
+        if (step !== "continue") {
+          return {
+            triosFound,
+            totalNonEmpty: bytesRead,
+            bytesScanned: bytesRead,
+            resumeByte,
+            boundaryDigest,
+            sessionId,
+            stopReason: step,
           };
         }
       }
@@ -526,10 +621,15 @@ async function streamAndExtract(opts: StreamAndExtractOptions): Promise<StreamAn
     }
   }
 
-  // Final pass: try to extract any remaining complete trio
-  // (no-op if lastAssistant/lastUser already cleared)
-
-  return { triosFound, totalNonEmpty: bytesRead, bytesScanned: bytesRead, resumeByte, boundaryDigest, sessionId };
+  return {
+    triosFound,
+    totalNonEmpty: bytesRead,
+    bytesScanned: bytesRead,
+    resumeByte,
+    boundaryDigest,
+    sessionId,
+    stopReason: null,
+  };
 }
 
 /**
@@ -679,13 +779,13 @@ interface ExtractionCapture {
   summary: ExtractionSummary;
 }
 
-interface ExtractionLlmResult {
-  notes: string[];
-  summary: ExtractionSummary;
-  dumpPath: string | null;
-}
+type ExtractionOutcome =
+  | { kind: "success"; notes: string[]; summary: ExtractionSummary; dumpPath: string | null }
+  | { kind: "failed" };
 
-async function callExtractionLlm(sequence: InteractionSequence, dumpLimit: number): Promise<ExtractionLlmResult> {
+type ReviewOutcome = { kind: "success"; notes: string[] } | { kind: "failed" };
+
+async function callExtractionLlm(sequence: InteractionSequence, dumpLimit: number): Promise<ExtractionOutcome> {
   const userText = `<agent-before>
 ${sequence.agentBefore}
 </agent-before>
@@ -776,7 +876,7 @@ ${userText}
   if (result === PAUSED) throw new Error("PAUSED");
   if (!result) {
     appendDebug(dumpPath, "\n=== Extraction Agent Output ===\n(none)\n");
-    return { notes: [], summary: { agentBefore: "", userFeedback: "", agentAfter: "" }, dumpPath };
+    return { kind: "failed" };
   }
   const { notes, summary } = result;
   const rulesLines = notes.join("\n") || "(none)";
@@ -790,7 +890,7 @@ ${userText}
     "",
   ].join("\n");
   appendDebug(dumpPath, extractionOutput);
-  return { notes, summary, dumpPath };
+  return { kind: "success", notes, summary, dumpPath };
 }
 
 /**
@@ -804,8 +904,8 @@ async function postExtractRules(
   summary: ExtractionSummary,
   dumpPath: string | null,
   modelOverride: string | undefined,
-): Promise<string[]> {
-  if (rules.length === 0) return [];
+): Promise<ReviewOutcome> {
+  if (rules.length === 0) return { kind: "success", notes: [] };
 
   const rulesBlock = rules.join("\n");
   const interactionBlock = [
@@ -867,9 +967,9 @@ ${interactionBlock}
   );
 
   if (result === PAUSED) throw new Error("PAUSED");
-  const validated = result ?? [];
   // Append to extraction dump file with kept/rejected breakdown
-  const resultLines = validated.join("\n") || "(none)";
+  const resultLines = (result ?? []).join("\n") || "(none)";
   appendDebug(dumpPath, `\n=== Post-Extraction Output ===\n${resultLines}\n`);
-  return validated;
+  if (result === undefined) return { kind: "failed" };
+  return { kind: "success", notes: result };
 }

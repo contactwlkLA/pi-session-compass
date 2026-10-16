@@ -107,11 +107,24 @@ export const DEFAULT_PIPELINE_STATE: PortraitPipelineState = {
   lastMaintenanceRun: null,
 };
 
+/** Why a pipeline run stopped before its scan was exhausted. */
+export type PipelineStopReason = "extraction_failed" | "review_failed" | "build_failed";
+
 // LLM extraction
 export interface ExtractionResult {
   behaviorNotes: string[];
   sessionPath: string;
   source: "main" | "subagent";
+  /** Stable identity of the examined trio (sha256 hex). */
+  trioId: string;
+  /** One per behaviorNotes entry, in order: `${trioId}:${index}`. */
+  candidateIds: string[];
+  /** Session id from the file's header record. */
+  sessionId: string | null;
+  /** Working directory from the file's header record. */
+  cwd: string | null;
+  /** Record ids of the trio's [before, user, after] records; null where a record has no id. */
+  entryIds: (string | null)[];
 }
 
 // Building LLM
@@ -134,6 +147,7 @@ export interface ScanResults {
   triosProcessed: number;
   totalKnownTrios: number;
   remainingFiles: number;
+  stopReason: PipelineStopReason | null;
 }
 
 // Interaction sequence (agent→user→agent trio)

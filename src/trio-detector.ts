@@ -28,10 +28,16 @@ export class TrioDetector {
   private lastAssistant: string | null = null;
   private lastUser: string | null = null;
   private assistantSetByLastRecord = false;
+  private userSetByLastRecord = false;
 
   /** Whether the record most recently passed to process() set the last-assistant text. */
   get lastRecordSetLastAssistant(): boolean {
     return this.assistantSetByLastRecord;
+  }
+
+  /** Whether the record most recently passed to process() set the pending user text. */
+  get lastRecordSetLastUser(): boolean {
+    return this.userSetByLastRecord;
   }
 
   /**
@@ -41,6 +47,7 @@ export class TrioDetector {
    */
   process(entry: SessionEntry): { agentBefore: string; userFeedback: string; agentAfter: string } | null {
     this.assistantSetByLastRecord = false;
+    this.userSetByLastRecord = false;
     if (entry.type !== "message" || !entry.message) return null;
 
     const msg = entry.message;
@@ -73,6 +80,7 @@ export class TrioDetector {
       content = stripSkillBlocks(content);
       if (content && !isContinuation(content) && !isExtensionMessage(content)) {
         this.lastUser = content;
+        this.userSetByLastRecord = true;
       }
     }
 
@@ -89,5 +97,6 @@ export class TrioDetector {
     this.lastAssistant = null;
     this.lastUser = null;
     this.assistantSetByLastRecord = false;
+    this.userSetByLastRecord = false;
   }
 }

@@ -2077,6 +2077,7 @@ describe("collect cancellation", () => {
         triosProcessed: 0,
         totalKnownTrios: 0,
         remainingFiles: 0,
+        stopReason: null,
       });
       const result = await collect(undefined);
       expect(result).toContain("Collected 0 sequences");
@@ -2092,10 +2093,22 @@ describe("collect cancellation", () => {
     try {
       // Mock scanSessions to return results so the loop would normally continue
       vi.spyOn(collector, "scanSessions").mockResolvedValue({
-        results: [{ behaviorNotes: ["test rule"], sessionPath: "test.jsonl", source: "main" }],
+        results: [
+          {
+            behaviorNotes: ["test rule"],
+            sessionPath: "test.jsonl",
+            source: "main",
+            trioId: "t1",
+            candidateIds: ["t1:0"],
+            sessionId: null,
+            cwd: null,
+            entryIds: [null, null, null],
+          },
+        ],
         triosProcessed: 1,
         totalKnownTrios: 1,
         remainingFiles: 10,
+        stopReason: null,
       });
       vi.spyOn(builder, "buildPortrait").mockResolvedValue(undefined);
 
@@ -2133,6 +2146,7 @@ describe("collect cancellation", () => {
         triosProcessed: 0,
         totalKnownTrios: 0,
         remainingFiles: 0,
+        stopReason: null,
       });
       await collect(undefined);
       expect(globalThis.__piPortrait?.collectCancelled).toBe(false);
@@ -2165,10 +2179,22 @@ describe("collect cancellation", () => {
     setupTestSettings({ rateLimitMs: 0 });
     try {
       vi.spyOn(collector, "scanSessions").mockResolvedValue({
-        results: [{ behaviorNotes: ["test rule"], sessionPath: "test.jsonl", source: "main" }],
+        results: [
+          {
+            behaviorNotes: ["test rule"],
+            sessionPath: "test.jsonl",
+            source: "main",
+            trioId: "t1",
+            candidateIds: ["t1:0"],
+            sessionId: null,
+            cwd: null,
+            entryIds: [null, null, null],
+          },
+        ],
         triosProcessed: 1,
         totalKnownTrios: 1,
         remainingFiles: 0,
+        stopReason: null,
       });
       vi.spyOn(builder, "buildPortrait").mockRejectedValue(new Error("PAUSED"));
 
