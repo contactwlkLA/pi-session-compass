@@ -6,6 +6,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { tryAcquireSqliteMutex } from "../src/snippets/vendored/sqlite-mutex.js";
 
 /**
  *  reload lifecycle: the SQLite mutex (BEGIN IMMEDIATE) is held by an open connection on
@@ -92,10 +93,14 @@ describe("lock lifecycle across /reload (session_shutdown release)", () => {
 
   async function bootExtension() {
     const mod = await import("../src/index.js");
-    const handlers = new Map<string, (event: unknown, ctx: ExtensionContext) => unknown>();
+    // pi accumulates handlers per event (several session_shutdown hooks coexist and all fire) —
+    // mirror that, otherwise the last registration silently replaces the earlier ones.
+    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => unknown>>();
     const fakePi = {
       on(event: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) {
-        handlers.set(event, handler);
+        const existing = handlers.get(event);
+        if (existing) existing.push(handler);
+        else handlers.set(event, [handler]);
       },
       registerCommand() {},
       // Fork-state propagation calls appendEntry at session_start; this test does not assert appends,
@@ -103,7 +108,10 @@ describe("lock lifecycle across /reload (session_shutdown release)", () => {
       appendEntry() {},
     } as unknown as ExtensionAPI;
     mod.default(fakePi);
-    return handlers;
+    // Fire every handler registered for the event, in registration order.
+    return async (event: string, payload: unknown): Promise<void> => {
+      for (const handler of handlers.get(event) ?? []) await handler(payload, fakeCtx);
+    };
   }
 
   const fakeCtx = {
@@ -118,21 +126,48 @@ describe("lock lifecycle across /reload (session_shutdown release)", () => {
   } as unknown as ExtensionContext;
 
   it("releases the instance lock on session_shutdown so /reload can re-acquire it", async () => {
-    const handlers = await bootExtension();
+    const emit = await bootExtension();
 
     // First boot: acquireLock succeeds (no contention).
-    await handlers.get("session_start")?.({ reason: "startup" }, fakeCtx);
+    await emit("session_start", { reason: "startup" });
     const state0 = (globalThis as { __piPortrait?: { lockPollTimer: NodeJS.Timeout | null } }).__piPortrait;
     expect(state0?.lockPollTimer).toBeNull(); // acquired — no lock poll running
 
     // /reload tears the session down — must release the held mutex.
-    await handlers.get("session_shutdown")?.({}, fakeCtx);
+    await emit("session_shutdown", {});
 
     // Reloaded session must be able to re-acquire the SAME lock file. If session_shutdown did
     // NOT release the mutex, the leaked connection keeps the write lock and acquireLock returns
     // null → startLockPoll runs → lockPollTimer is set (permanent deadlock).
-    await handlers.get("session_start")?.({ reason: "reload" }, fakeCtx);
+    await emit("session_start", { reason: "reload" });
     const state1 = (globalThis as { __piPortrait?: { lockPollTimer: NodeJS.Timeout | null } }).__piPortrait;
     expect(state1?.lockPollTimer).toBeNull(); // re-acquired on reload — no deadlock
+  });
+
+  it("keeps the collect lock held across session_shutdown and releases it on demand", async () => {
+    const emit = await bootExtension();
+    await emit("session_start", { reason: "startup" });
+
+    const acquire = globalThis.__piPortraitAcquireCollectLock;
+    const release = globalThis.__piPortraitReleaseCollectLock;
+    expect(acquire).toBeDefined();
+    expect(release).toBeDefined();
+    if (!acquire || !release) throw new Error("collect lock globals not installed");
+
+    // A run owns the collect lock; session_shutdown signals cancellation but must not release it.
+    expect(await acquire()).toBe(true);
+    await emit("session_shutdown", {});
+
+    const state = (globalThis as { __piPortrait?: { collectCancelled?: boolean } }).__piPortrait;
+    expect(state?.collectCancelled).toBe(true);
+
+    const collectLockPath = path.join(holder.portraitDir, "collect.lock.sqlite");
+    expect(await tryAcquireSqliteMutex(collectLockPath)).toBeNull(); // still held
+
+    // Explicit release hands the lock to the next acquirer.
+    release();
+    const fresh = await tryAcquireSqliteMutex(collectLockPath);
+    expect(fresh).not.toBeNull();
+    fresh?.release();
   });
 });

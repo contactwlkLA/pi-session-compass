@@ -24,54 +24,69 @@ export async function reset(): Promise<string> {
   }
   const uiSelect = state.uiSelect;
 
-  // Confirm via ui.select
-  const confirmed = await withCoordinator(() =>
-    uiSelect(
-      "👤 Reset portrait? This will clear all rules and re-extract from session history on next collect. Git history preserved.",
-      ["Yes, reset", "Cancel"],
-    ),
-  );
-
-  if (confirmed !== "Yes, reset") {
-    return "👤 Reset cancelled.";
+  // Hold the collect lock across the confirmation dialog and the reset so no collection,
+  // maintenance, or timer cycle can run mid-reset. Without both lock functions (unit tests
+  // only) reset runs unlocked.
+  const acquireCollectLock = globalThis.__piPortraitAcquireCollectLock;
+  const releaseCollectLock = globalThis.__piPortraitReleaseCollectLock;
+  if (acquireCollectLock && releaseCollectLock) {
+    if (!(await acquireCollectLock())) {
+      return "👤 Collection already in progress.";
+    }
   }
 
-  const portraitDir = getPortraitDir();
-
   try {
-    // Clear portrait.md to header only (atomic write)
-    writePortrait(portraitDir, []);
+    // Confirm via ui.select
+    const confirmed = await withCoordinator(() =>
+      uiSelect(
+        "👤 Reset portrait? This will clear all rules and re-extract from session history on next collect. Git history preserved.",
+        ["Yes, reset", "Cancel"],
+      ),
+    );
 
-    // Clear evicted.md (recreate with header so git add succeeds)
-    writeEvicted(portraitDir, []);
-    writeDropped(portraitDir, []);
+    if (confirmed !== "Yes, reset") {
+      return "👤 Reset cancelled.";
+    }
 
-    // Reset processed-sessions.json
-    fs.writeFileSync(path.join(portraitDir, "processed-sessions.json"), "{}", "utf-8");
+    const portraitDir = getPortraitDir();
 
-    // Remove the work-state snapshots (scan positions and pending candidates) so the scan restarts
-    fs.rmSync(path.join(portraitDir, "snapshots"), { recursive: true, force: true });
+    try {
+      // Clear portrait.md to header only (atomic write)
+      writePortrait(portraitDir, []);
 
-    // Reset trios counters in state
-    const portraitState = loadPortraitState(portraitDir);
-    portraitState.triosProcessed = 0;
-    portraitState.totalKnownTrios = 0;
-    portraitState.lastProcessedFile = null;
-    portraitState.lastProcessedLine = 0;
-    portraitState.lastPipelineRun = null;
-    portraitState.lastScanTimestamp = null;
-    portraitState.rulesInsertedSinceMaintenance = 0;
-    portraitState.lastMaintenanceRun = null;
-    savePortraitState(portraitDir, portraitState);
-    setCachedPipelineState(portraitState);
+      // Clear evicted.md (recreate with header so git add succeeds)
+      writeEvicted(portraitDir, []);
+      writeDropped(portraitDir, []);
 
-    // Git commit (preserves history)
-    await commitPortrait(portraitDir, "reset: cleared portrait for re-extraction");
+      // Reset processed-sessions.json
+      fs.writeFileSync(path.join(portraitDir, "processed-sessions.json"), "{}", "utf-8");
 
-    return "👤 Portrait reset. Run /portrait:collect to re-extract from session history. Previous rules preserved in git log.";
-  } catch (error) {
-    const msg = getErrorMessage(error);
-    reportError(`Reset failed: ${msg}`, "reset error");
-    return `👤 Reset failed: ${msg}`;
+      // Remove the work-state snapshots (scan positions and pending candidates) so the scan restarts
+      fs.rmSync(path.join(portraitDir, "snapshots"), { recursive: true, force: true });
+
+      // Reset trios counters in state
+      const portraitState = loadPortraitState(portraitDir);
+      portraitState.triosProcessed = 0;
+      portraitState.totalKnownTrios = 0;
+      portraitState.lastProcessedFile = null;
+      portraitState.lastProcessedLine = 0;
+      portraitState.lastPipelineRun = null;
+      portraitState.lastScanTimestamp = null;
+      portraitState.rulesInsertedSinceMaintenance = 0;
+      portraitState.lastMaintenanceRun = null;
+      savePortraitState(portraitDir, portraitState);
+      setCachedPipelineState(portraitState);
+
+      // Git commit (preserves history)
+      await commitPortrait(portraitDir, "reset: cleared portrait for re-extraction");
+
+      return "👤 Portrait reset. Run /portrait:collect to re-extract from session history. Previous rules preserved in git log.";
+    } catch (error) {
+      const msg = getErrorMessage(error);
+      reportError(`Reset failed: ${msg}`, "reset error");
+      return `👤 Reset failed: ${msg}`;
+    }
+  } finally {
+    if (acquireCollectLock && releaseCollectLock) releaseCollectLock();
   }
 }

@@ -1,6 +1,6 @@
 # pi-session-compass — Bug journal
 
-Revision: **0.8.0** · Updated: **2026-10-15**
+Revision: **0.9.0** · Updated: **2026-10-16**
 
 A live record of every bug found while building and running the harness: harness, pipeline, test, or environment. Add an entry when a bug is found; update its status, fix commit, and evidence when it changes. Never delete an entry; a closed bug stays as history. Pipeline behaviors that a stage is meant to change are listed separately under Pipeline findings.
 
@@ -27,8 +27,9 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 | B15 | 2026-10-14 | harness | Confirmation minutes print the raw division (100000 ms → 1.6666666666666667 min) | `confirmLimits` divides without rounding | OPEN (protected text; needs approval to change) | scripts/compass/strings.ts |
 | B16 | 2026-10-13 | tests | MaxListenersExceededWarning in `npm test` | Not investigated | OPEN | npm test output |
 | B17 | 2026-10-14 | tests | First seen by Pi during Block A-2b: 6 of 20 default-order runs failed beyond the expected A-1 tests (tests/pipeline.test.ts 14 tests × 4 runs, tests/portrait.test.ts 2 tests × 3 runs, tests/maintenance.test.ts 12 tests × 1 run), with the shared-stub hypothesis. The repository suite is order-dependent: single-worker runs (`--maxWorkers=1`) of the unmodified S2 tree fail 5–29 tests every run (maintenance, extraction, portrait, sqlite-mutex, llm-call); shuffled file orders fail 2 of 3 seeds; default parallel runs usually hide it | `isolate: false` shares one module registry; files that call `vi.resetModules()` can split the shared stub flags in tests/setup.ts from the stubs, so a later file runs real code (pipeline.test.ts: real scanSessions, "expected +0 to be 1") | FIXED 47a95b5 (`isolate: true`, user decision): single-worker 3/3 and default-order 20/20 clean; each part's gate adds one single-worker run | outputs/s3-a/flake/ (base, current, a2c, seeds-base) |
-| B18 | 2026-10-15 | pipeline | The portrait git repo shows `snapshots/` as untracked | `initGit` writes a `.gitignore` without `snapshots/` (src/git.ts); `commitPortrait` stages only portrait/evicted/dropped, so it is never committed | OPEN (cosmetic; Part C lifecycle work) | outputs/s3-b/handoff/S3-B1-02b-r1.md |
-| B19 | 2026-10-16 | tests | Two full runs during S3-B1-04 failed with missing dirs under `outputs/test-tmp/` and a file vanishing in the live `~/.pi/portrait/.git` mid-copy; 20 quiet runs passed | Shared `outputs/test-tmp` across concurrent runs, and a harness test snapshots the live `~/.pi/portrait` (touched by the live portrait timer) | OPEN (per-process temp dirs; stop reading the live portrait in tests) | outputs/s3-b/handoff/S3-B1-04-r1.md Uncertain 2 |
+| B18 | 2026-10-15 | pipeline | The portrait git repo shows `snapshots/` as untracked | `initGit` writes a `.gitignore` without `snapshots/` (src/git.ts); `commitPortrait` stages only portrait/evicted/dropped, so it is never committed | FIXED (S3-C-01: `initGit` writes `snapshots/` to `.gitignore` for new repos; existing repos unchanged, add the line by hand if wanted) | outputs/s3-b/handoff/S3-B1-02b-r1.md |
+| B19 | 2026-10-16 | tests | Two full runs during S3-B1-04 failed with missing dirs under `outputs/test-tmp/` and a file vanishing in the live `~/.pi/portrait/.git` mid-copy; 20 quiet runs passed | Shared `outputs/test-tmp` across concurrent runs, and a harness test snapshots the live `~/.pi/portrait` (touched by the live portrait timer) | FIXED (S3-C-01: per-run `mkdtemp` dirs, fake portrait in tests, ENOENT-tolerant scan; concurrent run of both suites green) | outputs/s3-b/handoff/S3-B1-04-r1.md Uncertain 2 |
+| B20 | 2026-10-16 | tests | The instance-lock reload test in tests/reload-lifecycle.test.ts passes without ever holding the lock | Its `fakeCtx` has no `mode`, so `session_start` returns at the `mode !== "tui"` guard before `acquireLock()` | OPEN (set `mode: "tui"` in a later test-hygiene task) | outputs/s3-c/handoff/S3-C-01-r1.md Uncertain 1 |
 
 ## Pipeline findings (src/, measured in S1; targets of later stages)
 
@@ -60,6 +61,6 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.6.0 | 2026-10-15 | P7–P9 fixed; B17 (order-dependent suite) found and fixed; B12 explained by B17. |
 | 0.7.0 | 2026-10-15 | P10 fixed (S3-B1-01); P11 (restart after a leading user record) added as WATCH. |
 | 0.8.0 | 2026-10-16 | E5 fixed by the user (mimo context settings); B18 (snapshots/ untracked in the portrait repo) and B19 (shared test temp dirs, live portrait read in tests) added. |
+| 0.9.0 | 2026-10-16 | B18 and B19 fixed (S3-C-01); B20 (vacuous instance-lock reload test) added. |

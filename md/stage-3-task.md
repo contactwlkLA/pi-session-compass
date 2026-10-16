@@ -81,30 +81,30 @@ One task, S3-C-01 ([stage-3c.md](stage-3c.md)), after the user-approved simplici
 
 ### C1 — Shared locking, migration, and reset (S3.T5)
 
-- [ ] **1.** Reset takes the collect lock, as collection and maintenance already do; a busy lock returns the existing "Collection already in progress." message.
+- [x] **1.** Reset takes the collect lock, as collection and maintenance already do; a busy lock returns the existing "Collection already in progress." message. *(S3-C-01)*
 - [x] **2.** With no snapshot, scan positions seed once from `processed-sessions.json`; the snapshot is the authority from its first save; the legacy file is a read-only mirror for the background counter. *(S3-B1-02a/02b)*
 - [x] **3.** Reset clears the snapshot. *(S3-B1-02b)*
-- [ ] **4.** New portrait repos ignore `snapshots/` (B18).
+- [x] **4.** New portrait repos ignore `snapshots/` (B18). *(S3-C-01)*
 
 ### C2 — Lifecycle and cancellation (S3.T6)
 
 - [x] **1.** Stop, pause, reload, and shutdown do not release the collect lock while a writer is active; the run's `finally` releases it. *(existing src/index.ts behavior)*
 - [x] **2.** Keep the existing "stop after current step" behavior with bounded remote calls.
-- [ ] **3.** A test proves shutdown during a held collect lock keeps it held; existing cache and injection tests pass unchanged.
+- [x] **3.** A test proves shutdown during a held collect lock keeps it held; existing cache and injection tests pass unchanged. *(S3-C-01, tests/reload-lifecycle.test.ts)*
 
 ### C3 — Test hygiene
 
-- [ ] **1.** tests/compass temp dirs are unique per run, and no test reads the live `~/.pi/portrait` (B19).
+- [x] **1.** tests/compass temp dirs are unique per run, and no test reads the live `~/.pi/portrait` (B19). *(S3-C-01)*
 
 ### Part C gate
 
-- [ ] **1.** Both full suites pass, raw results quoted, plus single-worker and one concurrent run of both suites. Commit and push.
-- [ ] **2.** Sync this file, stage.md, and bugs.md.
+- [x] **1.** Both full suites pass, raw results quoted, plus single-worker and one concurrent run of both suites. Commit and push. *(2026-10-16: `npm test` 23 files / 483 passed; `npm run test:compass` 8 files / 101 passed; single-worker 483 passed; concurrent run of both suites green)*
+- [x] **2.** Sync this file, stage.md, and bugs.md.
 
 ## Stage completion — M3
 
-- [ ] **1.** All plan.md Stage 3 verification items pass on isolated fixtures (A1, B3, C tests). Old offsets cannot establish historical completeness.
-- [ ] **2.** Both full suites pass, raw results quoted. Sync the task checks, stage.md, and bugs.md. Commit and push.
+- [x] **1.** All plan.md Stage 3 verification items pass on isolated fixtures (A1, B3, C tests). Old offsets cannot establish historical completeness.
+- [x] **2.** Both full suites pass, raw results quoted. Sync the task checks, stage.md, and bugs.md. Commit and push. *(Part C gate, 2026-10-16)*
 - [ ] **3.** Checkpoint with the user before S4.
 
 ## Revision history
@@ -113,4 +113,4 @@ One task, S3-C-01 ([stage-3c.md](stage-3c.md)), after the user-approved simplici
 |---|---|---|
 | 0.5.0 | 2026-10-16 | B1 done; B2.3 boundaries (a) and (c) and B2.6 done (S3-B1-01 to 04). |
 | 0.6.0 | 2026-10-16 | Simple rollback (user-approved trim): B2 is build validation only; no publication intent, restore, edit guard, or per-boundary crash tests. Part B complete (S3-B2-01). |
-| 0.7.0 | 2026-10-16 | Part C simplified to one task, S3-C-01 (user-approved): reset lock, B18, B19, lifecycle test; no migration machinery or protected text. |
+| 0.7.0 | 2026-10-16 | Part C simplified to one task, S3-C-01 (user-approved): reset lock, B18, B19, lifecycle test; no migration machinery or protected text. Part C done; M3 verified. |

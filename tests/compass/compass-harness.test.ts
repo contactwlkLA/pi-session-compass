@@ -8,7 +8,6 @@
  */
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { censusFile, countTriosOnly } from "../../scripts/compass/census.js";
@@ -25,8 +24,11 @@ import { sha256File } from "../../scripts/compass/util.js";
 import { discoverFiles } from "../../src/collector.js";
 
 const ROOT = process.cwd();
-const TEST_TMP = path.join(ROOT, "outputs", "test-tmp", "compass-harness");
-const LIVE_PORTRAIT_DIR = path.join(os.homedir(), ".pi", "portrait");
+// Unique per test-file run so overlapping suite runs never share a directory.
+const TEST_TMP_ROOT = path.join(ROOT, "outputs", "test-tmp");
+fs.mkdirSync(TEST_TMP_ROOT, { recursive: true });
+const TEST_TMP = fs.mkdtempSync(path.join(TEST_TMP_ROOT, "compass-harness-"));
+const FAKE_PORTRAIT_DIR = path.join(TEST_TMP, "live-portrait");
 
 interface SessionMessage {
   type: string;
@@ -56,9 +58,23 @@ function writeSession(filePath: string, turns: Array<{ role: string; text: strin
   fs.writeFileSync(filePath, `${lines.join("\n")}\n`, "utf-8");
 }
 
+/** Synthetic portrait dir standing in for the user's live portrait: state files plus a
+ * plain `.git` directory (one small file) so snapshot hashing has a `.git` tree to filter. */
+function buildFakePortrait(): void {
+  fs.mkdirSync(FAKE_PORTRAIT_DIR, { recursive: true });
+  fs.writeFileSync(path.join(FAKE_PORTRAIT_DIR, "portrait.md"), "# Portrait\n", "utf-8");
+  fs.writeFileSync(path.join(FAKE_PORTRAIT_DIR, "evicted.md"), "# Evicted Portrait Rules\n", "utf-8");
+  fs.writeFileSync(path.join(FAKE_PORTRAIT_DIR, "dropped.md"), "# Dropped Portrait Rules\n", "utf-8");
+  fs.writeFileSync(path.join(FAKE_PORTRAIT_DIR, "processed-sessions.json"), "{}", "utf-8");
+  fs.writeFileSync(path.join(FAKE_PORTRAIT_DIR, "portrait-state.json"), '{"triosProcessed":0}', "utf-8");
+  fs.mkdirSync(path.join(FAKE_PORTRAIT_DIR, ".git"), { recursive: true });
+  fs.writeFileSync(path.join(FAKE_PORTRAIT_DIR, ".git", "HEAD"), "ref: refs/heads/main\n", "utf-8");
+}
+
 beforeEach(() => {
   fs.rmSync(TEST_TMP, { recursive: true, force: true });
   fs.mkdirSync(TEST_TMP, { recursive: true });
+  buildFakePortrait();
 });
 
 afterEach(() => {
@@ -189,8 +205,8 @@ describe("snapshots and manifests", () => {
   it("repeatable snapshots produce identical hashes", () => {
     const a = path.join(TEST_TMP, "snap-a");
     const b = path.join(TEST_TMP, "snap-b");
-    const first = snapshotPortraitState(LIVE_PORTRAIT_DIR, a);
-    const second = snapshotPortraitState(LIVE_PORTRAIT_DIR, b);
+    const first = snapshotPortraitState(FAKE_PORTRAIT_DIR, a);
+    const second = snapshotPortraitState(FAKE_PORTRAIT_DIR, b);
     expect(second.hashes).toEqual(first.hashes);
     expect(JSON.parse(fs.readFileSync(path.join(b, "hashes.json"), "utf-8"))).toEqual(first.hashes);
     for (const name of Object.keys(first.hashes).filter((k) => !k.startsWith(".git"))) {
@@ -198,8 +214,8 @@ describe("snapshots and manifests", () => {
     }
   });
 
-  it("prepare-equivalent work leaves the live portrait untouched", () => {
-    const before = treeDigest(hashTree(LIVE_PORTRAIT_DIR));
+  it("prepare-equivalent work leaves the source portrait untouched", () => {
+    const before = treeDigest(hashTree(FAKE_PORTRAIT_DIR));
     const source = path.join(TEST_TMP, "sessions", "iso.jsonl");
     writeSession(source, [
       { role: "assistant", text: "A1" },
@@ -209,7 +225,7 @@ describe("snapshots and manifests", () => {
     const outputDir = path.join(TEST_TMP, "outputs", "run-iso");
     const fixturesDir = path.join(TEST_TMP, "fixtures");
     const selection = freezeSelection({ scope: "file", sourcePath: source, runId: "iso", outputDir, fixturesDir });
-    snapshotPortraitState(LIVE_PORTRAIT_DIR, path.join(fixturesDir, "snapshots", "iso"));
+    snapshotPortraitState(FAKE_PORTRAIT_DIR, path.join(fixturesDir, "snapshots", "iso"));
     writeSelection(outputDir, selection);
     freezeManifest(
       outputDir,
@@ -225,6 +241,6 @@ describe("snapshots and manifests", () => {
         confirmed: null,
       }),
     );
-    expect(treeDigest(hashTree(LIVE_PORTRAIT_DIR))).toBe(before);
+    expect(treeDigest(hashTree(FAKE_PORTRAIT_DIR))).toBe(before);
   });
 });

@@ -16,7 +16,10 @@ import { strings } from "../../scripts/compass/strings.js";
 import type { Limits, RunSelection } from "../../scripts/compass/types.js";
 
 const ROOT = process.cwd();
-const TEST_TMP = path.join(ROOT, "outputs", "test-tmp", "validation-rounds-receipt");
+// Unique per test-file run so overlapping suite runs never share a directory.
+const TEST_TMP_ROOT = path.join(ROOT, "outputs", "test-tmp");
+fs.mkdirSync(TEST_TMP_ROOT, { recursive: true });
+const TEST_TMP = fs.mkdtempSync(path.join(TEST_TMP_ROOT, "validation-rounds-receipt-"));
 
 const LIMITS: Limits = { runType: "smoke", maxModelRequests: 5, maxRunMs: 900_000, source: "compass-table" };
 

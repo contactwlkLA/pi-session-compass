@@ -1945,6 +1945,129 @@ describe("reset", () => {
       delete globalThis.__piPortrait;
     }
   });
+
+  it("busy collect lock returns the maintenance string without opening the dialog", async () => {
+    const dir = tmpDir();
+    setupState(dir, "Yes, reset");
+    const uiSelect = vi.fn(async (_msg: string, _opts: string[]) => "Yes, reset");
+    (globalThis.__piPortrait as PortraitState).uiSelect = uiSelect;
+    const acquire = vi.fn(async () => false);
+    const release = vi.fn();
+    globalThis.__piPortraitAcquireCollectLock = acquire;
+    globalThis.__piPortraitReleaseCollectLock = release;
+    try {
+      const portraitBefore = fs.readFileSync(path.join(dir, "portrait.md"), "utf-8");
+      const result = await reset();
+      expect(result).toBe("👤 Collection already in progress.");
+      expect(uiSelect).not.toHaveBeenCalled();
+      expect(acquire).toHaveBeenCalledTimes(1);
+      expect(release).not.toHaveBeenCalled();
+      expect(fs.readFileSync(path.join(dir, "portrait.md"), "utf-8")).toBe(portraitBefore);
+    } finally {
+      delete globalThis.__piPortraitAcquireCollectLock;
+      delete globalThis.__piPortraitReleaseCollectLock;
+      delete globalThis.__piPortrait;
+      cleanup(dir);
+    }
+  });
+
+  it("releases the collect lock exactly once after a confirmed reset", async () => {
+    const dir = tmpDir();
+    setupState(dir, "Yes, reset");
+    const acquire = vi.fn(async () => true);
+    const release = vi.fn();
+    globalThis.__piPortraitAcquireCollectLock = acquire;
+    globalThis.__piPortraitReleaseCollectLock = release;
+    try {
+      const result = await reset();
+      expect(result).toContain("Portrait reset");
+      expect(acquire).toHaveBeenCalledTimes(1);
+      expect(release).toHaveBeenCalledTimes(1);
+      expect(fs.readFileSync(path.join(dir, "portrait.md"), "utf-8")).not.toContain("rule 1");
+    } finally {
+      delete globalThis.__piPortraitAcquireCollectLock;
+      delete globalThis.__piPortraitReleaseCollectLock;
+      delete globalThis.__piPortrait;
+      cleanup(dir);
+    }
+  });
+
+  it("releases the collect lock when the user cancels the dialog", async () => {
+    const dir = tmpDir();
+    setupState(dir, "Cancel");
+    const acquire = vi.fn(async () => true);
+    const release = vi.fn();
+    globalThis.__piPortraitAcquireCollectLock = acquire;
+    globalThis.__piPortraitReleaseCollectLock = release;
+    try {
+      const result = await reset();
+      expect(result).toContain("cancelled");
+      expect(acquire).toHaveBeenCalledTimes(1);
+      expect(release).toHaveBeenCalledTimes(1);
+      expect(fs.readFileSync(path.join(dir, "portrait.md"), "utf-8")).toContain("rule 1");
+    } finally {
+      delete globalThis.__piPortraitAcquireCollectLock;
+      delete globalThis.__piPortraitReleaseCollectLock;
+      delete globalThis.__piPortrait;
+      cleanup(dir);
+    }
+  });
+
+  it("runs unlocked when only the acquire global is present", async () => {
+    const dir = tmpDir();
+    setupState(dir, "Yes, reset");
+    const acquire = vi.fn(async () => true);
+    globalThis.__piPortraitAcquireCollectLock = acquire;
+    try {
+      const result = await reset();
+      expect(result).toContain("Portrait reset");
+      expect(acquire).not.toHaveBeenCalled();
+    } finally {
+      delete globalThis.__piPortraitAcquireCollectLock;
+      delete globalThis.__piPortrait;
+      cleanup(dir);
+    }
+  });
+
+  it("runs unlocked when only the release global is present", async () => {
+    const dir = tmpDir();
+    setupState(dir, "Yes, reset");
+    const release = vi.fn();
+    globalThis.__piPortraitReleaseCollectLock = release;
+    try {
+      const result = await reset();
+      expect(result).toContain("Portrait reset");
+      expect(release).not.toHaveBeenCalled();
+    } finally {
+      delete globalThis.__piPortraitReleaseCollectLock;
+      delete globalThis.__piPortrait;
+      cleanup(dir);
+    }
+  });
+
+  it("releases the collect lock when the reset fails inside", async () => {
+    const dir = tmpDir();
+    setupState(dir, "Yes, reset");
+    // Point the portrait dir at a regular file: the first write fails ENOTDIR.
+    const notADir = path.join(dir, "not-a-dir");
+    fs.writeFileSync(notADir, "x", "utf-8");
+    setTestConfig({ portraitDir: notADir, ...TEST_LOCK_PATHS });
+    const acquire = vi.fn(async () => true);
+    const release = vi.fn();
+    globalThis.__piPortraitAcquireCollectLock = acquire;
+    globalThis.__piPortraitReleaseCollectLock = release;
+    try {
+      const result = await reset();
+      expect(result).toContain("Reset failed");
+      expect(acquire).toHaveBeenCalledTimes(1);
+      expect(release).toHaveBeenCalledTimes(1);
+    } finally {
+      delete globalThis.__piPortraitAcquireCollectLock;
+      delete globalThis.__piPortraitReleaseCollectLock;
+      delete globalThis.__piPortrait;
+      cleanup(dir);
+    }
+  });
 });
 
 // ============================================================================

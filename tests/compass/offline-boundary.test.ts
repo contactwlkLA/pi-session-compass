@@ -152,12 +152,27 @@ describe("offline boundary checks", () => {
     // scan any stray outputs here as well as the compiled boundary checker output.
     const hits: string[] = [];
     const scan = (dir: string): void => {
-      for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+      let items: fs.Dirent[];
+      try {
+        items = fs.readdirSync(dir, { withFileTypes: true });
+      } catch (error) {
+        // A sibling test's cleanup can remove a directory mid-scan; skip it.
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+        throw error;
+      }
+      for (const item of items) {
         const full = path.join(dir, item.name);
         if (item.isDirectory()) {
           if (item.name !== "node_modules") scan(full);
         } else if (/\.(json|jsonl|md|log)$/.test(item.name)) {
-          const text = fs.readFileSync(full, "utf-8");
+          let text: string;
+          try {
+            text = fs.readFileSync(full, "utf-8");
+          } catch (error) {
+            // Same race at file granularity: the entry vanished after readdir listed it.
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+            throw error;
+          }
           const match = text.match(/sk-[A-Za-z0-9_-]{10,}/);
           if (match) hits.push(`${full}: ${match[0].slice(0, 8)}…`);
         }
