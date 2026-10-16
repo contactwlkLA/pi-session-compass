@@ -1,6 +1,6 @@
 # Stage 3 Part B — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Approved (user, 2026-10-15)**
+Project: **pi-session-compass** · Revision: **0.4.0** · Status: **Approved (user, 2026-10-15)**
 
 Date: **2026-10-15**
 
@@ -50,6 +50,15 @@ T1 and T4 are new beyond the stage-3-task list. Without T4, a stopped run's rece
 - Before declaring done, run every command under **Verification** and paste each result line.
 - If a fix attempt fails twice, stop and report under `Not done`.
 - Do not add measurement, logging of your own performance, or commentary on your own quality.
+
+**Spec audit (first step of every task, from S3-B1-04)**. Before changing any file, audit the task: read its Read list and the code at each "Where" location, then write `outputs/s3-b/handoff/<task_id>-audit.md` with these sections and stop:
+
+1. `Blockers`: anything in the spec that is wrong, contradicts the code, or cannot be met as written
+2. `Risks`: places where following the plan could break something else
+3. `Noise`: your own view, whether or not it agrees with the plan: a simpler or safer approach, missed edge cases, tests you would add, assumptions you doubt. Be specific (file, function); "none" is an acceptable answer for a section, but give it a real look
+4. `Questions`: anything you need answered before coding
+
+Claude Code answers in the same Pi session (relayed by the user). Spec changes are made before coding starts; then you code the task as amended. You may read beyond the Read list during the audit; say what you read.
 
 **Handoff.** Write `outputs/s3-b/handoff/<task_id>-r<round>.md` (round 1 unless told otherwise) with exactly these sections:
 
@@ -234,21 +243,32 @@ npm run test:compass
 
 ## S3-B1-04 — Harness reads the new work state
 
-The harness must carry the snapshot in its start-state copies, read pass stops, and report a stopped run truthfully.
+The harness must carry the work-state snapshot in its start-state copies, stop its pass loop when a pass stops on a failure, report that stop truthfully, and drain only the selected file's candidates in `scope=file`.
 
-**Read:** scripts/compass/snapshot.ts, scripts/compass/pipeline-boot.ts, scripts/compass/strings.ts, scripts/compass/types.ts, scripts/compass/selection.ts, src/pipeline.ts (`PipelineStats`), tests/compass/start-snapshot.test.ts, tests/compass/strings.test.ts, tests/compass/compass-harness.test.ts.
+**Read:** scripts/compass/snapshot.ts (whole file), scripts/compass/pipeline-boot.ts (`runPipeline` from the pass loop to the end, `stopLine`, `writeReceipt`, `failOnSinkErrors`), scripts/compass/strings.ts (the "Run outcomes" block), scripts/compass/selection.ts (`prepareSelection`, scope=file branch), src/pipeline.ts (`PipelineStats` only). Test templates: tests/compass/running-table.test.ts (mocked `runPipelineLoop`, `loopState`), tests/compass/start-snapshot.test.ts (`verifySnapshot`, `restoreSnapshot` blocks), tests/compass/strings.test.ts (the `stopCompleted` block).
+
+**Where and how (CC's plan):**
+
+1. **scripts/compass/snapshot.ts.** Add a constant `WORK_STATE_DIR = "snapshots"`. In `snapshotPortraitState`, after the `SNAPSHOT_FILES` loop: if `<sourceDir>/snapshots` exists, `copyDirRecursive` it to `<destDir>/snapshots`, then add one `hashes` entry per copied file, keyed `snapshots/<relative path>` (use the existing `hashTree` on the copied dir and prefix the keys). `verifySnapshot` needs no change: it already joins any key with the snapshot dir. In `restoreSnapshot`, after the `SNAPSHOT_FILES` loop: if `<snapshotDir>/snapshots` exists, `copyDirRecursive` it to `<destDir>/snapshots`. The hashes are keyed per file, so a changed or missing snapshot file fails `verifySnapshot` with the existing mismatch string.
+2. **scripts/compass/pipeline-boot.ts, source filter.** Replace the `null` source filter (the constant S3-B1-03 added) with a value computed once before the loop: for `scope=file`, `path.join(selection.isolatedSessionDir, "selected", path.basename(selection.frozen.sourcePath))` (the file `prepareSelection` copies, which is the path discovery returns); for `scope=all`, `null`.
+3. **pipeline-boot.ts, pass loop.** Keep the loop. After adding a pass's stats, `if (pass.stopReason !== null) { pipelineStop = pass.stopReason; break; }` before the existing no-trios `break`. Add `stopReason` to `pipelineStats` so the receipt's `counts.pipeline` records it.
+4. **pipeline-boot.ts, receipt.** Widen the stop type to `"completed" | "capped" | "error" | "stopped"` in `writeReceipt`, `stopLine`, and the `failOnSinkErrors` callback type. Final stop: `capped` if the counter stopped (a cap wins over a pipeline stop, since the cap ended the run), else `stopped` if `pipelineStop` is set, else `completed`. `stopLine("stopped", …)` returns T4 with the stage mapped `extraction_failed → extraction`, `review_failed → review`, `build_failed → build`; pass the stage in (extra required parameter, or a small mapping helper). Exit code: `4` for stopped (`0` completed, `3` capped, `1` error stay as they are); update the doc comment on `runPipeline`. The results sheet and running table are still written for a stopped run.
+5. **scripts/compass/strings.ts.** Add `stopPipelineFailed: (stage: string) => \`stopped: ${stage} failed; pending work was kept (see diagnostics.log)\`` beside `stopCancelled`.
+6. **Scan positions.** No harness code reads scan positions today (CC checked: only `snapshot.ts` names `processed-sessions.json`, as a file to copy). Add none.
+
+**Edge cases to cover:** a pass with `stopReason` and examined trios still ends the loop; a capped counter and a pipeline stop in the same pass report `capped`; a start snapshot without `snapshots/` behaves exactly as today (no new hash keys); `restoreSnapshot` over a reused output dir leaves no stale `snapshots/` (it already clears `destDir`).
 
 **Acceptance criteria:**
 
-1. `snapshotPortraitState` and `restoreSnapshot` also copy the `snapshots/` directory when present; `hashes.json` lists each copied file under `snapshots/...`, so `verifySnapshot` checks them.
-2. The harness pass loop stops when a pass returns a non-null `stopReason` and writes the receipt with a new stop kind `"stopped"` and outcome string T4 (`stage` = `extraction` / `review` / `build` for `extraction_failed` / `review_failed` / `build_failed`). A stopped run is not reported as completed.
-3. In `scope=file`, pipeline-boot passes the selected file's path inside the isolated session dir as `sourceFilter`; in `scope=all` it passes `null`.
-4. Any harness code that reads scan positions reads them through `loadWorkState`. If none does, say so under `Done`.
-5. Tests in tests/compass: a start snapshot with a `snapshots/` directory round-trips and a changed snapshot file fails `verifySnapshot`; a stopped pass yields stop kind `"stopped"` and T4; strings test covers T4.
+1. `snapshotPortraitState` and `restoreSnapshot` copy `snapshots/` when present; `hashes.json` lists every copied file as `snapshots/...`; `verifySnapshot` rejects a changed snapshot file with the existing mismatch string. Without `snapshots/`, output is unchanged.
+2. The pass loop stops on a non-null `stopReason`; the receipt has `stop.kind: "stopped"`, `stop.reason` = T4 with the mapped stage, and `counts.pipeline.stopReason`; `runPipeline` returns 4. A cap in the same run reports `capped` and returns 3.
+3. `scope=file` passes the isolated selected-file path as `sourceFilter`; `scope=all` passes `null`.
+4. Tests: in tests/compass/start-snapshot.test.ts, round-trip a portrait dir holding `snapshots/` through `snapshotPortraitState` → `verifySnapshot` → `restoreSnapshot` (restored tree equals the source), and a tampered `snapshots/` file fails `verifySnapshot`; in tests/compass/running-table.test.ts (copy its `loopState` mock), a pass returning `stopReason: "build_failed"` gives `stopped`, T4 with `build`, exit 4, and no further pass, and capped plus stopped gives `capped`; a test that the mocked `runPipelineLoop` receives the isolated path in `scope=file` and `null` in `scope=all`; in tests/compass/strings.test.ts, T4 for each of the three stages.
+5. Existing tests pass.
 
 **Allowed scope:** scripts/compass/snapshot.ts, scripts/compass/pipeline-boot.ts, scripts/compass/strings.ts, scripts/compass/types.ts, tests/compass/*.test.ts.
 
-**Constraints:** no `src/` changes. Existing receipt fields and strings unchanged; T4 exactly as quoted.
+**Constraints:** no `src/` changes. Existing receipt fields, exit codes 0/1/3, and strings unchanged; T4 exactly as quoted.
 
 **Verification:**
 
@@ -272,12 +292,14 @@ Commits: S3-B1-01, S3-B1-02a, and S3-B1-04 each on their own; S3-B1-02b and S3-B
 
 Planner difficulty (fixed before each task starts, for the ledger): S3-B1-01 medium; S3-B1-02a easy; S3-B1-02b medium; S3-B1-03 medium; S3-B1-04 easy. Sizing: S3-B1-01 peaked at 143,667 tokens of context, so each later spec keeps a shorter read list.
 
+**Carried to B-2 (CC, 2026-10-15):** a snapshot's `manifest.sources` holds absolute paths of the directory it was written in. Once S3-B1-04 copies `snapshots/` into a run's output dir, those paths point back at the source portrait dir (the user's live one for a live start). B-2's restore must write each copy into the snapshot's own portrait dir by file name and never follow `sources`, or a harness run could overwrite the live portrait.
+
 **B-1 gate:** all five accepted and committed; P10 in bugs.md FIXED with commit and evidence; stage-3-task.md B1.1–B1.4, B2.3 (a, c), B2.6 checked; stage.md synced; report to the user before B-2.
 
 ## Revision history
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.1.0 | 2026-10-15 | B-1 task specs (S3-B1-01 to S3-B1-04) and protected text T1–T4, for approval. |
 | 0.2.0 | 2026-10-15 | Approved by the user, with T1–T4. |
 | 0.3.0 | 2026-10-15 | S3-B1-02 split into 02a (module) and 02b (scanner wiring, reset) for the ~100K context target; type-fix scope added (user-approved). |
+| 0.4.0 | 2026-10-15 | S3-B1-04 rewritten with CC's where/how plan; spec-audit step with a Noise section (user-approved). |

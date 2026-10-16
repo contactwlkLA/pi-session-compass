@@ -1,13 +1,13 @@
 # Coder comparison: discussion notes (2026-10-15)
 
-Revision: **0.4.0** · Updated: **2026-10-15**
+Revision: **0.5.0** · Updated: **2026-10-15**
 
 Short reminder of what was decided before starting Stage 3 work in `/home/wai/compass-ext4`.
 
 ## Setup
 - Pair-programming mode. Claude Code (Opus 5.5) plans, writes task specs, reviews, keeps the ledger, verifies, and commits; it writes no implementation. Pi codes; the human relays.
 - Coders run in Pi: Haiku 5.5 (Claude API) and MiMo v2.6 flash. More models may be added later.
-- One model per Pi session. Each new Pi session switches the model; a model does not resume another session's context. Tasks differ between coders and later tasks inherit earlier code. The comparison is rough by design; adjust as we go.
+- One model per Pi session; a model does not resume another session's context. From S3-B1-03 the user stays on MiMo v2.6 pro instead of alternating (user, 2026-10-15); Haiku cost is the obstacle, and other models (e.g. Sonnet 5.5) may be tried later. Tasks differ between coders and later tasks inherit earlier code. The comparison is rough by design; adjust as we go.
 
 ## Files
 - `ledger.schema.json`: one record per task attempt. `coder` is a free-string model ID.
@@ -16,12 +16,12 @@ Short reminder of what was decided before starting Stage 3 work in `/home/wai/co
 - Coder handoffs: `outputs/s3-b/handoff/<task_id>-r<round>.md` (local, not committed).
 
 ## Decisions
-- **Task size:** keep each task, correction rounds included, under ~100K tokens of context. Split planned steps that would not fit. Restart the coder in a fresh session if a correction round nears 100K.
+- **Task size:** peak context is recorded per task, not enforced (user, 2026-10-15: real tasks here exceed 100K, and a task small enough to fit would be too easy to compare). Earlier target: keep each task, correction rounds included, under ~100K tokens of context. Split planned steps that would not fit. Restart the coder in a fresh session if a correction round nears 100K.
   - 100K is Haiku 5.5's price step (5x input/output price beyond 100K prompt tokens), not a documented quality limit.
 - **Cost:** Pi's estimate is good enough; ballpark only. Keep raw tokens beside it, label `cost_source`, compare as ratios.
 - **Harness fields:** filled by hand from Pi session logs (`~/.pi/agent/sessions/<project>/*.jsonl`) when convenient; null is fine. No probe script; no separate tooling project.
   - Peak context per call = input + cacheRead + cacheWrite (Pi's `input` excludes cached tokens).
-- **Thinking level:** a level name is only a relative label within one model; it does not mean the same reasoning budget across models. MiMo v2.6 offers only `high` or none, and runs at `high`. Haiku ran S3-B1-01 at `high` and runs at `xhigh` from its next session (user, 2026-10-15). Keep it fixed within a task attempt; the ledger records it per attempt.
+- **Thinking level:** a level name is only a relative label within one model; it does not mean the same reasoning budget across models. MiMo v2.6 has a single effort level; whatever level Pi shows, it runs the same. Haiku ran S3-B1-01 at `high` and runs at `xhigh` from its next session (user, 2026-10-15). Keep it fixed within a task attempt; the ledger records it per attempt.
 - **Speed:** the user expects Haiku to be much faster than MiMo 2.6 flash at similar quality. If only one HARNESS field gets filled, make it `coder_active_s` (from Pi timestamps; includes test run time).
 - **MiMo variants:** 2.6 pro is the MiMo coder from S3-B1-02a (user, 2026-10-15): on Artificial Analysis it scores close to Haiku at xhigh, and it costs more than 2.6 flash. Flash may be added later as its own block.
 - **`reasoning` token field:** a measured count, not a setting; optional, null is fine.
@@ -49,6 +49,6 @@ The comparison is a side quest. Where it conflicts with the project rules (AGENT
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.2.0 | 2026-10-15 | Roles, one model per Pi session, file locations, project-first conflict resolutions. |
 | 0.3.0 | 2026-10-15 | Thinking levels are per-model labels; Haiku moves to xhigh from its next session. |
 | 0.4.0 | 2026-10-15 | MiMo coder is 2.6 pro, not flash. |
+| 0.5.0 | 2026-10-15 | Stay on MiMo pro (no alternation); MiMo has one effort level; 100K is recorded, not a limit. |
