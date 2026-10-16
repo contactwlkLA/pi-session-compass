@@ -7,19 +7,19 @@ Select the first unchecked stage. A checked stage requires verified milestone ev
 - [x] **S1 — Baseline:** [stage-1-task.md](stage-1-task.md) · M1 · COMPLETE 2026-10-14 · baseline covers trios 1–20 of 26 by user decision · evidence outputs/s1-t5/baseline-attempt2-report.md
 - [x] **S2 — Termination and retries:** [stage-2-task.md](stage-2-task.md) · M2 · COMPLETE 2026-10-14 · same 20 trios in 46 requests / 26.0 min (baseline 150 / 56.9 min) · user decision: proceed to S3 · evidence outputs/s2-t3/compare-report.md
 - [x] **S3 — Recovery:** [stage-3-task.md](stage-3-task.md) · M3 · COMPLETE 2026-10-16 · user: proceed to S4 · Parts A, B, C done (simple rollback, user-approved trims); evidence outputs/s3-a/, outputs/s3-b/handoff/, outputs/s3-c/handoff/
-- [ ] **S4 — Jev gate and limits:** [stage-4-task.md](stage-4-task.md) · M4 · PLANNING · task file drafted, awaiting user approval
+- [ ] **S4 — Jev gate and limits:** [stage-4-task.md](stage-4-task.md) · M4 · IN_PROGRESS · approved 2026-10-16; specs in [stage-4-specs.md](stage-4-specs.md)
 - [ ] **S5 — Quality and savings:** `stage-5-task.md` · M5 · NOT_STARTED · task file not yet created
 - [ ] **S6 — Settings, acceptance, and handoff:** `stage-6-task.md` · M6 · NOT_STARTED · task file not yet created
 
 ## Continuation
 
 - Active stage: **S4**
-- Next unfinished step: **User approves md/stage-4-task.md (tasks, Q/U/S/H protected text); then CC writes the S4-01 spec and Pi audits and codes it. `TYPESAFE_API_KEY` is being obtained by the user (needed for S4-03)**
+- Next unfinished step: **S4-01 (md/stage-4-specs.md): Pi audits, then codes in a fresh session; then S4-02 (harness) spec; S4-03 live wire check needs TYPESAFE_API_KEY (user puts the export in a file CC sources only in the run command)**
 - Roles (user, 2026-10-15): **Pi is no longer parked. Pi codes, one model per Pi session (the user switches models between sessions). Claude Code plans, writes task specs, reviews, keeps the ledger (md/ledger.jsonl, schema md/ledger.schema.json), verifies, and commits; it writes no implementation. The coder comparison is a side quest: where it conflicts with the project, the project wins (resolutions in NOTES.md)**
 - Last completed step: **S3 Part C complete: S3-C-01 (mimo-v2.6-flash, accepted first pass); Part C gate: npm test 483/483, test:compass 101/101, single-worker 483/483, concurrent run of both suites green; M3 verified**
 - Outcome: **S2 COMPLETE: termination, capture reset and retry fixes; compare run 46 requests / 26.0 min on the pipeline's 20 trios; branch s1/harness**
 - Blocker: **none**
-- Pending user inputs: **approval of md/stage-4-task.md; TYPESAFE_API_KEY**
+- Pending user inputs: **TYPESAFE_API_KEY (for S4-03)**
 - User direction (2026-10-15/16): **do not over-engineer crash safety. Simple-rollback trim approved 2026-10-16 and applied to architecture.md §6, plan.md S3 and stage-3-task.md Part B: no publication intent, no automatic restore or edit guard, no per-boundary crash tests; B-2 = S3-B2-01. Part C gets the same simplicity check before its spec. Extraction cache and prefix runs wait for S5 (user, 2026-10-16)**
 - Stage order: **plan order, S2.T1–T3 before the optional S2.T4 Jev probe (user decision 2026-10-14)**
 - Limits: **suggested at launch from the [compass.md](compass.md) run-type table; confirmed by the user for every live run**

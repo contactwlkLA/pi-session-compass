@@ -1,6 +1,6 @@
 # Stage 4 — Add the Jev gate and run limits
 
-Project: **pi-session-compass** · Revision: **0.1.0** · Status: **Draft — awaiting user approval**
+Project: **pi-session-compass** · Revision: **0.2.0** · Status: **Approved (user, 2026-10-16)**
 
 Date: **2026-10-16**
 
@@ -12,8 +12,8 @@ Parent: [Development plan](plan.md), Stage 4. Contract: [Architecture](architect
 
 | Task | Plan tasks | Outcome | Who |
 |---|---|---|---|
-| S4-01 — Jev adapter and policy | S4.T1, S4.T2 (routing), S4.T4 (adapter cases) | `src/jev.ts`: policy, state, HTTP call, validation, routing decision; unit-tested with a mocked `fetch`; not wired | Pi |
-| S4-02 — Wire the gate and the harness | S4.T2 (modes), S4.T3, S4.T4 (pipeline cases) | `gateMode` setting; gate step before extraction; run-scoped failure bypass; harness counts and records Jev requests; `--gate-mode` switch | Pi |
+| S4-01 — Jev adapter and plugin wiring | S4.T1, S4.T2, S4.T4 (adapter and pipeline cases) | `src/jev.ts` (policy, state, HTTP call, validation, routing) and `src/gate.ts` (modes, run-scoped bypass, hooks); `gateMode` setting; gate step before extraction | Pi |
+| S4-02 — Harness | S4.T3, S4.T4 (limit cases) | Harness counts and refuses Jev attempts, records gate results, `--gate-mode` switch, H1–H3 | Pi |
 | S4-03 — Live wire check | — | One shadow `smoke` run against the real API (user-confirmed limits) proves the wire format and records model ID, latency and usage | CC |
 
 No live call before S4-03. S4-03 needs `TYPESAFE_API_KEY` in the environment.
@@ -31,16 +31,16 @@ No live call before S4-03. S4-03 needs `TYPESAFE_API_KEY` in the environment.
 9. **Counting:** each Jev HTTP attempt is one model request (a retry is a second). The harness checks capacity before each attempt; a refusal stops the run like any other limit, before the trio's position moves. One request carries all four questions.
 10. **Policy hash:** sha256 (first 12 hex) over the model pin, threshold, state cap, and the four questions' JSON; recorded on every gate result and in the harness manifest. Any change to these invalidates evaluation evidence (architecture §4).
 
-## Protected text — for approval
+## Protected text (approved by the user, 2026-10-16)
 
-**Q — the four Noul questions (sent to the Jev model).** IDs are response keys only; the model does not see them.
+**Q — the four Noul questions (sent to the Jev model; approved 2026-10-16).** IDs are response keys only; the model does not see them. Each `instructions` string is the prefix `In this exchange between a user and an AI coding agent, ` followed by the question.
 
-| ID | `instructions` | `criteria.true` | `criteria.false` |
+| ID | `instructions` (after the prefix) | `criteria.true` | `criteria.false` |
 |---|---|---|---|
-| `correction` | Does the user's message (userFeedback) correct or challenge something the agent said or did in agentBefore? | The user points out a wrong assumption, a missed concern, an inaccurate claim, or an action they did not want, or pushes back on the agent's answer or approach. | The user accepts, continues, or asks something new without disputing anything the agent said or did. |
-| `preference` | Does the user's message (userFeedback) express a preference about how the agent should communicate or work? | The user states how they want things done: style, length or depth of explanations, scope, process, or priorities. | The user only gives task content (what to build, fix, or answer) and says nothing about how the agent should communicate or work. |
-| `steering` | Does the user's message (userFeedback) redirect how the agent approaches the work? | The user changes the method, the order of steps, the structure, or how a decision is framed. | The user lets the agent continue its current approach, or only adds task details. |
-| `confusion` | Does the user's message (userFeedback) show difficulty following the agent's explanation or progress? | The user says they are lost, cannot tell what changed or what to do next, had to scroll or search to follow along, or asks the agent to clarify or reorient. | The user follows the agent's explanation and progress without trouble. |
+| `correction` | does the user's reply correct or push back on something the agent said or did? | The user says the agent got something wrong (code, a claim, an assumption), missed something, or did something the user did not want. | The user accepts the work, moves on, or asks something new without saying the agent got anything wrong. |
+| `preference` | does the user's reply say how they want the agent to work or communicate with them? | The user states a preference that could apply again later: how long or detailed answers should be, when to ask before acting, how much to change at once, which tools or style to use. | The user only says what to do in this task (what to build, fix, or explain). |
+| `steering` | does the user's reply change how the agent is going about the task? | The user asks for a different method, a different order of steps, planning first, a narrower or wider scope, or a rethought decision. | The user lets the agent carry on, or only adds task details. |
+| `confusion` | does the user's reply show they had trouble following the agent? | The user says they are lost or confused, cannot tell what changed or what to do next, or asks for a summary, clarification, or a slower pace. | The user follows what the agent did and said without trouble. |
 
 **U — user-facing strings** (shown as `Portrait ${source}: ${message}`, as T1–T3 in stage-3b.md):
 
@@ -67,7 +67,7 @@ No live call before S4-03. S4-03 needs `TYPESAFE_API_KEY` in the environment.
 
 ## Tasks
 
-### S4-01 — Jev adapter and policy (Pi)
+### S4-01 — Jev adapter and plugin wiring (Pi; spec in [stage-4-specs.md](stage-4-specs.md))
 
 - [ ] **1.** `src/jev.ts`: policy constants (model pin, threshold, state cap, deadline, the Q table) and `JEV_POLICY_HASH`.
 - [ ] **2.** `serializeGateState(trio)` and the 32 KiB check.
@@ -75,12 +75,12 @@ No live call before S4-03. S4-03 needs `TYPESAFE_API_KEY` in the environment.
 - [ ] **4.** `routeGate(result)`: `reject` only under the routing rule; else `pass`.
 - [ ] **5.** Tests with a mocked `fetch` and clock: positive, low, mixed, and uncertain probabilities; missing, extra, or wrong-typed answers; NaN, negative, and >1 values; each error status; 429 with and without `Retry-After`; a retry that would overrun the deadline; timeout; network error; oversized state; the key never appears in any returned value or error text.
 
-### S4-02 — Wire the gate and the harness (Pi)
+### S4-02 — Harness (Pi)
 
-- [ ] **1.** Setting `gateMode` (S text) in src/schema.ts; default `off`.
-- [ ] **2.** In `tryExtractTrio` (src/collector.ts), before extraction: `off` skips the gate; `shadow` calls it and always extracts; `enforce` skips extraction on `reject` and saves the scan position as for a successful empty extraction.
-- [ ] **3.** Run-scoped gate state (missing key → U1 once and no requests; three consecutive failures → U2 once and gate off for the run), reset at the start of each `runPipelineLoop`.
-- [ ] **4.** Instrument hooks: `onGateAttempt` (called through `beforeAttempt`; the harness counts it and may refuse) and `onGateResult` (trio reference, mode, policy hash, decision, answers or bypass reason, model, latency, usage).
+- [ ] **1.** *(in S4-01)* Setting `gateMode` (S text) in src/schema.ts; default `off`.
+- [ ] **2.** *(in S4-01)* In `tryExtractTrio` (src/collector.ts), before extraction: `off` skips the gate; `shadow` calls it and always extracts; `enforce` skips extraction on `reject` and saves the scan position as for a successful empty extraction.
+- [ ] **3.** *(in S4-01)* Run-scoped gate state (missing key → U1 once and no requests; three consecutive failures → U2 once and gate off for the run), reset at the start of each `runPipelineLoop`.
+- [ ] **4.** *(in S4-01)* Instrument hooks: `onGateAttempt` (called through `beforeAttempt`; the harness counts it and may refuse) and `onGateResult` (trio reference, mode, policy hash, decision, answers or bypass reason, model, latency, usage).
 - [ ] **5.** Harness: `--gate-mode off|shadow|enforce` (default: the setting); manifest and receipt record mode, policy hash, and source; the counter counts Jev attempts under stage `gate`; traces and the results sheet carry each trio's gate result; the receipt adds gate totals (scored, rejected, bypassed by reason, Jev latency, Jev usage). H1–H3 as approved.
 - [ ] **6.** Tests: shadow never skips extraction; enforce skips only on `reject` and advances the position; every bypass extracts; U1 and U2 once each; the counter refusing a gate attempt stops the run with the position unchanged; `/portrait:collect N` counts only productive trios; off makes no gate call.
 
@@ -104,3 +104,4 @@ Threshold tuning, labels, held-out sets, and savings claims (S5). README/CONFIGU
 | Revision | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-16 | Draft for user approval. |
+| 0.2.0 | 2026-10-16 | Approved: questions rewritten for coding-agent sessions; U, S, H texts; S4-01 now holds the adapter and the plugin wiring (knip rejects an unused module), S4-02 the harness. |
