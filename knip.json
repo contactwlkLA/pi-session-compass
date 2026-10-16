@@ -5,6 +5,7 @@
     "scripts/analyze-sessions.ts",
     "scripts/compass/run.ts",
     "scripts/compass/offline-check.ts",
+    "scripts/compass/probe.ts",
     "scripts/no-optional-params.cjs",
     "scripts/no-bare-literals.cjs",
     "scripts/test-low-priority.cjs"
