@@ -153,4 +153,4 @@ S4-02 review: `GATE_CONFIG` is the only gate-value source; hash unchanged; each 
 |---|---|---|
 | 0.4.0 | 2026-10-16 | Plain vocabulary (`no_lesson`, `maybe_lesson`, `fallback`, `over_budget`) after three provider content-filter stops; answer (9) on `over_budget`. |
 | 0.5.0 | 2026-10-16 | Neutral prose from Pi's filter review (credential, timeout and test wording); `key_missing`, `check_stopped`, `checkStoppedForRun`. |
-| 0.6.0 | 2026-10-16 | S4-02 spec (single gate config file, harness gate counting and records); H4–H6 pending approval. |
+| 0.6.0 | 2026-10-16 | S4-02 spec (single gate config file, harness gate counting and records); H4–H6 approved by the user. |
