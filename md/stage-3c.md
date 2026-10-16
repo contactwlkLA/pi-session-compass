@@ -26,6 +26,8 @@ Parent: [stage-3-task.md](stage-3-task.md) Part C. Contract: [architecture.md](a
 
 **Edge cases to cover:** reset with the collect lock busy opens no dialog and changes no file; reset cancelled at the dialog releases the lock; reset failing inside (e.g. an unwritable portrait dir, or a throwing `writePortrait` via a read-only file) releases the lock; reset with the lock functions absent behaves exactly as today (the existing reset tests keep passing unchanged).
 
+**Audit answers (CC, 2026-10-16; part of this spec):** (1) Blocker: build the fake portrait in `beforeEach`, right after the existing `mkdirSync(TEST_TMP)`, with `FAKE_PORTRAIT_DIR = path.join(TEST_TMP, "live-portrait")` at module scope; that replaces "in `beforeAll`". (2) Create `TEST_TMP` with `mkdtempSync` at module scope, not in a hook, because `it.each` tables read it while the file loads. (3) Use an outer `try { … } finally { release }` around the existing dialog and inner `try/catch`; dialog errors keep propagating as today. (4) Holding the lock while the dialog is open is accepted (Risk 1). (5) Release the fresh mutex in the lifecycle test. (6) For the failure path, use `setTestConfig({ portraitDir: <a regular file> })` (ENOTDIR), as you propose. (7) Add your Noise 4 tests (a)–(d); with only one global present, reset runs unlocked as today. (8) Not clearing `collectCancelled` in reset's `finally` is correct.
+
 **Acceptance criteria:**
 
 1. Reset acquires the collect lock before the dialog and releases it on every path; a busy lock returns `"👤 Collection already in progress."` with no dialog and no file change.
