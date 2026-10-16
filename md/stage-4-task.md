@@ -1,6 +1,6 @@
 # Stage 4 — Add the Jev gate and run limits
 
-Project: **pi-session-compass** · Revision: **0.2.0** · Status: **Approved (user, 2026-10-16)**
+Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Approved (user, 2026-10-16)**
 
 Date: **2026-10-16**
 
@@ -25,9 +25,9 @@ No live call before S4-03. S4-03 needs `TYPESAFE_API_KEY` in the environment.
 3. **State:** `{ agentBefore, userFeedback, agentAfter }`, the same trio texts the extractor receives. If the UTF-8 JSON of the state exceeds 32 KiB, bypass with reason `oversized_state` (no request).
 4. **Routing:** reject only when all four answers are present, of type `noul`, finite, in [0, 1], and each is ≤ 0.10. Anything else is a pass (scored) or a bypass (error); both go to extraction.
 5. **Transport:** a total deadline of 5 s per trio covers every attempt and backoff. At most one retry, only for a network error, 429 or 529, waiting `Retry-After` when given (else 500 ms) and only if the wait fits the deadline. No retry for 400/401/413/415/422 or an invalid response.
-6. **Bypass reasons** (one per bypassed trio): `no_key`, `oversized_state`, `timeout`, `http_<status>`, `network`, `invalid_response`, `gate_disabled` (after three consecutive failures in a run).
+6. **Bypass reasons** (one per bypassed trio): `no_key`, `oversized_state`, `limit_refused` (the run refused the request), `timeout`, `http_<status>`, `network`, `invalid_response`, `gate_disabled` (after three consecutive failures in a run).
 7. **Modes:** `off` (no Jev request, today's path), `shadow` (Jev request, decision recorded, every trio extracted), `enforce` (a rejected trio is not extracted; its scan position advances like a successful empty extraction).
-8. **Run-scoped state:** a missing key is reported once per run and no gate request is made; three consecutive failures (any bypass except `oversized_state`) disable the gate for the rest of the run, reported once.
+8. **Run-scoped state:** a missing key is reported once per run and no gate request is made; three consecutive failures (bypasses after a real request attempt: `timeout`, `network`, `http_<status>`, `invalid_response`) disable the gate for the rest of the run, reported once.
 9. **Counting:** each Jev HTTP attempt is one model request (a retry is a second). The harness checks capacity before each attempt; a refusal stops the run like any other limit, before the trio's position moves. One request carries all four questions.
 10. **Policy hash:** sha256 (first 12 hex) over the model pin, threshold, state cap, and the four questions' JSON; recorded on every gate result and in the harness manifest. Any change to these invalidates evaluation evidence (architecture §4).
 
@@ -105,3 +105,4 @@ Threshold tuning, labels, held-out sets, and savings claims (S5). README/CONFIGU
 |---|---|---|
 | 0.1.0 | 2026-10-16 | Draft for user approval. |
 | 0.2.0 | 2026-10-16 | Approved: questions rewritten for coding-agent sessions; U, S, H texts; S4-01 now holds the adapter and the plugin wiring (knip rejects an unused module), S4-02 the harness. |
+| 0.3.0 | 2026-10-16 | S4-01 audit: `limit_refused` added; only failures after a real request count toward the three. |

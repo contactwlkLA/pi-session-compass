@@ -1,6 +1,6 @@
 # Stage 4 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.1.0** · Status: **Approved (user, 2026-10-16)**
+Project: **pi-session-compass** · Revision: **0.2.0** · Status: **Approved (user, 2026-10-16)**
 
 Date: **2026-10-16**
 
@@ -59,6 +59,8 @@ Add the Jev gate to the plugin: a transport-and-policy module, a gate step befor
 
 **Edge cases to cover:** a 200 with a non-JSON body; an answer of `"0.05"` (string) or `1.2`; `Retry-After: 0`; `Retry-After` as an HTTP date (falls back to the default wait); a 429 whose wait does not fit the deadline (one attempt, bypass `http_429`); `beforeAttempt` false on the retry (bypass `limit_refused` after one attempt); an empty `TYPESAFE_API_KEY`; three consecutive bypasses followed by a fourth trio (no request); a scored result between two failures resets the count; `oversized_state` never counts toward the three.
 
+**Audit answers (CC, 2026-10-16; part of this spec):** (1) Blocker: add `tests/pipeline.test.ts` and `tests/extraction-outcomes.test.ts` to Allowed scope, but only for the one-line `gateMode: "off"` type fix. (2) `limit_refused` is a real bypass reason and does not count toward the three; stage-4-task.md design 6 and 8 are synced. (3) Risk 5: `no_key` does **not** count toward the three either. A keyless run reports U1 once and makes no requests; U2 never fires without a request. Only bypasses that follow a real request attempt count (`timeout`, `network`, `http_<status>`, `invalid_response`). (4) Noise 2: `attempts` counts POSTs actually sent. Increment it after `beforeAttempt` and the deadline check, right before `fetch`, so a first-iteration timeout reports 0. (5) Acceptance 2: don't parse the md file at runtime. Put the approved strings as literals in tests/jev.test.ts and assert the serialized body against them; CC checks those literals byte-exact against stage-4-task.md in review. (6) Risks 1, 2, 4: type-only imports both ways. In each gate test, call `resetGateRun()` in `beforeEach`, stub `globalThis.fetch` with a mock that rejects by default (so a leak can never reach the network), and set/restore `TYPESAFE_API_KEY` per test. Use fake timers for the abort path. (7) Noise 3, 4, 5, 7: as you propose (branch on `kind` before `routeGate`; deep-freeze; hash literal order; your extra tests). (8) Risk 3 (an enforce skip is not counted as an examined trio) is left for S4-02.
+
 **Acceptance criteria:**
 
 1. `callJev` follows the control flow above; tests cover every edge case listed and every bypass reason, with a mocked `fetch`, `now` and `sleep` (no real timers or network).
@@ -92,3 +94,4 @@ Planner difficulty: S4-01 medium.
 | Revision | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-16 | S4-01 spec. |
+| 0.2.0 | 2026-10-16 | S4-01 audit answers. |
