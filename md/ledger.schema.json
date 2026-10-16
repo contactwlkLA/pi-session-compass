@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Coder ledger: one JSON object per task attempt (JSONL, one line each)",
+  "description": "One record = one coder attempting one task, from assignment to acceptance or abandonment. Coders run in sequential blocks (one model for a few tasks, then another model in a new session), so tasks differ between coders and the comparison is rough. Fields marked HARNESS come from Pi session logs, filled by the human when convenient, otherwise null; never by the coder. Fields marked REVIEWER are filled by the reviewer from the diff and test output. Fields marked HUMAN are filled by the human.",
+  "type": "object",
+  "required": ["task_id", "run_id", "coder", "rounds", "outcome"],
+  "properties": {
+    "task_id": { "type": "string", "description": "Stable ID for the task, e.g. S3-B1-03" },
+    "run_id": { "type": "integer", "minimum": 1, "description": "Attempt number for this task; 1 unless the task is restarted from scratch" },
+    "coder": { "type": "string", "description": "Exact model ID as Pi reports it, e.g. claude-haiku-5-5, mimo-v2.6-flash" },
+    "provider": { "type": ["string", "null"], "description": "HARNESS: Pi provider name, e.g. anthropic, xiaomi-tp" },
+    "thinking_level": { "type": ["string", "null"], "description": "HARNESS: Pi thinking level in effect for the coder session" },
+    "difficulty": { "enum": ["easy", "medium", "hard"], "description": "REVIEWER, set at planning time, before the coder starts" },
+    "allowed_scope": { "type": "array", "items": { "type": "string" }, "description": "REVIEWER: file paths/globs the coder may touch, fixed at planning time" },
+    "verification_commands": { "type": "array", "items": { "type": "string" }, "description": "REVIEWER: commands the coder must run before claiming done" },
+
+    "rounds": {
+      "type": "array",
+      "minItems": 1,
+      "description": "One entry per coder-to-reviewer cycle. A correction round is any round whose verdict is not 'accepted'.",
+      "items": {
+        "type": "object",
+        "required": ["round", "verdict"],
+        "properties": {
+          "round": { "type": "integer", "minimum": 1 },
+
+          "coder_active_s":  { "type": ["number", "null"], "description": "HARNESS: seconds from coder receiving the task/feedback to coder stopping. Excludes relay gap." },
+          "review_active_s": { "type": ["number", "null"], "description": "HARNESS: seconds the reviewer spent on this round. Excludes relay gap." },
+          "relay_gap_s":     { "type": ["number", "null"], "description": "HUMAN/HARNESS: idle time between agents in this round. Recorded for transparency, EXCLUDED from time_to_accept_s." },
+
+          "coder_tokens": {
+            "type": "object",
+            "description": "HARNESS: summed from the coder's Pi session usage for this round",
+            "properties": {
+              "input": { "type": ["integer", "null"] },
+              "output": { "type": ["integer", "null"] },
+              "cache_read": { "type": ["integer", "null"] },
+              "cache_write": { "type": ["integer", "null"] },
+              "reasoning": { "type": ["integer", "null"] }
+            }
+          },
+          "peak_context_tokens": { "type": ["integer", "null"], "description": "HARNESS: largest prompt in the round, input + cache_read + cache_write on a single call. Target is under 100000." },
+          "coder_cost_usd":  { "type": ["number", "null"], "description": "HARNESS: ballpark, see cost_source" },
+          "review_cost_usd": { "type": ["number", "null"], "description": "HARNESS: ballpark, see cost_source" },
+          "cost_source": { "type": ["string", "null"], "description": "Where the cost came from, e.g. pi-estimate. Costs are approximate; compare coders by ratio, not absolute dollars." },
+
+          "verdict": { "enum": ["accepted", "rejected_quality", "rejected_scope", "rejected_incomplete", "abandoned"], "description": "REVIEWER" },
+
+          "findings": {
+            "type": "array",
+            "description": "REVIEWER: issues found in THIS round's submission",
+            "items": {
+              "type": "object",
+              "required": ["id", "severity", "category", "caught_by"],
+              "properties": {
+                "id": { "type": "string", "description": "e.g. F-1, unique within the task attempt" },
+                "severity": { "enum": ["blocker", "major", "minor", "nit"] },
+                "category": { "enum": ["correctness", "missing_requirement", "test_gap", "regression", "scope_violation", "style", "false_claim", "other"] },
+                "caught_by": { "enum": ["reviewer", "tests", "both", "human"] },
+                "inherited": { "type": "boolean", "description": "True when the defect comes from code written in an earlier task (possibly by another coder), not this submission. Inherited findings are excluded from this coder's weighted_findings." },
+                "description": { "type": "string", "description": "One or two sentences, with file:line where possible" },
+                "resolved_in_round": { "type": ["integer", "null"], "description": "Round in which this was verified fixed; null if never" }
+              }
+            }
+          },
+
+          "discipline": {
+            "type": "object",
+            "description": "REVIEWER: mechanical checks against the diff and transcript. Count, do not judge.",
+            "properties": {
+              "out_of_scope_files": { "type": "array", "items": { "type": "string" }, "description": "Files changed that are outside allowed_scope" },
+              "unrequested_changes": { "type": "integer", "minimum": 0, "description": "Count of hunks that implement nothing the task asked for (refactors, renames, reformatting, extra features)" },
+              "verification_run": { "enum": ["all", "some", "none"], "description": "Whether the required verification_commands were actually run, per transcript" },
+              "constraint_violations": { "type": "integer", "minimum": 0, "description": "Plan constraints explicitly stated in the task spec that were violated" },
+              "claim_mismatches": { "type": "integer", "minimum": 0, "description": "Statements in the coder's handoff that the diff or transcript contradicts" },
+              "handoff_complete": { "type": "boolean", "description": "Whether the handoff file followed the required format with all sections" }
+            }
+          },
+
+          "notes": { "type": "string", "description": "Free text, e.g. session restarted for context size" }
+        }
+      }
+    },
+
+    "outcome": {
+      "type": "object",
+      "required": ["accepted"],
+      "description": "Rollup, filled when the task ends. Derived from rounds; do not edit independently.",
+      "properties": {
+        "accepted": { "type": "boolean" },
+        "first_pass_accepted": { "type": "boolean", "description": "Accepted in round 1" },
+        "rounds_to_accept": { "type": ["integer", "null"], "description": "Total rounds including the accepting one; null if never accepted" },
+        "correction_rounds": { "type": ["integer", "null"], "description": "rounds_to_accept - 1" },
+        "time_to_accept_s": { "type": ["number", "null"], "description": "Sum over rounds of coder_active_s + review_active_s. relay_gap_s is excluded." },
+        "relay_gap_total_s": { "type": ["number", "null"], "description": "Sum of relay_gap_s, reported separately" },
+        "coder_cost_usd": { "type": ["number", "null"], "description": "Sum over ALL rounds including rejected ones" },
+        "pipeline_cost_usd": { "type": ["number", "null"], "description": "coder_cost_usd + review_cost_usd summed over all rounds" },
+        "max_peak_context_tokens": { "type": ["integer", "null"], "description": "Largest peak_context_tokens over all rounds" },
+        "weighted_findings": { "type": ["number", "null"], "description": "Sum of finding weights across all rounds, excluding inherited findings: blocker=8, major=4, minor=2, nit=1" },
+        "discipline_flags": { "type": ["integer", "null"], "description": "Total count of: out-of-scope files + unrequested_changes + constraint_violations + claim_mismatches + (1 per round where verification_run != 'all')" }
+      }
+    },
+
+    "human_spot_check": {
+      "type": "object",
+      "description": "HUMAN: independent check of the reviewer's verdict on a sample of tasks, to catch single-judge bias",
+      "properties": {
+        "sampled": { "type": "boolean" },
+        "agrees_with_reviewer": { "type": ["boolean", "null"] },
+        "comment": { "type": "string" }
+      }
+    }
+  }
+}

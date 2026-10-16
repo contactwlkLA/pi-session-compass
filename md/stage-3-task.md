@@ -1,6 +1,6 @@
 # Stage 3 — Preserve pending work and safe restore
 
-Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Approved (user, 2026-10-14)**
+Project: **pi-session-compass** · Revision: **0.4.0** · Status: **Approved (user, 2026-10-14)**
 
 Date: **2026-10-14**
 
@@ -16,7 +16,7 @@ Use [stage.md](stage.md) for continuation. The stage runs in three parts, **A �
 | B — Pending work, publication, restore | S3.T2, S3.T4 | Candidates survive failures and crashes; builds publish only after validation; restart restores and redoes | ~2.5 h |
 | C — Locking, migration, lifecycle, M3 | S3.T5, S3.T6 | Shared lock, one-time legacy import, reset covers the snapshot; lifecycle safe; M3 verified | ~1.5 h |
 
-Pair setup (user, 2026-10-14): Pi writes the code from a per-part brief; Claude Code plans, reviews, verifies, and commits. Part A: [stage-3a-pi.md](stage-3a-pi.md) (Pi) and [stage-3a-cc.md](stage-3a-cc.md) (CC). Pi wrote Blocks A-1 to A-2b; the user then parked Pi over Pi/mimo configuration problems (bugs.md E5), so Claude Code codes from A-2c on, with the same brief and review gates.
+Pair setup (user, 2026-10-14): Pi writes the code from a per-part brief; Claude Code plans, reviews, verifies, and commits. Part A: [stage-3a-pi.md](stage-3a-pi.md) (Pi) and [stage-3a-cc.md](stage-3a-cc.md) (CC). Pi wrote Blocks A-1 to A-2b; the user then parked Pi over Pi/mimo configuration problems (bugs.md E5), so Claude Code coded A-2c and A-3, with the same brief and review gates. From Part B (user, 2026-10-15), Pi codes again from per-task specs and Claude Code plans, reviews, keeps the coder ledger, and commits; see [NOTES.md](NOTES.md) and [planner-prompt.md](planner-prompt.md).
 
 No live model runs are planned in this stage; M3 is verified on isolated fixtures. Any live run would need its own user-confirmed limits.
 
@@ -113,6 +113,6 @@ Protected text expected in Part C: the migration notice (including the historica
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.1.1 | 2026-10-14 | Part A protected-text list names all four strings. |
 | 0.2.0 | 2026-10-15 | A1 done (A-1 to A-2c); Pi parked after A-2b; tests isolated per file (B17). |
 | 0.3.0 | 2026-10-15 | Part A complete (A1, A2, gate). |
+| 0.4.0 | 2026-10-15 | Pi codes again from Part B; CC plans, reviews, and keeps the coder ledger. |
