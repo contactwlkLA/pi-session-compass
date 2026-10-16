@@ -1,6 +1,6 @@
 # Stage 4 — Add the Jev gate and run limits
 
-Project: **pi-session-compass** · Revision: **0.5.1** · Status: **Approved (user, 2026-10-16)**
+Project: **pi-session-compass** · Revision: **0.6.0** · Status: **Approved (user, 2026-10-16)**
 
 Date: **2026-10-16**
 
@@ -91,13 +91,13 @@ No live call before S4-03. S4-03 needs `TYPESAFE_API_KEY` in the environment.
 
 ### S4-03 — Live wire check (CC)
 
-- [ ] **1.** With `TYPESAFE_API_KEY` set, run a `smoke` run in shadow mode on the S1 fixture from the frozen start snapshot. Suggested limits: the compass.md `smoke` row (5 requests, 15 min); the user confirms at launch.
-- [ ] **2.** Check: Jev responses parse; the returned model is `jev-1.13.0`; each trio was extracted; Jev requests were counted; no key in any artifact. Record latency and usage per call in outputs/s4/.
+- [x] **1.** With `TYPESAFE_API_KEY` set, run a `smoke` run in shadow mode on the S1 fixture from the frozen start snapshot. Suggested limits: the compass.md `smoke` row (5 requests, 15 min); the user confirms at launch.
+- [x] **2.** Check: Jev responses parse; the returned model is `jev-1.13.0`; each trio was extracted; Jev requests were counted; no key in any artifact. Record latency and usage per call in outputs/s4/.
 
 ### Stage gate — M4
 
-- [ ] **1.** Both full suites, single-worker, and a concurrent run of both suites pass; commit and push.
-- [ ] **2.** S4-03 passed, or is recorded as blocked on the key (M4 then waits on it).
+- [x] **1.** Both full suites, single-worker, and a concurrent run of both suites pass; commit and push. *(2026-10-16: `npm test` 25 files / 549 passed; `npm run test:compass` 9 files / 123 passed; single-worker 549 and 123 passed; concurrent run of both suites green)*
+- [x] **2.** S4-03 passed, or is recorded as blocked on the key (M4 then waits on it). *(2026-10-16: PASS, shadow smoke capped at 5 requests; 2 Jev calls scored, model jev-1.13.0, 114–201 ms; evidence outputs/s4/s4-03-wire-check.md)*
 - [ ] **3.** Sync this file, stage.md, bugs.md, and the ledger. Checkpoint with the user before S5.
 
 ## Out of scope
@@ -108,6 +108,6 @@ Threshold tuning, labels, held-out sets, and savings claims (S5). README/CONFIGU
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.4.0 | 2026-10-16 | Plain vocabulary in the design and tasks (`no_lesson`, `maybe_lesson`, `fallback`, `over_budget`); approved texts unchanged. |
 | 0.5.0 | 2026-10-16 | S4-02 item 0: all gate configuration in one file, src/gate-config.ts (user). |
 | 0.5.1 | 2026-10-16 | S4-02 items checked (accepted first pass). |
+| 0.6.0 | 2026-10-16 | S4-03 passed; M4 verified; checkpoint pending. |
