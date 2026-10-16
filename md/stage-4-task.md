@@ -1,6 +1,6 @@
 # Stage 4 — Add the Jev gate and run limits
 
-Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Approved (user, 2026-10-16)**
+Project: **pi-session-compass** · Revision: **0.4.0** · Status: **Approved (user, 2026-10-16)**
 
 Date: **2026-10-16**
 
@@ -12,8 +12,8 @@ Parent: [Development plan](plan.md), Stage 4. Contract: [Architecture](architect
 
 | Task | Plan tasks | Outcome | Who |
 |---|---|---|---|
-| S4-01 — Jev adapter and plugin wiring | S4.T1, S4.T2, S4.T4 (adapter and pipeline cases) | `src/jev.ts` (policy, state, HTTP call, validation, routing) and `src/gate.ts` (modes, run-scoped bypass, hooks); `gateMode` setting; gate step before extraction | Pi |
-| S4-02 — Harness | S4.T3, S4.T4 (limit cases) | Harness counts and refuses Jev attempts, records gate results, `--gate-mode` switch, H1–H3 | Pi |
+| S4-01 — Jev adapter and plugin wiring | S4.T1, S4.T2, S4.T4 (adapter and pipeline cases) | `src/jev.ts` (policy, state, HTTP call, validation, routing) and `src/gate.ts` (modes, run-scoped fallback, hooks); `gateMode` setting; gate step before extraction | Pi |
+| S4-02 — Harness | S4.T3, S4.T4 (limit cases) | Harness counts Jev attempts and stops them at the limit, records gate results, `--gate-mode` switch, H1–H3 | Pi |
 | S4-03 — Live wire check | — | One shadow `smoke` run against the real API (user-confirmed limits) proves the wire format and records model ID, latency and usage | CC |
 
 No live call before S4-03. S4-03 needs `TYPESAFE_API_KEY` in the environment.
@@ -22,13 +22,13 @@ No live call before S4-03. S4-03 needs `TYPESAFE_API_KEY` in the environment.
 
 1. **Wire format (TypeSafe docs rechecked 2026-10-16).** `POST https://api.typesafe.ai/v1/systemone`, `Authorization: Bearer $TYPESAFE_API_KEY`, body `{ model, state, questions }`. `questions` is a map from our ID to `{ type: "noul", instructions, criteria: { true, false } }`. The response is `{ model, answers: { <id>: { type: "noul", noul } }, usage: { input_tokens, output_tokens } }`. Errors: 400 (including `max_tokens_exceeded`), 401, 413, 415, 422, 429, 529.
 2. **Model pin:** `jev-1.13.0` (the current stable release; `jev-latest` points to it today, and `jev-1.14.0` shipped 2026-10-14 as `jev-preview`). Record the `model` the response returns.
-3. **State:** `{ agentBefore, userFeedback, agentAfter }`, the same trio texts the extractor receives. If the UTF-8 JSON of the state exceeds 32 KiB, bypass with reason `oversized_state` (no request).
-4. **Routing:** reject only when all four answers are present, of type `noul`, finite, in [0, 1], and each is ≤ 0.10. Anything else is a pass (scored) or a bypass (error); both go to extraction.
+3. **State:** `{ agentBefore, userFeedback, agentAfter }`, the same trio texts the extractor receives. If the UTF-8 JSON of the state exceeds 32 KiB, fall back with reason `oversized_state` (no request).
+4. **Routing:** the result is `no_lesson` only when all four answers are present, of type `noul`, finite, in [0, 1], and each is ≤ 0.10. Anything else is `maybe_lesson` (scored) or a fallback (error); both go to extraction.
 5. **Transport:** a total deadline of 5 s per trio covers every attempt and backoff. At most one retry, only for a network error, 429 or 529, waiting `Retry-After` when given (else 500 ms) and only if the wait fits the deadline. No retry for 400/401/413/415/422 or an invalid response.
-6. **Bypass reasons** (one per bypassed trio): `no_key`, `oversized_state`, `limit_refused` (the run refused the request), `timeout`, `http_<status>`, `network`, `invalid_response`, `gate_disabled` (after three consecutive failures in a run).
-7. **Modes:** `off` (no Jev request, today's path), `shadow` (Jev request, decision recorded, every trio extracted), `enforce` (a rejected trio is not extracted; its scan position advances like a successful empty extraction).
-8. **Run-scoped state:** a missing key is reported once per run and no gate request is made; three consecutive failures (bypasses after a real request attempt: `timeout`, `network`, `http_<status>`, `invalid_response`) disable the gate for the rest of the run, reported once.
-9. **Counting:** each Jev HTTP attempt is one model request (a retry is a second). The harness checks capacity before each attempt; a refusal stops the run like any other limit, before the trio's position moves. One request carries all four questions.
+6. **Fallback reasons** (one per trio that falls back to extraction): `no_key`, `oversized_state`, `over_budget` (the run is out of budget), `timeout`, `http_<status>`, `network`, `invalid_response`, `gate_disabled` (after three consecutive failures in a run).
+7. **Modes:** `off` (no Jev request, today's path), `shadow` (Jev request, decision recorded, every trio extracted), `enforce` (a `no_lesson` trio is not extracted; its scan position advances like a successful empty extraction).
+8. **Run-scoped state:** a missing key is reported once per run and no gate request is made; three consecutive failures (fallbacks after a real request attempt: `timeout`, `network`, `http_<status>`, `invalid_response`) disable the gate for the rest of the run, reported once.
+9. **Counting:** each Jev HTTP attempt is one model request (a retry is a second). The harness checks capacity before each attempt; reaching the limit stops the run like any other limit, before the trio's position moves. One request carries all four questions.
 10. **Policy hash:** sha256 (first 12 hex) over the model pin, threshold, state cap, and the four questions' JSON; recorded on every gate result and in the harness manifest. Any change to these invalidates evaluation evidence (architecture §4).
 
 ## Protected text (approved by the user, 2026-10-16)
@@ -63,7 +63,7 @@ No live call before S4-03. S4-03 needs `TYPESAFE_API_KEY` in the environment.
 |---|---|---|
 | H1 | confirmation, when the mode is not `off` | `Jev gate: ${mode} (policy ${hash}) — each eligible trio also makes one Jev request (two with a retry).` |
 | H2 | confirmation, when the mode is `off` | `Jev gate: off` |
-| H3 | refusal for a bad `--gate-mode` | `--gate-mode must be off, shadow, or enforce` |
+| H3 | error for a bad `--gate-mode` | `--gate-mode must be off, shadow, or enforce` |
 
 ## Tasks
 
@@ -71,18 +71,18 @@ No live call before S4-03. S4-03 needs `TYPESAFE_API_KEY` in the environment.
 
 - [ ] **1.** `src/jev.ts`: policy constants (model pin, threshold, state cap, deadline, the Q table) and `JEV_POLICY_HASH`.
 - [ ] **2.** `serializeGateState(trio)` and the 32 KiB check.
-- [ ] **3.** `callJev(state, apiKey, fetchImpl, now, beforeAttempt)`: deadline, one retry, `Retry-After`, no retry on non-transient errors, response validation; returns `{ kind: "scored", answers, model, usage, attempts, latencyMs }` or `{ kind: "bypass", reason, attempts, latencyMs }`. `beforeAttempt` is called before each HTTP attempt (the harness counter hook) and may throw.
-- [ ] **4.** `routeGate(result)`: `reject` only under the routing rule; else `pass`.
+- [ ] **3.** `callJev(state, apiKey, fetchImpl, now, beforeAttempt)`: deadline, one retry, `Retry-After`, no retry on non-transient errors, response validation; returns `{ kind: "scored", answers, model, usage, attempts, latencyMs }` or `{ kind: "fallback", reason, attempts, latencyMs }`. `beforeAttempt` is called before each HTTP attempt (the harness counter hook) and may throw.
+- [ ] **4.** `routeGate(result)`: `no_lesson` only under the routing rule; else `maybe_lesson`.
 - [ ] **5.** Tests with a mocked `fetch` and clock: positive, low, mixed, and uncertain probabilities; missing, extra, or wrong-typed answers; NaN, negative, and >1 values; each error status; 429 with and without `Retry-After`; a retry that would overrun the deadline; timeout; network error; oversized state; the key never appears in any returned value or error text.
 
 ### S4-02 — Harness (Pi)
 
 - [ ] **1.** *(in S4-01)* Setting `gateMode` (S text) in src/schema.ts; default `off`.
-- [ ] **2.** *(in S4-01)* In `tryExtractTrio` (src/collector.ts), before extraction: `off` skips the gate; `shadow` calls it and always extracts; `enforce` skips extraction on `reject` and saves the scan position as for a successful empty extraction.
+- [ ] **2.** *(in S4-01)* In `tryExtractTrio` (src/collector.ts), before extraction: `off` skips the gate; `shadow` calls it and always extracts; `enforce` skips extraction on `no_lesson` and saves the scan position as for a successful empty extraction.
 - [ ] **3.** *(in S4-01)* Run-scoped gate state (missing key → U1 once and no requests; three consecutive failures → U2 once and gate off for the run), reset at the start of each `runPipelineLoop`.
-- [ ] **4.** *(in S4-01)* Instrument hooks: `onGateAttempt` (called through `beforeAttempt`; the harness counts it and may refuse) and `onGateResult` (trio reference, mode, policy hash, decision, answers or bypass reason, model, latency, usage).
-- [ ] **5.** Harness: `--gate-mode off|shadow|enforce` (default: the setting); manifest and receipt record mode, policy hash, and source; the counter counts Jev attempts under stage `gate`; traces and the results sheet carry each trio's gate result; the receipt adds gate totals (scored, rejected, bypassed by reason, Jev latency, Jev usage). H1–H3 as approved.
-- [ ] **6.** Tests: shadow never skips extraction; enforce skips only on `reject` and advances the position; every bypass extracts; U1 and U2 once each; the counter refusing a gate attempt stops the run with the position unchanged; `/portrait:collect N` counts only productive trios; off makes no gate call.
+- [ ] **4.** *(in S4-01)* Instrument hooks: `onGateAttempt` (called through `beforeAttempt`; the harness counts it and may decline it when over budget) and `onGateResult` (trio reference, mode, policy hash, decision, answers or fallback reason, model, latency, usage).
+- [ ] **5.** Harness: `--gate-mode off|shadow|enforce` (default: the setting); manifest and receipt record mode, policy hash, and source; the counter counts Jev attempts under stage `gate`; traces and the results sheet carry each trio's gate result; the receipt adds gate totals (scored, `no_lesson`, fallbacks by reason, Jev latency, Jev usage). H1–H3 as approved.
+- [ ] **6.** Tests: shadow never skips extraction; enforce skips only on `no_lesson` and advances the position; every fallback extracts; U1 and U2 once each; the counter declining a gate attempt (over budget) stops the run with the position unchanged; `/portrait:collect N` counts only productive trios; off makes no gate call.
 
 ### S4-03 — Live wire check (CC)
 
@@ -103,6 +103,6 @@ Threshold tuning, labels, held-out sets, and savings claims (S5). README/CONFIGU
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.1.0 | 2026-10-16 | Draft for user approval. |
 | 0.2.0 | 2026-10-16 | Approved: questions rewritten for coding-agent sessions; U, S, H texts; S4-01 now holds the adapter and the plugin wiring (knip rejects an unused module), S4-02 the harness. |
 | 0.3.0 | 2026-10-16 | S4-01 audit: `limit_refused` added; only failures after a real request count toward the three. |
+| 0.4.0 | 2026-10-16 | Plain vocabulary in the design and tasks (`no_lesson`, `maybe_lesson`, `fallback`, `over_budget`); approved texts unchanged. |
