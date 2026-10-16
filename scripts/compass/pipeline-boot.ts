@@ -14,12 +14,13 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { GateResultEvent } from "../../src/gate.js";
 import type { BuildEvent, CooldownEvent, TrioExaminedEvent } from "../../src/instrument.js";
 import type { LlmAttemptEvent } from "../../src/llm-call.js";
 import type { PipelineStopReason } from "../../src/types.js";
 import { emptyStats, RequestCounter } from "./counter.js";
 import { strings } from "./strings.js";
-import type { CensusResult, Limits, RunSelection } from "./types.js";
+import type { CensusResult, GateRunConfig, Limits, RunSelection } from "./types.js";
 
 export interface SinkError {
   hook: string;
@@ -52,6 +53,7 @@ interface PipelinePassStats {
 export function createSinkGuard(): {
   sinkErrors: SinkError[];
   guardSink: (hook: string, fn: () => void) => void;
+  guardValue: <T>(hook: string, fallback: T, fn: () => T) => T;
 } {
   const sinkErrors: SinkError[] = [];
   const guardSink = (hook: string, fn: () => void): void => {
@@ -61,7 +63,16 @@ export function createSinkGuard(): {
       sinkErrors.push({ hook, error: error instanceof Error ? error.message : String(error) });
     }
   };
-  return { sinkErrors, guardSink };
+  /** A value-returning hook: a throwing sink is recorded and the fallback is returned. */
+  const guardValue = <T>(hook: string, fallback: T, fn: () => T): T => {
+    try {
+      return fn();
+    } catch (error) {
+      sinkErrors.push({ hook, error: error instanceof Error ? error.message : String(error) });
+      return fallback;
+    }
+  };
+  return { sinkErrors, guardSink, guardValue };
 }
 
 /** Fail the run when instrumentation sinks recorded errors. Returns the process exit code: 1 when sinkErrors is non-empty, 0 otherwise. Writes the receipt in both cases. */
@@ -81,6 +92,8 @@ export interface BootOptions {
   prepared: { selection: RunSelection; census: CensusResult | null };
   outputDir: string;
   confirmMode: string;
+  /** The run's resolved gate: mode and source, policy hash, and the pinned model. */
+  gate: GateRunConfig;
 }
 
 interface BuildRecord {
@@ -103,8 +116,18 @@ export interface RunningRow {
   portraitRules: number;
 }
 
-/** Render the running table: one row per examined trio, cumulative counts as of that trio. */
-export function renderRunningTable(runType: Limits["runType"], rows: RunningRow[], eligible: number | null): string {
+/** One results-sheet entry, in scan order: an examined trio (with its gate event, when one follows it) or a trio the gate skipped. */
+type SheetEntry =
+  | { kind: "trio"; trio: TrioExaminedEvent; gate: GateResultEvent | null }
+  | { kind: "skipped"; gate: GateResultEvent };
+
+/** Render the running table: one row per examined trio, cumulative counts as of that trio. `covered` counts the trios the run is past: examined plus skipped by the gate. */
+export function renderRunningTable(
+  runType: Limits["runType"],
+  rows: RunningRow[],
+  eligible: number | null,
+  covered: number,
+): string {
   const header = [
     strings.sheetColTrio,
     strings.sheetColExamined,
@@ -113,9 +136,8 @@ export function renderRunningTable(runType: Limits["runType"], rows: RunningRow[
     strings.sheetColInsertMergeSkip,
     strings.sheetColPortraitSize,
   ];
-  const lastExamined = rows.length > 0 ? rows[rows.length - 1].examined : 0;
   const lines: string[] = [strings.runningTableTitle(runType), ""];
-  if (eligible !== null) lines.push(strings.runningTableCovered(lastExamined, eligible));
+  if (eligible !== null) lines.push(strings.runningTableCovered(covered, eligible));
   lines.push(strings.runningTableNote, "", `| ${header.join(" | ")} |`, `|${header.map(() => "---|").join("")}`);
   rows.forEach((row, i) => {
     const cells = [
@@ -158,7 +180,10 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
   const counter = new RequestCounter(limits);
   const stats = emptyStats();
   const attemptEvents: LlmAttemptEvent[] = [];
-  const trioExamined: TrioExaminedEvent[] = [];
+  const gateEvents: GateResultEvent[] = [];
+  const sheetEntries: SheetEntry[] = [];
+  // The gate event awaiting the trio that follows it (a skip has no trio, so it clears).
+  let pendingGate: GateResultEvent | null = null;
   const runningRows: RunningRow[] = [];
   const builds: BuildRecord[] = [];
   const cooldowns: CooldownEvent[] = [];
@@ -168,7 +193,7 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
   process.once("SIGINT", () => counter.abort());
   onShutdown.push(() => process.removeAllListeners("SIGINT"));
   // Created before the try so sink errors recorded before a crash still reach the error receipt.
-  const { sinkErrors, guardSink } = createSinkGuard();
+  const { sinkErrors, guardSink, guardValue } = createSinkGuard();
 
   try {
     // 1. Settings: the frozen, sanitized run snapshot (never live global files at run time).
@@ -195,7 +220,7 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
       const found = slash > 0 ? registry.find(modelString.slice(0, slash), modelString.slice(slash + 1)) : undefined;
       if (!found) {
         const accessError = strings.modelUnavailable(modelString);
-        writeReceipt(opts, counter, stats, "error", null, accessError, attemptEvents, cooldowns, null);
+        writeReceipt(opts, counter, stats, "error", null, accessError, attemptEvents, gateEvents, cooldowns, null);
         process.stderr.write(`compass harness: ${accessError}\n`);
         return 1;
       }
@@ -207,7 +232,7 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
         host.defaultProvider && host.defaultModel ? registry.find(host.defaultProvider, host.defaultModel) : undefined;
       if (!found) {
         const accessError = strings.noModelOverride;
-        writeReceipt(opts, counter, stats, "error", null, accessError, attemptEvents, cooldowns, null);
+        writeReceipt(opts, counter, stats, "error", null, accessError, attemptEvents, gateEvents, cooldowns, null);
         process.stderr.write(`compass harness: ${accessError}\n`);
         return 1;
       }
@@ -243,7 +268,8 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
           stats.triosExamined++;
           if (event.notes > 0) stats.triosProductive++;
           stats.candidates += event.notes;
-          trioExamined.push(event);
+          sheetEntries.push({ kind: "trio", trio: event, gate: pendingGate });
+          pendingGate = null;
           runningRows.push({
             file: path.basename(event.sessionPath),
             examined: stats.triosExamined,
@@ -273,6 +299,31 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
             evicted: event.evicted,
             rulesAfter,
           });
+        });
+      },
+      onGateAttempt: () => guardValue("gateAttempt", false, () => counter.gateAttempt(opts.gate.model)),
+      onGateResult: (event: GateResultEvent) => {
+        guardSink("gateResult", () => {
+          gateEvents.push(event);
+          stats.gateChecks++;
+          if (event.decision === "no_lesson") stats.gateNoLesson++;
+          else if (event.decision === "maybe_lesson") stats.gateMaybeLesson++;
+          else
+            stats.gateFallbacks[event.fallbackReason ?? "unknown"] =
+              (stats.gateFallbacks[event.fallbackReason ?? "unknown"] ?? 0) + 1;
+          stats.gateLatencyMs += event.latencyMs;
+          if (event.usage !== null) {
+            stats.gateUsageInput += event.usage.inputTokens;
+            stats.gateUsageOutput += event.usage.outputTokens;
+          }
+          if (event.routed === "skip") {
+            // No trio event follows a rejected trio: it gets its own sheet entry now.
+            stats.gateSkipped++;
+            sheetEntries.push({ kind: "skipped", gate: event });
+            pendingGate = null;
+          } else {
+            pendingGate = event;
+          }
         });
       },
       onCooldown: (event: CooldownEvent) => {
@@ -308,8 +359,10 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
       selection.scope === "file" && selection.frozen && selection.isolatedSessionDir
         ? path.join(selection.isolatedSessionDir, "selected", path.basename(selection.frozen.sourcePath))
         : NO_SOURCE_FILTER;
+    // The resolved gate mode governs every gate check in this run (the settings getter returns runSettings).
+    runSettings.gateMode = opts.gate.mode;
     while (!counter.exhausted()) {
-      const examinedBefore = stats.triosExamined;
+      const coveredBefore = stats.triosExamined + stats.gateSkipped;
       const pass = await runPipelineLoop(
         runSettings,
         Number.POSITIVE_INFINITY,
@@ -325,22 +378,40 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
         pipelineStats.stopReason = pass.stopReason;
         break;
       }
-      if (stats.triosExamined === examinedBefore) break;
+      if (stats.triosExamined + stats.gateSkipped === coveredBefore) break;
     }
 
     const capped = counter.stopReason !== null;
     const sinkExit = failOnSinkErrors(
-      (stop, error) => writeReceipt(opts, counter, stats, stop, null, error, attemptEvents, cooldowns, sinkErrors),
+      (stop, error) =>
+        writeReceipt(opts, counter, stats, stop, null, error, attemptEvents, gateEvents, cooldowns, sinkErrors),
       sinkErrors,
     );
     if (sinkExit !== 0) return sinkExit;
     const pipelineStop = pipelineStats.stopReason;
     const stopKind: RunStopKind = capped ? "capped" : pipelineStop !== null ? "stopped" : "completed";
-    writeReceipt(opts, counter, stats, stopKind, pipelineStop, null, attemptEvents, cooldowns, null, pipelineStats);
-    writeSheet(opts, limits.runType, trioExamined, builds, rulesBeforeRun, readRules(portraitDir));
+    writeReceipt(
+      opts,
+      counter,
+      stats,
+      stopKind,
+      pipelineStop,
+      null,
+      attemptEvents,
+      gateEvents,
+      cooldowns,
+      null,
+      pipelineStats,
+    );
+    writeSheet(opts, limits.runType, sheetEntries, builds, rulesBeforeRun, readRules(portraitDir));
     fs.writeFileSync(
       path.join(outputDir, "running-table.md"),
-      renderRunningTable(limits.runType, runningRows, opts.prepared.census?.totalTrios ?? null),
+      renderRunningTable(
+        limits.runType,
+        runningRows,
+        opts.prepared.census?.totalTrios ?? null,
+        stats.triosExamined + stats.gateSkipped,
+      ),
       "utf-8",
     );
     return capped ? 3 : pipelineStop !== null ? 4 : 0;
@@ -354,6 +425,7 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
       null,
       message,
       attemptEvents,
+      gateEvents,
       cooldowns,
       sinkErrors.length > 0 ? sinkErrors : null,
     );
@@ -398,11 +470,19 @@ function writeReceipt(
   pipelineStop: PipelineStopReason | null,
   error: string | null,
   attempts: LlmAttemptEvent[],
+  gateEvents: GateResultEvent[],
   cooldowns: CooldownEvent[],
   sinkErrors: Array<{ hook: string; error: string }> | null,
   pipelineStats?: PipelinePassStats,
 ): void {
   const snapshot = counter.snapshot();
+  const gateRequests = snapshot.traces.filter((trace) => trace.stage === "gate").length;
+  const stages = attempts.reduce<Record<string, number>>((acc, event) => {
+    acc[event.stage] = (acc[event.stage] ?? 0) + 1;
+    return acc;
+  }, {});
+  // The gate stage appears only when the run actually sent gate requests.
+  if (gateRequests > 0) stages.gate = gateRequests;
   const receipt = {
     runType: opts.limits.runType,
     limits: { final: opts.limits, source: opts.limits.source },
@@ -414,10 +494,21 @@ function writeReceipt(
       elapsedMs: snapshot.elapsedMs,
       usageTotals: snapshot.usageTotals,
     },
-    stages: attempts.reduce<Record<string, number>>((acc, event) => {
-      acc[event.stage] = (acc[event.stage] ?? 0) + 1;
-      return acc;
-    }, {}),
+    stages,
+    gate: {
+      mode: opts.gate.mode,
+      source: opts.gate.source,
+      policyHash: opts.gate.policyHash,
+      model: opts.gate.model,
+      checks: stats.gateChecks,
+      noLesson: stats.gateNoLesson,
+      maybeLesson: stats.gateMaybeLesson,
+      skipped: stats.gateSkipped,
+      fallbacks: stats.gateFallbacks,
+      requests: gateRequests,
+      latencyMsTotal: stats.gateLatencyMs,
+      usage: { inputTokens: stats.gateUsageInput, outputTokens: stats.gateUsageOutput },
+    },
     validationRounds: attempts.reduce<Record<string, Record<string, number>>>((acc, event) => {
       const stage = acc[event.stage] ?? {};
       const round = String(event.validationRound);
@@ -455,6 +546,7 @@ function writeReceipt(
     [
       ...attempts.map((a) => JSON.stringify({ kind: "attempt", ...a })),
       ...snapshot.traces.map((t) => JSON.stringify({ kind: "boundary", ...t })),
+      ...gateEvents.map((event) => JSON.stringify({ kind: "gate", ...event })),
     ]
       .map((line) => `${line}\n`)
       .join(""),
@@ -462,15 +554,27 @@ function writeReceipt(
   );
 }
 
+/** One approved gate line: the decision plus its four scores, or its fallback reason. */
+function gateLine(event: GateResultEvent): string {
+  const decision = strings.sheetGate(event.decision);
+  if (event.decision === "fallback") return decision + strings.sheetGateFallback(event.fallbackReason ?? "");
+  if (event.answers === null) return decision;
+  const answers = event.answers;
+  return (
+    decision + strings.sheetGateScores(answers.correction, answers.preference, answers.steering, answers.confusion)
+  );
+}
+
 function writeSheet(
   opts: BootOptions,
   runType: Limits["runType"],
-  trios: TrioExaminedEvent[],
+  entries: SheetEntry[],
   builds: BuildRecord[],
   rulesBefore: string[],
   rulesAfter: string[],
 ): void {
   const { added, removed } = diffRules(rulesBefore, rulesAfter);
+  const examined = entries.filter((entry) => entry.kind === "trio").length;
   const lines: string[] = [
     strings.resultsSheetTitle(runType),
     "",
@@ -478,14 +582,24 @@ function writeSheet(
       opts.prepared.selection.scope,
       opts.prepared.selection.frozen ? opts.prepared.selection.frozen.sourcePath : null,
     ),
-    strings.sheetTriosExamined(trios.length, builds.length, rulesBefore.length, rulesAfter.length),
+    strings.sheetTriosExamined(examined, builds.length, rulesBefore.length, rulesAfter.length),
     "",
   ];
-  trios.forEach((trio, i) => {
-    const ref = `${path.basename(trio.sessionPath)}`;
-    const extractor =
-      trio.notes > 0 ? trio.notesText.map((note) => `  - ${note}`).join("\n") : `  - ${strings.sheetNoneProductive}`;
-    lines.push(strings.sheetTrioHeader(i + 1, ref), `${strings.sheetColExtractor}:`, extractor, "");
+  entries.forEach((entry, i) => {
+    const ref = entry.kind === "trio" ? path.basename(entry.trio.sessionPath) : path.basename(entry.gate.sourcePath);
+    const entryLines = [strings.sheetTrioHeader(i + 1, ref)];
+    if (entry.gate !== null) entryLines.push(gateLine(entry.gate));
+    if (entry.kind === "skipped") {
+      // The rejected trio has no extractor output: the approved not-run line stands in for it.
+      entryLines.push(strings.sheetGateSkipped);
+    } else {
+      const extractor =
+        entry.trio.notes > 0
+          ? entry.trio.notesText.map((note) => `  - ${note}`).join("\n")
+          : `  - ${strings.sheetNoneProductive}`;
+      entryLines.push(`${strings.sheetColExtractor}:`, extractor);
+    }
+    lines.push(...entryLines, "");
   });
   builds.forEach((build) => {
     lines.push(strings.sheetBuildHeader(build.index), `${strings.sheetColBuilder}:`);

@@ -25,7 +25,7 @@ import {
   verifySnapshot,
 } from "../../scripts/compass/snapshot.js";
 import { strings } from "../../scripts/compass/strings.js";
-import type { Limits } from "../../scripts/compass/types.js";
+import type { GateRunConfig, Limits } from "../../scripts/compass/types.js";
 
 const ROOT = process.cwd();
 // Unique per test-file run so overlapping suite runs never share a directory.
@@ -34,6 +34,12 @@ fs.mkdirSync(TEST_TMP_ROOT, { recursive: true });
 const TEST_TMP = fs.mkdtempSync(path.join(TEST_TMP_ROOT, "start-snapshot-"));
 
 const LIMITS: Limits = { runType: "smoke", maxModelRequests: 5, maxRunMs: 900_000, source: "compass-table" };
+const GATE: GateRunConfig = {
+  mode: "off",
+  source: "settings",
+  policyHash: "ad7880acdc3b",
+  model: "jev-1.13.0",
+};
 
 /** Minimal synthetic portrait dir with two snapshot files. */
 function makePortraitDir(dir: string): void {
@@ -290,6 +296,7 @@ describe("confirmation block", () => {
       outputDir: "/tmp/out",
       model: "meta/test-model",
       thinking: "high",
+      gate: GATE,
     };
     const snapshotBlock = renderConfirmation({
       ...common,
@@ -341,6 +348,7 @@ describe("manifest source identity", () => {
         settingsSnapshotPath: "",
         workspaceRoot: workspace,
         startPortrait: { source: "live", dir: workspace, digest: "d" },
+        gate: GATE,
         confirmed: null,
       });
 

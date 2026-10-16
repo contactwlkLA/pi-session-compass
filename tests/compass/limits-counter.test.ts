@@ -12,9 +12,15 @@ import { renderConfirmation, resolveConfirmation } from "../../scripts/compass/c
 import { RequestCounter } from "../../scripts/compass/counter.js";
 import { LimitError, parseLimits, parsePositiveInt, suggestedLimits } from "../../scripts/compass/limits.js";
 import { strings } from "../../scripts/compass/strings.js";
-import type { Limits } from "../../scripts/compass/types.js";
+import type { GateRunConfig, Limits } from "../../scripts/compass/types.js";
 
 const SMOKE: Limits = { runType: "smoke", maxModelRequests: 2, maxRunMs: 60_000, source: "compass-table" };
+const GATE: GateRunConfig = {
+  mode: "off",
+  source: "settings",
+  policyHash: "ad7880acdc3b",
+  model: "jev-1.13.0",
+};
 
 describe("parseLimits", () => {
   it("accepts valid switches", () => {
@@ -189,6 +195,7 @@ describe("resolveConfirmation", () => {
     startPortrait: { source: "live", dir: "/tmp/portrait", digest: "0" },
     model: "meta/test-model",
     thinking: "high",
+    gate: GATE,
   });
 
   it("renders run type, limits, source, model, selection, output dir, and cost notes", () => {
@@ -220,6 +227,44 @@ describe("resolveConfirmation", () => {
   });
 });
 
+describe("RequestCounter.gateAttempt", () => {
+  it("counts one gate request with a gate-tagged trace and no usage", () => {
+    const counter = new RequestCounter(SMOKE);
+
+    expect(counter.gateAttempt("jev-1.13.0")).toBe(true);
+
+    expect(counter.requestCount).toBe(1);
+    expect(counter.traces).toHaveLength(1);
+    expect(counter.traces[0]).toMatchObject({
+      model: "jev-1.13.0",
+      provider: "typesafe",
+      outcome: "ok",
+      stage: "gate",
+    });
+  });
+
+  it("declines at the request ceiling without counting or tracing, and records the refusal", () => {
+    const counter = new RequestCounter({ ...SMOKE, maxModelRequests: 1 });
+    expect(counter.gateAttempt("jev-1.13.0")).toBe(true);
+
+    expect(counter.gateAttempt("jev-1.13.0")).toBe(false);
+
+    expect(counter.requestCount).toBe(1);
+    expect(counter.traces).toHaveLength(1);
+    expect(counter.stopReason).toBe("requests");
+    expect(counter.refusalTimes).toHaveLength(1);
+    expect(counter.snapshot().refusedCount).toBe(1);
+  });
+
+  it("keeps gate traces out of the receipt's usage totals", () => {
+    const counter = new RequestCounter(SMOKE);
+    counter.gateAttempt("jev-1.13.0");
+
+    expect(counter.snapshot().usageTotals).toEqual({ input: 0, output: 0, unknown: 0 });
+    expect(counter.snapshot().requestCount).toBe(1);
+  });
+});
+
 describe("createSinkGuard", () => {
   it("runs callbacks normally and records throwing sinks with their hook name", async () => {
     const { createSinkGuard } = await import("../../scripts/compass/pipeline-boot.js");
@@ -239,6 +284,20 @@ describe("createSinkGuard", () => {
       { hook: "build", error: "boom" },
       { hook: "cooldown", error: "plain string failure" },
     ]);
+  });
+
+  it("returns the fallback from a throwing value hook and records the error", async () => {
+    const { createSinkGuard } = await import("../../scripts/compass/pipeline-boot.js");
+    const { sinkErrors, guardValue } = createSinkGuard();
+
+    expect(guardValue("gateAttempt", false, () => true)).toBe(true);
+    expect(
+      guardValue("gateAttempt", false, () => {
+        throw new Error("boom");
+      }),
+    ).toBe(false);
+
+    expect(sinkErrors).toEqual([{ hook: "gateAttempt", error: "boom" }]);
   });
 });
 

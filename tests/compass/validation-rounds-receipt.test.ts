@@ -13,7 +13,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runPipeline } from "../../scripts/compass/pipeline-boot.js";
 import { strings } from "../../scripts/compass/strings.js";
-import type { Limits, RunSelection } from "../../scripts/compass/types.js";
+import type { GateRunConfig, Limits, RunSelection } from "../../scripts/compass/types.js";
 
 const ROOT = process.cwd();
 // Unique per test-file run so overlapping suite runs never share a directory.
@@ -22,6 +22,12 @@ fs.mkdirSync(TEST_TMP_ROOT, { recursive: true });
 const TEST_TMP = fs.mkdtempSync(path.join(TEST_TMP_ROOT, "validation-rounds-receipt-"));
 
 const LIMITS: Limits = { runType: "smoke", maxModelRequests: 5, maxRunMs: 900_000, source: "compass-table" };
+const GATE: GateRunConfig = {
+  mode: "off",
+  source: "settings",
+  policyHash: "ad7880acdc3b",
+  model: "jev-1.13.0",
+};
 
 const state = vi.hoisted(() => ({
   sink: null as ((event: unknown) => void) | null,
@@ -120,6 +126,7 @@ describe("receipt validationRounds", () => {
       prepared: { selection: selectionFor(outputDir), census: null },
       outputDir,
       confirmMode: "flag",
+      gate: GATE,
     });
 
     expect(exitCode).toBe(0);
@@ -144,6 +151,7 @@ describe("receipt completion stop reason", () => {
       prepared: { selection: selectionFor(outputDir), census: null },
       outputDir,
       confirmMode: "flag",
+      gate: GATE,
     });
 
     expect(exitCode).toBe(0);

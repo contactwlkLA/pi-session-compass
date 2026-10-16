@@ -14,7 +14,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type RunningRow, renderRunningTable, runPipeline } from "../../scripts/compass/pipeline-boot.js";
 import { strings } from "../../scripts/compass/strings.js";
-import type { CensusResult, Limits, RunSelection } from "../../scripts/compass/types.js";
+import type { CensusResult, GateRunConfig, Limits, RunSelection } from "../../scripts/compass/types.js";
 
 const ROOT = process.cwd();
 // Unique per test-file run so overlapping suite runs never share a directory.
@@ -23,6 +23,12 @@ fs.mkdirSync(TEST_TMP_ROOT, { recursive: true });
 const TEST_TMP = fs.mkdtempSync(path.join(TEST_TMP_ROOT, "running-table-"));
 
 const LIMITS: Limits = { runType: "baseline", maxModelRequests: 50, maxRunMs: 900_000, source: "user-override" };
+const GATE: GateRunConfig = {
+  mode: "off",
+  source: "settings",
+  policyHash: "ad7880acdc3b",
+  model: "jev-1.13.0",
+};
 
 const loopState = vi.hoisted(() => ({
   hooks: null as Record<string, (event: unknown) => void> | null,
@@ -162,7 +168,7 @@ describe("renderRunningTable", () => {
   };
 
   it("renders the header, coverage line, note, and one row per trio", () => {
-    const text = renderRunningTable("baseline", [row], 26);
+    const text = renderRunningTable("baseline", [row], 26, 1);
     expect(text.split("\n")).toEqual([
       "compass baseline — running table",
       "",
@@ -177,7 +183,7 @@ describe("renderRunningTable", () => {
   });
 
   it("omits the coverage line without a census", () => {
-    const text = renderRunningTable("smoke", [], null);
+    const text = renderRunningTable("smoke", [], null, 0);
     expect(text).not.toContain("Covered:");
     expect(text.startsWith("compass smoke — running table\n")).toBe(true);
   });
@@ -199,6 +205,7 @@ describe("runPipeline running table", () => {
       prepared: { selection: selectionFor(outputDir), census: CENSUS },
       outputDir,
       confirmMode: "flag",
+      gate: GATE,
     });
 
     expect(exitCode).toBe(0);
@@ -232,6 +239,7 @@ describe("runPipeline passes", () => {
       prepared: { selection: selectionFor(outputDir), census: CENSUS },
       outputDir,
       confirmMode: "flag",
+      gate: GATE,
     });
 
     expect(exitCode).toBe(0);
@@ -268,7 +276,7 @@ describe("runPipeline pipeline stop", () => {
       JSON.stringify({ portraitSettings: { model: "meta/test-model" }, hostPiSettings: {} }),
       "utf-8",
     );
-    return runPipeline({ limits, prepared: { selection, census: CENSUS }, outputDir, confirmMode: "flag" });
+    return runPipeline({ limits, prepared: { selection, census: CENSUS }, outputDir, confirmMode: "flag", gate: GATE });
   }
 
   it("reports stopped with the build stage and exit 4, with no further pass", async () => {

@@ -550,7 +550,7 @@ async function streamAndExtract(opts: StreamAndExtractOptions): Promise<StreamAn
     records: [TrioRecord, TrioRecord, TrioRecord],
   ): Promise<TrioStep> {
     const settings = getPortraitSettings();
-    const gate = await checkTrio(trio, settings.gateMode, sessionFile);
+    const gate = await checkTrio(trio, settings.gateMode, path.resolve(sessionFile));
     if (gate.decision === "skip") {
       // The gate rejected the trio: the scan moves past it exactly as after an
       // extraction that found nothing — position saved, no candidates, no record

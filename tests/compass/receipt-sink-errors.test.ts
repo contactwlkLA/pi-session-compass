@@ -16,7 +16,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runPipeline } from "../../scripts/compass/pipeline-boot.js";
 import { strings } from "../../scripts/compass/strings.js";
-import type { Limits, RunSelection } from "../../scripts/compass/types.js";
+import type { GateRunConfig, Limits, RunSelection } from "../../scripts/compass/types.js";
 
 const ROOT = process.cwd();
 // Unique per test-file run so overlapping suite runs never share a directory.
@@ -25,6 +25,12 @@ fs.mkdirSync(TEST_TMP_ROOT, { recursive: true });
 const TEST_TMP = fs.mkdtempSync(path.join(TEST_TMP_ROOT, "receipt-sink-errors-"));
 
 const LIMITS: Limits = { runType: "smoke", maxModelRequests: 5, maxRunMs: 900_000, source: "compass-table" };
+const GATE: GateRunConfig = {
+  mode: "off",
+  source: "settings",
+  policyHash: "ad7880acdc3b",
+  model: "jev-1.13.0",
+};
 
 /** Mutable controls shared with the module mocks (hoisted above the imports). */
 const sinkState = vi.hoisted(() => ({
@@ -130,6 +136,7 @@ describe("runPipeline sink-error receipts", () => {
       prepared: { selection: selectionFor(outputDir), census: null },
       outputDir,
       confirmMode: "flag",
+      gate: GATE,
     });
 
     expect(exitCode).toBe(1);
@@ -149,6 +156,7 @@ describe("runPipeline sink-error receipts", () => {
       prepared: { selection: selectionFor(outputDir), census: null },
       outputDir,
       confirmMode: "flag",
+      gate: GATE,
     });
 
     expect(exitCode).toBe(1);
@@ -165,6 +173,7 @@ describe("runPipeline sink-error receipts", () => {
       prepared: { selection: selectionFor(outputDir), census: null },
       outputDir,
       confirmMode: "flag",
+      gate: GATE,
     });
 
     expect(exitCode).toBe(0);

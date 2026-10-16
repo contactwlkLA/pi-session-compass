@@ -34,7 +34,7 @@ import { freezeSelection, parseScope, SelectionError, writeSelection } from "./s
 import { captureSettingsSnapshot } from "./settings.js";
 import { restoreSnapshot, SnapshotError, snapshotPortraitState, treeDigest, verifySnapshot } from "./snapshot.js";
 import { strings } from "./strings.js";
-import type { CensusResult, Limits, RunSelection, StartPortrait } from "./types.js";
+import type { CensusResult, GateRunConfig, Limits, RunSelection, StartPortrait } from "./types.js";
 import { findWorkspaceRoot, parseArgv } from "./util.js";
 
 function livePortraitDir(): string {
@@ -55,6 +55,8 @@ export interface PrepareOptions {
   suggested: { maxModelRequests: number; maxRunMs: number; source: string } | null;
   /** When set, restore from this frozen snapshot instead of snapshotting live. */
   startSnapshotDir?: string;
+  /** Raw --gate-mode value; validated by executeRun, absent on the standalone prepare path. */
+  gateModeArg?: string;
 }
 
 export interface PrepareResult {
@@ -64,6 +66,42 @@ export interface PrepareResult {
   manifestPath: string;
   snapshotDir: string;
   startPortrait: StartPortrait;
+  /** The run's gate selection as the manifest recorded it at the first freeze. */
+  gate: GateRunConfig;
+}
+
+/** The shipped gate modes, read from the gate config (src imports here stay dynamic). */
+async function gateModes(): Promise<readonly string[]> {
+  const { GATE_CONFIG } = await import("../../src/gate-config.js");
+  return GATE_CONFIG.modes;
+}
+
+/** The gate modes as a type, taken from the shared run config. */
+type GateModeValue = GateRunConfig["mode"];
+
+/**
+ * Resolve the run's gate: the --gate-mode flag when given, else the snapshot
+ * setting, else the shipped default — an unknown snapshot value falls back to
+ * the default. Where the mode came from travels with it, plus the policy hash
+ * and the pinned model. An out-of-range flag refuses with the mode error.
+ */
+async function resolveGate(
+  flag: string | undefined,
+  portraitSettings: Record<string, unknown>,
+): Promise<GateRunConfig> {
+  const { GATE_CONFIG } = await import("../../src/gate-config.js");
+  const { JEV_POLICY_HASH } = await import("../../src/jev.js");
+  const modes = GATE_CONFIG.modes as readonly string[];
+  if (flag !== undefined && !modes.includes(flag)) throw new LimitError(strings.invalidGateMode);
+  const snapshotMode = portraitSettings.gateMode;
+  const fromSettings =
+    typeof snapshotMode === "string" && modes.includes(snapshotMode) ? (snapshotMode as GateModeValue) : null;
+  return {
+    mode: flag !== undefined ? (flag as GateModeValue) : (fromSettings ?? GATE_CONFIG.defaultMode),
+    source: flag !== undefined ? "flag" : "settings",
+    policyHash: JEV_POLICY_HASH,
+    model: GATE_CONFIG.model,
+  };
 }
 
 /** Offline preparation: freeze selection, snapshot state/settings, census, manifest. */
@@ -94,7 +132,10 @@ export async function prepareRun(opts: PrepareOptions): Promise<PrepareResult> {
   // The run starts from the recorded initial state.
   restoreSnapshot(snapshotDir, path.join(opts.outputDir, "portrait"));
 
-  const { snapshotPath } = await captureSettingsSnapshot(path.join(opts.outputDir, "settings-snapshot.json"));
+  const { snapshotPath, portraitSettings } = await captureSettingsSnapshot(
+    path.join(opts.outputDir, "settings-snapshot.json"),
+  );
+  const gate = await resolveGate(opts.gateModeArg, portraitSettings);
 
   let census: CensusResult | null = null;
   if (selection.scope === "file" && selection.frozen) {
@@ -114,11 +155,12 @@ export async function prepareRun(opts: PrepareOptions): Promise<PrepareResult> {
       settingsSnapshotPath: snapshotPath,
       workspaceRoot: opts.workspaceRoot,
       startPortrait,
+      gate,
       confirmed: null,
     }),
   );
 
-  return { selection, census, settingsSnapshotPath: snapshotPath, manifestPath, snapshotDir, startPortrait };
+  return { selection, census, settingsSnapshotPath: snapshotPath, manifestPath, snapshotDir, startPortrait, gate };
 }
 
 function selectionLabel(selection: RunSelection, census: CensusResult | null): string {
@@ -138,12 +180,19 @@ export async function executeRun(
   const sessionPath = typeof args.session === "string" ? args.session : undefined;
   const startSnapshotArg = typeof args["start-snapshot"] === "string" ? args["start-snapshot"] : undefined;
   const startSnapshotDir = startSnapshotArg ? path.resolve(startSnapshotArg) : undefined;
+  const gateModeArg = typeof args["gate-mode"] === "string" ? args["gate-mode"] : undefined;
 
   let limits: Limits;
   try {
     limits = parseLimits(args);
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    return 2;
+  }
+
+  // A bad --gate-mode refuses here, before preparation writes any run artifact.
+  if (gateModeArg !== undefined && !(await gateModes()).includes(gateModeArg)) {
+    process.stderr.write(`${strings.invalidGateMode}\n`);
     return 2;
   }
 
@@ -160,6 +209,7 @@ export async function executeRun(
       limits,
       suggested,
       startSnapshotDir,
+      gateModeArg,
     });
   } catch (error) {
     if (error instanceof SnapshotError) {
@@ -186,6 +236,7 @@ export async function executeRun(
     startPortrait: prepared.startPortrait,
     model,
     thinking,
+    gate: prepared.gate,
   });
   const confirmation = await resolveConfirmation(block, { confirmed: opts.confirmed, isTTY: opts.isTTY });
   if (!confirmation.proceed) return 2;
@@ -202,12 +253,19 @@ export async function executeRun(
       settingsSnapshotPath: prepared.settingsSnapshotPath,
       workspaceRoot: root,
       startPortrait: prepared.startPortrait,
+      gate: prepared.gate,
       confirmed: { mode: confirmation.mode, at: new Date().toISOString() },
     }),
   );
 
   const { runPipeline } = await import("./pipeline-boot.js");
-  const exitCode = await runPipeline({ limits, prepared, outputDir, confirmMode: confirmation.mode });
+  const exitCode = await runPipeline({
+    limits,
+    prepared,
+    outputDir,
+    confirmMode: confirmation.mode,
+    gate: prepared.gate,
+  });
   return exitCode;
 }
 

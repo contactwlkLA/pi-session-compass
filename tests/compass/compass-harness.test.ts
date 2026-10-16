@@ -238,6 +238,12 @@ describe("snapshots and manifests", () => {
         settingsSnapshotPath: path.join(outputDir, "settings-snapshot.json"),
         workspaceRoot: ROOT,
         startPortrait: { source: "live", dir: path.join(ROOT, "fixtures", "snapshots", "iso"), digest: "0" },
+        gate: {
+          mode: "off",
+          source: "settings",
+          policyHash: "ad7880acdc3b",
+          model: "jev-1.13.0",
+        },
         confirmed: null,
       }),
     );

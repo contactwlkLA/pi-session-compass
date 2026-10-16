@@ -12,6 +12,7 @@
  */
 
 import { reportError } from "./error.js";
+import { GATE_CONFIG } from "./gate-config.js";
 import { emitGateAttempt, emitGateResult } from "./instrument.js";
 import {
   buildGateState,
@@ -54,7 +55,7 @@ const KEY_MISSING_MESSAGE =
 const FAILURE_LIMIT_MESSAGE =
   "Jev gate failed 3 times in a row and is off for the rest of this run. Every trio goes to extraction.";
 /** Consecutive request failures after which the gate stays off for the run. */
-const FAILURE_LIMIT = 3;
+const FAILURE_LIMIT: number = GATE_CONFIG.failureLimit;
 const NO_ATTEMPTS = 0;
 const NO_LATENCY_MS = 0;
 

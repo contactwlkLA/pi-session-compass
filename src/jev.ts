@@ -2,18 +2,19 @@
 // SPDX-FileCopyrightText: 2026 avtc <tarasenkov@gmail.com>
 
 /**
- * The Jev gate's policy and transport: the pinned model and its four Noul
- * questions, the gate state and its size cap, the HTTP call with a total
- * deadline and at most one retry, and the routing rule over scored answers.
+ * The Jev gate's transport: the policy it applies (built from the gate config),
+ * the gate state and its size cap, the HTTP call with a total deadline and at
+ * most one retry, and the routing rule over scored answers.
  *
- * Nothing else in the package is imported except types, and every runtime
- * dependency of the call (fetch, clock, sleep, budget check) is injected, so
- * tests drive each path with a mocked fetch and clock and no network. Results
- * and errors carry only the reason code and HTTP status: the credential and
- * the request and response payloads stay out of them by design.
+ * Nothing else in the package is imported except the gate config and types,
+ * and every runtime dependency of the call (fetch, clock, sleep, budget check)
+ * is injected, so tests drive each path with a mocked fetch and clock and no
+ * network. Results and errors carry only the reason code and HTTP status: the
+ * credential and the request and response payloads stay out of them by design.
  */
 
 import { createHash } from "node:crypto";
+import { GATE_CONFIG } from "./gate-config.js";
 import type { InteractionSequence } from "./types.js";
 
 /** The four question ids. They key the responses; the model never sees them. */
@@ -74,61 +75,22 @@ export interface JevFallback {
 
 export type JevResult = JevScored | JevFallback;
 
-const QUESTION_PREFIX = "In this exchange between a user and an AI coding agent, ";
-
-/** The frozen policy of the shipped gate. */
+/**
+ * The frozen policy of the shipped gate, built from the gate config. The
+ * nested values (questions included) are already frozen with the config they
+ * came from, so only the policy object itself needs freezing here.
+ */
 export const JEV_POLICY: JevPolicy = {
-  model: "jev-1.13.0",
-  threshold: 0.1,
-  stateCapBytes: 32 * 1024,
-  deadlineMs: 5000,
-  defaultRetryWaitMs: 500,
-  endpoint: "https://api.typesafe.ai/v1/systemone",
-  questions: {
-    correction: {
-      type: "noul",
-      instructions: `${QUESTION_PREFIX}does the user's reply correct or push back on something the agent said or did?`,
-      criteria: {
-        true: "The user says the agent got something wrong (code, a claim, an assumption), missed something, or did something the user did not want.",
-        false:
-          "The user accepts the work, moves on, or asks something new without saying the agent got anything wrong.",
-      },
-    },
-    preference: {
-      type: "noul",
-      instructions: `${QUESTION_PREFIX}does the user's reply say how they want the agent to work or communicate with them?`,
-      criteria: {
-        true: "The user states a preference that could apply again later: how long or detailed answers should be, when to ask before acting, how much to change at once, which tools or style to use.",
-        false: "The user only says what to do in this task (what to build, fix, or explain).",
-      },
-    },
-    steering: {
-      type: "noul",
-      instructions: `${QUESTION_PREFIX}does the user's reply change how the agent is going about the task?`,
-      criteria: {
-        true: "The user asks for a different method, a different order of steps, planning first, a narrower or wider scope, or a rethought decision.",
-        false: "The user lets the agent carry on, or only adds task details.",
-      },
-    },
-    confusion: {
-      type: "noul",
-      instructions: `${QUESTION_PREFIX}does the user's reply show they had trouble following the agent?`,
-      criteria: {
-        true: "The user says they are lost or confused, cannot tell what changed or what to do next, or asks for a summary, clarification, or a slower pace.",
-        false: "The user follows what the agent did and said without trouble.",
-      },
-    },
-  },
+  model: GATE_CONFIG.model,
+  threshold: GATE_CONFIG.threshold,
+  stateCapBytes: GATE_CONFIG.stateCapBytes,
+  deadlineMs: GATE_CONFIG.deadlineMs,
+  defaultRetryWaitMs: GATE_CONFIG.defaultRetryWaitMs,
+  endpoint: GATE_CONFIG.endpoint,
+  questions: GATE_CONFIG.questions,
 };
 
-/** Freeze the policy and everything inside it, so no caller can mutate what the hash covers. */
-function deepFreeze(value: unknown): void {
-  if (typeof value !== "object" || value === null) return;
-  for (const nested of Object.values(value as Record<string, unknown>)) deepFreeze(nested);
-  Object.freeze(value);
-}
-
-deepFreeze(JEV_POLICY);
+Object.freeze(JEV_POLICY);
 
 /** First 12 hex digits of sha256 over the hashed policy fields; recorded with every gate result. */
 export const JEV_POLICY_HASH = createHash("sha256")

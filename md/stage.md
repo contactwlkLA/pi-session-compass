@@ -1,6 +1,6 @@
 # pi-session-compass — Stage continuation
 
-Revision: **0.14.0** · Updated: **2026-10-16**
+Revision: **0.15.0** · Updated: **2026-10-16**
 
 Select the first unchecked stage. A checked stage requires verified milestone evidence. Unchecked means not started, partial, or blocked; use the continuation fields below. Stop after that stage’s completion or a documented stopping condition.
 
@@ -14,12 +14,12 @@ Select the first unchecked stage. A checked stage requires verified milestone ev
 ## Continuation
 
 - Active stage: **S4**
-- Next unfinished step: **S4-02 (harness + item 0: all gate configuration in src/gate-config.ts): CC writes the spec; Pi audits and codes in a fresh session. Then S4-03 live wire check (needs TYPESAFE_API_KEY)**
+- Next unfinished step: **S4-03 live wire check (CC): one shadow `smoke` run, limits confirmed by the user at launch; key in ~/.setCaude.sh. Then the S4 gate (single-worker + concurrent suite runs) and the user checkpoint**
 - Roles (user, 2026-10-15): **Pi is no longer parked. Pi codes, one model per Pi session (the user switches models between sessions). Claude Code plans, writes task specs, reviews, keeps the ledger (md/ledger.jsonl, schema md/ledger.schema.json), verifies, and commits; it writes no implementation. The coder comparison is a side quest: where it conflicts with the project, the project wins (resolutions in NOTES.md)**
-- Last completed step: **S4-01 accepted first pass (mimo-v2.6-flash): Jev adapter (src/jev.ts), gate modes and run state (src/gate.ts), gateMode setting, gate step before extraction; npm test 546/546, test:compass 101/101**
+- Last completed step: **S4-02 accepted first pass (mimo-v2.6-flash): src/gate-config.ts holds every gate value (policy hash unchanged, ad7880acdc3b); harness `--gate-mode`, gate request counting, receipt/trace/sheet gate records; npm test 549/549, test:compass 123/123. Probe (0a7ef53, live): 26 trios, 0 `no_lesson` at threshold 0.1**
 - Outcome: **S2 COMPLETE: termination, capture reset and retry fixes; compare run 46 requests / 26.0 min on the pipeline's 20 trios; branch s1/harness**
 - Blocker: **none**
-- Pending user inputs: **TYPESAFE_API_KEY (for S4-03)**
+- Pending user inputs: **S4-03 run limits (confirmed at launch)**
 - User direction (2026-10-15/16): **do not over-engineer crash safety. Simple-rollback trim approved 2026-10-16 and applied to architecture.md §6, plan.md S3 and stage-3-task.md Part B: no publication intent, no automatic restore or edit guard, no per-boundary crash tests; B-2 = S3-B2-01. Part C gets the same simplicity check before its spec. Extraction cache and prefix runs wait for S5 (user, 2026-10-16)**
 - Stage order: **plan order, S2.T1–T3 before the optional S2.T4 Jev probe (user decision 2026-10-14)**
 - Limits: **suggested at launch from the [compass.md](compass.md) run-type table; confirmed by the user for every live run**
@@ -40,5 +40,5 @@ Stage meanings and dependencies: [plan.md](plan.md). Operating rules: [AGENTS.md
 | Revision | Date | Change |
 |---|---|---|
 | 0.14.0 | 2026-10-16 | S3 complete (user checkpoint); S4 task file drafted. |
+| 0.15.0 | 2026-10-16 | S4-02 accepted; next S4-03. |
 | 0.13.0 | 2026-10-16 | S3 Part C done (S3-C-01); M3 verified; checkpoint pending. |
-| 0.12.0 | 2026-10-16 | Part C scope approved; S3-C-01 specced. |

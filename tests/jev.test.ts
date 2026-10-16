@@ -10,6 +10,7 @@
 
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
+import { GATE_CONFIG } from "../src/gate-config.js";
 import {
   buildGateState,
   callJev,
@@ -148,6 +149,32 @@ describe("policy", () => {
   it("holds the approved questions byte-exact", () => {
     expect(JSON.stringify(JEV_POLICY.questions)).toBe(JSON.stringify(APPROVED_QUESTIONS));
     expect(JEV_POLICY.questions.correction.instructions.startsWith(Q_PREFIX)).toBe(true);
+  });
+
+  it("takes every policy value from the frozen gate config", () => {
+    expect(GATE_CONFIG.defaultMode).toBe("off");
+    expect(GATE_CONFIG.modes).toEqual(["off", "shadow", "enforce"]);
+    expect(GATE_CONFIG.failureLimit).toBe(3);
+    expect(JSON.stringify(GATE_CONFIG.questions)).toBe(JSON.stringify(APPROVED_QUESTIONS));
+    expect(Object.isFrozen(GATE_CONFIG)).toBe(true);
+    expect(Object.isFrozen(GATE_CONFIG.modes)).toBe(true);
+    expect(Object.isFrozen(GATE_CONFIG.questions.correction.criteria)).toBe(true);
+    expect(() => {
+      GATE_CONFIG.threshold = 0.5;
+    }).toThrow();
+    expect(GATE_CONFIG.threshold).toBe(0.1);
+
+    expect(JEV_POLICY.model).toBe(GATE_CONFIG.model);
+    expect(JEV_POLICY.threshold).toBe(GATE_CONFIG.threshold);
+    expect(JEV_POLICY.stateCapBytes).toBe(GATE_CONFIG.stateCapBytes);
+    expect(JEV_POLICY.deadlineMs).toBe(GATE_CONFIG.deadlineMs);
+    expect(JEV_POLICY.defaultRetryWaitMs).toBe(GATE_CONFIG.defaultRetryWaitMs);
+    expect(JEV_POLICY.endpoint).toBe(GATE_CONFIG.endpoint);
+    expect(JEV_POLICY.questions).toBe(GATE_CONFIG.questions);
+  });
+
+  it("keeps the shipped policy hash", () => {
+    expect(JEV_POLICY_HASH).toBe("ad7880acdc3b");
   });
 
   it("hashes the model, threshold, state cap, and questions over 12 hex digits", () => {

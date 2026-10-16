@@ -22,6 +22,7 @@ import type { Limits, StartPortrait } from "../../scripts/compass/types.js";
 
 const LIMITS: Limits = { runType: "smoke", maxModelRequests: 2, maxRunMs: 60_000, source: "compass-table" };
 const START: StartPortrait = { source: "snapshot", dir: "/tmp/snap", digest: "d" };
+const HASH = "ad7880acdc3b";
 
 function render(overrides: Partial<ConfirmationInput>): string {
   return renderConfirmation({
@@ -33,6 +34,7 @@ function render(overrides: Partial<ConfirmationInput>): string {
     startPortrait: START,
     model: "meta/test-model",
     thinking: "high",
+    gate: { mode: "off", source: "settings", policyHash: HASH },
     ...overrides,
   });
 }
@@ -224,6 +226,57 @@ describe("A14 stopPipelineFailed", () => {
     );
     expect(strings.stopPipelineFailed("build")).toBe(
       "stopped: build failed; pending work was kept (see diagnostics.log)",
+    );
+  });
+});
+
+describe("H strings (gate)", () => {
+  it("H1 shows the mode, the policy hash, and the extra request, right after the model line", () => {
+    const block = render({ gate: { mode: "shadow", source: "flag", policyHash: HASH } });
+    const expected =
+      "Jev gate: shadow (policy ad7880acdc3b) — each eligible trio also makes one Jev request (two with a retry).";
+    expect(block).toContain(expected);
+    const lines = block.split("\n");
+    const modelIndex = lines.findIndex((line) => line.startsWith("Model: "));
+    expect(modelIndex).toBeGreaterThan(0);
+    expect(lines[modelIndex + 1]).toBe(expected);
+    expect(strings.confirmGate("enforce", HASH)).toBe(
+      "Jev gate: enforce (policy ad7880acdc3b) — each eligible trio also makes one Jev request (two with a retry).",
+    );
+  });
+
+  it("H2 shows the plain off line and never the policy line", () => {
+    const block = render({ gate: { mode: "off", source: "settings", policyHash: HASH } });
+    expect(block).toContain("Jev gate: off");
+    expect(block).not.toContain("Jev gate: shadow");
+    expect(block).not.toContain("policy ");
+    expect(strings.confirmGateOff).toBe("Jev gate: off");
+  });
+
+  it("H3 refuses an unknown gate mode in the approved text", () => {
+    expect(strings.invalidGateMode).toBe("--gate-mode must be off, shadow, or enforce");
+  });
+
+  it("H4 renders the decision with four two-decimal scores or the fallback reason", () => {
+    expect(strings.sheetGate("no_lesson") + strings.sheetGateScores(0.01, 0.02, 0, 0.05)).toBe(
+      "Gate: no_lesson — correction 0.01, preference 0.02, steering 0.00, confusion 0.05",
+    );
+    expect(strings.sheetGate("maybe_lesson") + strings.sheetGateScores(0.9, 1, 0.555, 0)).toBe(
+      "Gate: maybe_lesson — correction 0.90, preference 1.00, steering 0.56, confusion 0.00",
+    );
+    expect(strings.sheetGate("fallback") + strings.sheetGateFallback("http_500")).toBe(
+      "Gate: fallback — fallback: http_500",
+    );
+  });
+
+  it("H5 states that no extraction ran for a rejected trio", () => {
+    expect(strings.sheetGateSkipped).toBe("Extractor: not run (gate: no_lesson, enforce mode)");
+  });
+
+  it("H6 documents --gate-mode on the execute line", () => {
+    expect(strings.usageExecute).toBe(
+      "  execute  --session <jsonl> --run-type <t> --max-model-requests N --max-run-ms N --limits-source <s> " +
+        "[--confirmed] [--start-snapshot <dir>] [--gate-mode off|shadow|enforce]",
     );
   });
 });

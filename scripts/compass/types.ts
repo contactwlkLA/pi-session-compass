@@ -3,6 +3,21 @@
 
 /** Shared types for the compass harness. */
 
+import type { GateMode } from "../../src/gate.js";
+
+/** Where a run's gate mode came from: the --gate-mode flag or the settings snapshot. */
+export type GateModeSource = "flag" | "settings";
+
+/** The run's resolved gate selection, carried to the confirmation, the manifest, and the pipeline. */
+export interface GateRunConfig {
+  mode: GateMode;
+  source: GateModeSource;
+  /** First 12 hex digits of the policy hash; recorded with every gate result. */
+  policyHash: string;
+  /** The classifier release every gate request is pinned to. */
+  model: string;
+}
+
 export type RunType = "smoke" | "baseline" | "compare" | "evaluate" | "collect";
 
 export const RUN_TYPES: RunType[] = ["smoke", "baseline", "compare", "evaluate", "collect"];

@@ -1,6 +1,6 @@
 # Stage 4 — Add the Jev gate and run limits
 
-Project: **pi-session-compass** · Revision: **0.5.0** · Status: **Approved (user, 2026-10-16)**
+Project: **pi-session-compass** · Revision: **0.5.1** · Status: **Approved (user, 2026-10-16)**
 
 Date: **2026-10-16**
 
@@ -80,14 +80,14 @@ No live call before S4-03. S4-03 needs `TYPESAFE_API_KEY` in the environment.
 
 ### S4-02 — Harness (Pi)
 
-- [ ] **0.** *(user, 2026-10-16)* **One review point for the gate's setup.** Move every gate value out of `src/jev.ts` into a single file, `src/gate-config.ts`: the default mode, Jev model, endpoint, threshold, state cap, deadline, retry wait, and the four questions, each with a one-line comment on what it decides. `src/jev.ts`, `src/gate.ts`, the `gateMode` setting's default, and the harness read from it; no gate value is written anywhere else. The policy hash is computed from that file's values.
+- [x] **0.** *(user, 2026-10-16)* **One review point for the gate's setup.** Move every gate value out of `src/jev.ts` into a single file, `src/gate-config.ts`: the default mode, Jev model, endpoint, threshold, state cap, deadline, retry wait, and the four questions, each with a one-line comment on what it decides. `src/jev.ts`, `src/gate.ts`, the `gateMode` setting's default, and the harness read from it; no gate value is written anywhere else. The policy hash is computed from that file's values.
 
 - [x] **1.** *(in S4-01)* Setting `gateMode` (S text) in src/schema.ts; default `off`.
 - [x] **2.** *(in S4-01)* In `tryExtractTrio` (src/collector.ts), before extraction: `off` skips the gate; `shadow` calls it and always extracts; `enforce` skips extraction on `no_lesson` and saves the scan position as for a successful empty extraction.
 - [x] **3.** *(in S4-01)* Run-scoped gate state (missing key → U1 once and no requests; three consecutive failures → U2 once and gate off for the run), reset at the start of each `runPipelineLoop`.
 - [x] **4.** *(in S4-01)* Instrument hooks: `onGateAttempt` (called through `beforeAttempt`; the harness counts it and may decline it when over budget) and `onGateResult` (trio reference, mode, policy hash, decision, answers or fallback reason, model, latency, usage).
-- [ ] **5.** Harness: `--gate-mode off|shadow|enforce` (default: the setting); manifest and receipt record mode, policy hash, and source; the counter counts Jev attempts under stage `gate`; traces and the results sheet carry each trio's gate result; the receipt adds gate totals (scored, `no_lesson`, fallbacks by reason, Jev latency, Jev usage). H1–H3 as approved.
-- [ ] **6.** Tests: shadow never skips extraction; enforce skips only on `no_lesson` and advances the position; every fallback extracts; U1 and U2 once each; the counter declining a gate attempt (over budget) stops the run with the position unchanged; `/portrait:collect N` counts only productive trios; off makes no gate call.
+- [x] **5.** Harness: `--gate-mode off|shadow|enforce` (default: the setting); manifest and receipt record mode, policy hash, and source; the counter counts Jev attempts under stage `gate`; traces and the results sheet carry each trio's gate result; the receipt adds gate totals (scored, `no_lesson`, fallbacks by reason, Jev latency, Jev usage). H1–H3 as approved.
+- [x] **6.** Tests: shadow never skips extraction; enforce skips only on `no_lesson` and advances the position; every fallback extracts; U1 and U2 once each; the counter declining a gate attempt (over budget) stops the run with the position unchanged; `/portrait:collect N` counts only productive trios; off makes no gate call.
 
 ### S4-03 — Live wire check (CC)
 
@@ -108,6 +108,6 @@ Threshold tuning, labels, held-out sets, and savings claims (S5). README/CONFIGU
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.3.0 | 2026-10-16 | S4-01 audit: `limit_refused` added; only failures after a real request count toward the three. |
 | 0.4.0 | 2026-10-16 | Plain vocabulary in the design and tasks (`no_lesson`, `maybe_lesson`, `fallback`, `over_budget`); approved texts unchanged. |
 | 0.5.0 | 2026-10-16 | S4-02 item 0: all gate configuration in one file, src/gate-config.ts (user). |
+| 0.5.1 | 2026-10-16 | S4-02 items checked (accepted first pass). |

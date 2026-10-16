@@ -23,6 +23,7 @@ export const strings = {
     `compass harness: invalid value for --limits-source ('${value}') — expected compass-table, agent-suggestion, or user-override.`,
   invalidRunType: (value: string) =>
     `compass harness: unknown run type '${value}'. Valid run types: smoke, baseline, compare, evaluate, collect.`,
+  invalidGateMode: "--gate-mode must be off, shadow, or enforce",
 
   // ── Start-of-run confirmation (compass.md rule 4) ──
   confirmHeader: "compass harness — start-of-run confirmation",
@@ -31,6 +32,9 @@ export const strings = {
     `Limits: ${requests} model requests · ${runMs} ms (${runMs / 60_000} min) wall clock`,
   confirmLimitSource: (source: string) => `Limit source: ${LIMIT_SOURCE_LABELS[source] ?? source}`,
   confirmModel: (model: string, thinking: string) => `Model: ${model} · thinking: ${thinking}`,
+  confirmGate: (mode: string, hash: string) =>
+    `Jev gate: ${mode} (policy ${hash}) — each eligible trio also makes one Jev request (two with a retry).`,
+  confirmGateOff: "Jev gate: off",
   confirmSelection: (file: string, trios: number) => `Selected file: ${file} — ${trios} eligible trios`,
   confirmSelectionAll: (trios: number) =>
     `Selection: all session files in scope — ${trios} eligible trios in last census`,
@@ -94,7 +98,8 @@ export const strings = {
   usageHeader: "compass harness: expected 'prepare' or 'execute'.",
   usagePrepare: "  prepare  --session <jsonl> [--scope file|all] [--output <dir>]",
   usageExecute:
-    "  execute  --session <jsonl> --run-type <t> --max-model-requests N --max-run-ms N --limits-source <s> [--confirmed] [--start-snapshot <dir>]",
+    "  execute  --session <jsonl> --run-type <t> --max-model-requests N --max-run-ms N --limits-source <s> " +
+    "[--confirmed] [--start-snapshot <dir>] [--gate-mode off|shadow|enforce]",
 
   // ── Sheets ──
   resultsSheetTitle: (runType: string) => `compass ${runType} results — samples, not a measurement`,
@@ -122,6 +127,12 @@ export const strings = {
   sheetTriosExamined: (trios: number, builds: number, before: number, after: number) =>
     `Trios examined: ${trios} · builds: ${builds} · portrait rules: ${before} → ${after}`,
   sheetTrioHeader: (index: number, ref: string) => `## Trio ${index} (${ref})`,
+  sheetGate: (decision: string) => `Gate: ${decision}`,
+  sheetGateScores: (correction: number, preference: number, steering: number, confusion: number) =>
+    ` — correction ${correction.toFixed(2)}, preference ${preference.toFixed(2)}, ` +
+    `steering ${steering.toFixed(2)}, confusion ${confusion.toFixed(2)}`,
+  sheetGateFallback: (reason: string) => ` — fallback: ${reason}`,
+  sheetGateSkipped: "Extractor: not run (gate: no_lesson, enforce mode)",
   sheetNoneProductive: "(none — non-productive trio)",
   sheetBuildHeader: (index: number) => `## Build ${index}`,
   sheetNoText: "(no text)",

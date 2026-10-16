@@ -16,6 +16,17 @@ export interface RunStats {
   evicted: number;
   failures: number;
   cooldownMs: number;
+  /** Recorded gate results, skips included. */
+  gateChecks: number;
+  gateNoLesson: number;
+  gateMaybeLesson: number;
+  /** Trios the gate rejected in enforce mode, so no extraction ran for them. */
+  gateSkipped: number;
+  gateLatencyMs: number;
+  gateUsageInput: number;
+  gateUsageOutput: number;
+  /** Fallbacks by reason code. */
+  gateFallbacks: Record<string, number>;
 }
 
 export function emptyStats(): RunStats {
@@ -29,6 +40,14 @@ export function emptyStats(): RunStats {
     evicted: 0,
     failures: 0,
     cooldownMs: 0,
+    gateChecks: 0,
+    gateNoLesson: 0,
+    gateMaybeLesson: 0,
+    gateSkipped: 0,
+    gateLatencyMs: 0,
+    gateUsageInput: 0,
+    gateUsageOutput: 0,
+    gateFallbacks: {},
   };
 }
 
@@ -104,6 +123,33 @@ export class RequestCounter {
   /** True when a boundary call was refused between startedAtMs and endedAtMs (inclusive). */
   refusedDuring(startedAtMs: number, endedAtMs: number): boolean {
     return this.refusalTimes.some((t) => t >= startedAtMs && t <= endedAtMs);
+  }
+
+  /**
+   * Count one Jev gate request: the same ceiling checks as guard(), declining
+   * at a ceiling without counting or tracing (the refusal time is recorded, as
+   * for a stream-boundary refusal), otherwise one counted request with a
+   * gate-tagged trace. The gate then falls back and the trio goes to extraction.
+   */
+  gateAttempt(model: string): boolean {
+    try {
+      this.guard();
+    } catch (error) {
+      if (!(error instanceof LimitReached)) throw error;
+      this.refusalTimes.push(this.now());
+      return false;
+    }
+    const now = this.now();
+    this.traces.push({
+      seq: ++this.requestCount,
+      model,
+      provider: "typesafe",
+      startedAtMs: now,
+      endedAtMs: now,
+      outcome: "ok",
+      stage: "gate",
+    });
+    return true;
   }
 
   /**
@@ -186,6 +232,8 @@ export class RequestCounter {
   snapshot(): CounterSnapshot {
     const usageTotals = { input: 0, output: 0, unknown: 0 };
     for (const trace of this.traces) {
+      // Gate usage is reported in the receipt's gate block, never in requests.
+      if (trace.stage === "gate") continue;
       if (!trace.usage) {
         usageTotals.unknown++;
         continue;

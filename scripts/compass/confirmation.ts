@@ -3,7 +3,7 @@
 
 import * as readline from "node:readline";
 import { strings } from "./strings.js";
-import type { Limits, StartPortrait } from "./types.js";
+import type { GateRunConfig, Limits, StartPortrait } from "./types.js";
 
 export interface ConfirmationInput {
   limits: Limits;
@@ -16,6 +16,8 @@ export interface ConfirmationInput {
   startPortrait: StartPortrait;
   model: string;
   thinking: string;
+  /** The run's resolved gate: its mode, where the mode came from, and the policy hash. */
+  gate: Pick<GateRunConfig, "mode" | "source" | "policyHash">;
 }
 
 /** Resolve the confirmation model line from a settings snapshot (unknown when absent). */
@@ -46,6 +48,7 @@ export function renderConfirmation(input: ConfirmationInput): string {
     strings.confirmLimits(limits.maxModelRequests, limits.maxRunMs),
     strings.confirmLimitSource(limits.source),
     strings.confirmModel(input.model, input.thinking),
+    input.gate.mode === "off" ? strings.confirmGateOff : strings.confirmGate(input.gate.mode, input.gate.policyHash),
     input.scope === "all"
       ? strings.confirmSelectionAll(trios ?? 0)
       : strings.confirmSelection(input.selectionLabel, trios ?? 0),

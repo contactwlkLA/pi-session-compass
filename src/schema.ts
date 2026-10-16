@@ -11,6 +11,7 @@
 
 import { type SettingsSchema, settingsFilePaths } from "avtc-pi-settings-ui";
 import type { GateMode } from "./gate.js";
+import { GATE_CONFIG } from "./gate-config.js";
 
 /** The portrait settings (shape declared here; defaults live in {@link PORTRAIT_SCHEMA}). */
 export interface PortraitSettings {
@@ -56,7 +57,7 @@ export const PORTRAIT_SCHEMA: SettingsSchema = {
       description:
         "Checks each trio with the Jev classifier before extraction. Off: no check. Shadow: check and record, but extract every trio. Enforce: skip extraction for trios the gate rejects. Needs TYPESAFE_API_KEY.",
       type: "string",
-      defaultValue: "off",
+      defaultValue: GATE_CONFIG.defaultMode,
       presets: ["off", "shadow", "enforce"],
     },
     {

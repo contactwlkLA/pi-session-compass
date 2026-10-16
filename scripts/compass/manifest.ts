@@ -4,7 +4,7 @@
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { CensusResult, Limits, RunSelection, StartPortrait } from "./types.js";
+import type { CensusResult, GateRunConfig, Limits, RunSelection, StartPortrait } from "./types.js";
 
 export interface ManifestData {
   runType: Limits["runType"];
@@ -14,6 +14,8 @@ export interface ManifestData {
   census: { file: string; sha256: string; totalTrios: number } | null;
   settingsSnapshotPath: string;
   startPortrait: StartPortrait;
+  /** The run's gate selection: mode, where the mode came from, and the policy identity. */
+  gate: GateRunConfig;
   sourceIdentity: { branch: string | null; commit: string | null; dirty: boolean };
   confirmed: { mode: string; at: string } | null;
 }
@@ -28,6 +30,7 @@ export function buildManifestData(input: {
   settingsSnapshotPath: string;
   workspaceRoot: string;
   startPortrait: StartPortrait;
+  gate: GateRunConfig;
   confirmed: ManifestData["confirmed"];
 }): ManifestData {
   let branch: string | null = null;
@@ -53,6 +56,7 @@ export function buildManifestData(input: {
       : null,
     settingsSnapshotPath: input.settingsSnapshotPath,
     startPortrait: input.startPortrait,
+    gate: input.gate,
     sourceIdentity: { branch, commit, dirty },
     confirmed: input.confirmed,
   };

@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { scanSessions } from "../src/collector.js";
 import { reportError } from "../src/error.js";
 import { checkTrio, resetGateRun } from "../src/gate.js";
+import { GATE_CONFIG } from "../src/gate-config.js";
 import { setInstrumentHooks } from "../src/instrument.js";
 import { JEV_POLICY_HASH } from "../src/jev.js";
 import { callPortraitLlm } from "../src/llm-call.js";
@@ -151,6 +152,15 @@ describe("gate setting", () => {
     const general = PORTRAIT_SCHEMA.tabs.find((tab) => tab.label === "General");
     expect(general?.settingIds.indexOf("gateMode")).toBe(1);
     expect(defaultPortraitSettings(null).gateMode).toBe("off");
+  });
+});
+
+describe("gate config readers", () => {
+  it("supplies the failure limit and the setting's shipped default", () => {
+    expect(GATE_CONFIG.failureLimit).toBe(3);
+    const setting = PORTRAIT_SCHEMA.settings.find((entry) => entry.id === "gateMode");
+    expect(setting?.defaultValue).toBe(GATE_CONFIG.defaultMode);
+    expect(defaultPortraitSettings(null).gateMode).toBe(GATE_CONFIG.defaultMode);
   });
 });
 
@@ -442,6 +452,7 @@ describe("scan with the gate", () => {
     expect(examined).toHaveBeenCalledTimes(1);
     expect(gated).toHaveBeenCalledTimes(2);
     expect(gated.mock.calls[0][0]).toMatchObject({ decision: "no_lesson", routed: "skip" });
+    expect((gated.mock.calls[0][0] as { sourcePath: string }).sourcePath).toBe(path.resolve(file));
     expect(gated.mock.calls[1][0]).toMatchObject({ decision: "maybe_lesson", routed: "extract" });
   });
 
