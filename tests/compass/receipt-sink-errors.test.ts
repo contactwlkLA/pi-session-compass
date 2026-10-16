@@ -15,6 +15,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runPipeline } from "../../scripts/compass/pipeline-boot.js";
+import { strings } from "../../scripts/compass/strings.js";
 import type { Limits, RunSelection } from "../../scripts/compass/types.js";
 
 const ROOT = process.cwd();
@@ -24,7 +25,7 @@ const LIMITS: Limits = { runType: "smoke", maxModelRequests: 5, maxRunMs: 900_00
 
 /** Mutable controls shared with the module mocks (hoisted above the imports). */
 const sinkState = vi.hoisted(() => ({
-  mode: "clean" as "clean" | "sink-then-crash",
+  mode: "clean" as "clean" | "sink-then-crash" | "sink-then-stop",
   hooks: null as Record<string, (event: unknown) => void> | null,
 }));
 
@@ -57,21 +58,31 @@ vi.mock("../../src/instrument.js", () => ({
   },
 }));
 
+/** Emit a trio event whose `notes` getter throws, so the sink guard records an error. */
+function emitPoisonedTrio(): void {
+  const poison: { sessionPath: string; notes?: number } = { sessionPath: "/tmp/session.jsonl" };
+  Object.defineProperty(poison, "notes", {
+    get() {
+      throw new Error("sink boom");
+    },
+  });
+  sinkState.hooks?.onTrioExamined?.(poison);
+}
+
 vi.mock("../../src/pipeline.js", () => ({
   runPipelineLoop: async () => {
     if (sinkState.mode === "sink-then-crash") {
       // A poisoned event makes the internal "trioExamined" sink callback throw;
       // the guard records it, then the loop itself crashes.
-      const poison: { sessionPath: string; notes?: number } = { sessionPath: "/tmp/session.jsonl" };
-      Object.defineProperty(poison, "notes", {
-        get() {
-          throw new Error("sink boom");
-        },
-      });
-      sinkState.hooks?.onTrioExamined?.(poison);
+      emitPoisonedTrio();
       throw new Error("pipeline crash");
     }
-    return { totalSequences: 0, totalInserted: 0, totalEvicted: 0 };
+    if (sinkState.mode === "sink-then-stop") {
+      // A poisoned event records a sink error, then the pass stops on a pipeline failure.
+      emitPoisonedTrio();
+      return { totalSequences: 1, totalInserted: 0, totalEvicted: 0, stopReason: "build_failed" };
+    }
+    return { totalSequences: 0, totalInserted: 0, totalEvicted: 0, stopReason: null };
   },
 }));
 
@@ -123,6 +134,23 @@ describe("runPipeline sink-error receipts", () => {
     expect(receipt.sinkErrors).toEqual([{ hook: "trioExamined", error: "sink boom" }]);
     expect(receipt.stop).toMatchObject({ kind: "error" });
     expect(String(receipt.error)).toContain("pipeline crash");
+  });
+
+  it("reports error when a sink error and a pipeline stop land in the same run", async () => {
+    sinkState.mode = "sink-then-stop";
+    const outputDir = path.join(TEST_TMP, "sink-then-stop");
+    writeSettingsSnapshot(outputDir);
+
+    const exitCode = await runPipeline({
+      limits: LIMITS,
+      prepared: { selection: selectionFor(outputDir), census: null },
+      outputDir,
+      confirmMode: "flag",
+    });
+
+    expect(exitCode).toBe(1);
+    const receipt = readReceipt(outputDir);
+    expect(receipt.stop).toEqual({ kind: "error", reason: strings.errorSeeReceipt });
   });
 
   it("omits the sinkErrors key entirely when no sink error was recorded", async () => {

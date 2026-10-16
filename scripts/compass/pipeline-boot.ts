@@ -16,6 +16,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { BuildEvent, CooldownEvent, TrioExaminedEvent } from "../../src/instrument.js";
 import type { LlmAttemptEvent } from "../../src/llm-call.js";
+import type { PipelineStopReason } from "../../src/types.js";
 import { emptyStats, RequestCounter } from "./counter.js";
 import { strings } from "./strings.js";
 import type { CensusResult, Limits, RunSelection } from "./types.js";
@@ -27,6 +28,25 @@ export interface SinkError {
 
 /** Sentinel: no source filter (every source's pending work). */
 const NO_SOURCE_FILTER: null = null;
+
+/** How a run ended, as recorded in the receipt. */
+type RunStopKind = "completed" | "capped" | "error" | "stopped";
+
+/** Receipt stage names for a pipeline stop reason. */
+const STOP_STAGE: Record<PipelineStopReason, string> = {
+  extraction_failed: "extraction",
+  review_failed: "review",
+  build_failed: "build",
+};
+
+/** Cumulative per-pass pipeline stats, recorded as the receipt's counts.pipeline. */
+interface PipelinePassStats {
+  totalSequences: number;
+  totalInserted: number;
+  totalEvicted: number;
+  passes: number;
+  stopReason: PipelineStopReason | null;
+}
 
 /** Wrap instrumentation callbacks so a throwing sink is recorded instead of breaking the run. */
 export function createSinkGuard(): {
@@ -46,7 +66,7 @@ export function createSinkGuard(): {
 
 /** Fail the run when instrumentation sinks recorded errors. Returns the process exit code: 1 when sinkErrors is non-empty, 0 otherwise. Writes the receipt in both cases. */
 export function failOnSinkErrors(
-  write: (stop: "completed" | "capped" | "error", error: string | null) => void,
+  write: (stop: RunStopKind, error: string | null) => void,
   sinkErrors: SinkError[],
 ): number {
   if (sinkErrors.length === 0) return 0;
@@ -132,7 +152,7 @@ function diffRules(before: string[], after: string[]): { added: string[]; remove
   return { added: after.filter((r) => !beforeSet.has(r)), removed: before.filter((r) => !afterSet.has(r)) };
 }
 
-/** Run the ungated selected-file pipeline. Returns 0 on completion, 3 on a capped run. */
+/** Run the ungated selected-file pipeline. Returns 0 on completion, 3 on a capped run, 4 when a pass stopped on a failure, 1 on an error. */
 export async function runPipeline(opts: BootOptions): Promise<number> {
   const { limits, outputDir } = opts;
   const counter = new RequestCounter(limits);
@@ -175,7 +195,7 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
       const found = slash > 0 ? registry.find(modelString.slice(0, slash), modelString.slice(slash + 1)) : undefined;
       if (!found) {
         const accessError = strings.modelUnavailable(modelString);
-        writeReceipt(opts, counter, stats, "error", accessError, attemptEvents, cooldowns, null);
+        writeReceipt(opts, counter, stats, "error", null, accessError, attemptEvents, cooldowns, null);
         process.stderr.write(`compass harness: ${accessError}\n`);
         return 1;
       }
@@ -187,7 +207,7 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
         host.defaultProvider && host.defaultModel ? registry.find(host.defaultProvider, host.defaultModel) : undefined;
       if (!found) {
         const accessError = strings.noModelOverride;
-        writeReceipt(opts, counter, stats, "error", accessError, attemptEvents, cooldowns, null);
+        writeReceipt(opts, counter, stats, "error", null, accessError, attemptEvents, cooldowns, null);
         process.stderr.write(`compass harness: ${accessError}\n`);
         return 1;
       }
@@ -273,48 +293,57 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
     // The extension runs the loop once per timer tick and each pass resumes from the saved scan
     // checkpoint; a pass returns after its first productive sequence when that sequence came from
     // the last discovered file. Re-run passes back to back, as the ticks would, until a pass
-    // examines no trio (the selected scope is exhausted) or a ceiling is reached. Timer gaps are
-    // not pipeline cost and are not reproduced.
-    const pipelineStats = { totalSequences: 0, totalInserted: 0, totalEvicted: 0, passes: 0 };
+    // stops on a failure, examines no trio (the selected scope is exhausted), or a ceiling is
+    // reached. Timer gaps are not pipeline cost and are not reproduced.
+    const pipelineStats: PipelinePassStats = {
+      totalSequences: 0,
+      totalInserted: 0,
+      totalEvicted: 0,
+      passes: 0,
+      stopReason: null,
+    };
+    // scope=file drains and builds only the isolated selected file; scope=all covers every source.
+    const selection = opts.prepared.selection;
+    const sourceFilter =
+      selection.scope === "file" && selection.frozen && selection.isolatedSessionDir
+        ? path.join(selection.isolatedSessionDir, "selected", path.basename(selection.frozen.sourcePath))
+        : NO_SOURCE_FILTER;
     while (!counter.exhausted()) {
       const examinedBefore = stats.triosExamined;
       const pass = await runPipelineLoop(
         runSettings,
         Number.POSITIVE_INFINITY,
         () => counter.exhausted(),
-        NO_SOURCE_FILTER,
+        sourceFilter,
       );
       pipelineStats.passes++;
       pipelineStats.totalSequences += pass.totalSequences;
       pipelineStats.totalInserted += pass.totalInserted;
       pipelineStats.totalEvicted += pass.totalEvicted;
+      if (pass.stopReason) {
+        // A stopped pass ends the loop; a cap that also ended the run is reported instead.
+        pipelineStats.stopReason = pass.stopReason;
+        break;
+      }
       if (stats.triosExamined === examinedBefore) break;
     }
 
     const capped = counter.stopReason !== null;
     const sinkExit = failOnSinkErrors(
-      (stop, error) => writeReceipt(opts, counter, stats, stop, error, attemptEvents, cooldowns, sinkErrors),
+      (stop, error) => writeReceipt(opts, counter, stats, stop, null, error, attemptEvents, cooldowns, sinkErrors),
       sinkErrors,
     );
     if (sinkExit !== 0) return sinkExit;
-    writeReceipt(
-      opts,
-      counter,
-      stats,
-      capped ? "capped" : "completed",
-      null,
-      attemptEvents,
-      cooldowns,
-      null,
-      pipelineStats,
-    );
+    const pipelineStop = pipelineStats.stopReason;
+    const stopKind: RunStopKind = capped ? "capped" : pipelineStop !== null ? "stopped" : "completed";
+    writeReceipt(opts, counter, stats, stopKind, pipelineStop, null, attemptEvents, cooldowns, null, pipelineStats);
     writeSheet(opts, limits.runType, trioExamined, builds, rulesBeforeRun, readRules(portraitDir));
     fs.writeFileSync(
       path.join(outputDir, "running-table.md"),
       renderRunningTable(limits.runType, runningRows, opts.prepared.census?.totalTrios ?? null),
       "utf-8",
     );
-    return capped ? 3 : 0;
+    return capped ? 3 : pipelineStop !== null ? 4 : 0;
   } catch (error) {
     const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
     writeReceipt(
@@ -322,6 +351,7 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
       counter,
       stats,
       "error",
+      null,
       message,
       attemptEvents,
       cooldowns,
@@ -342,7 +372,17 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
   }
 }
 
-function stopLine(stop: "completed" | "capped" | "error", counter: RequestCounter, sequences: number): string {
+function stopLine(
+  stop: RunStopKind,
+  pipelineStop: PipelineStopReason | null,
+  counter: RequestCounter,
+  sequences: number,
+): string {
+  if (stop === "stopped") {
+    // A stopped receipt always carries its reason; the fallback only keeps the line well-formed.
+    const stage = pipelineStop === null ? STOP_STAGE.build_failed : STOP_STAGE[pipelineStop];
+    return strings.stopPipelineFailed(stage);
+  }
   if (stop === "completed") return strings.stopCompleted(sequences);
   if (stop === "error") return strings.errorSeeReceipt;
   if (counter.stopReason === "requests") return strings.stopRequestLimit(counter.snapshot().requestCount);
@@ -354,18 +394,19 @@ function writeReceipt(
   opts: BootOptions,
   counter: RequestCounter,
   stats: ReturnType<typeof emptyStats>,
-  stop: "completed" | "capped" | "error",
+  stop: RunStopKind,
+  pipelineStop: PipelineStopReason | null,
   error: string | null,
   attempts: LlmAttemptEvent[],
   cooldowns: CooldownEvent[],
   sinkErrors: Array<{ hook: string; error: string }> | null,
-  pipelineStats?: { totalSequences: number; totalInserted: number; totalEvicted: number; passes: number },
+  pipelineStats?: PipelinePassStats,
 ): void {
   const snapshot = counter.snapshot();
   const receipt = {
     runType: opts.limits.runType,
     limits: { final: opts.limits, source: opts.limits.source },
-    stop: { kind: stop, reason: stopLine(stop, counter, pipelineStats?.totalSequences ?? 0) },
+    stop: { kind: stop, reason: stopLine(stop, pipelineStop, counter, pipelineStats?.totalSequences ?? 0) },
     ...(error ? { error } : {}),
     requests: {
       count: snapshot.requestCount,

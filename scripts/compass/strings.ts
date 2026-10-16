@@ -82,6 +82,7 @@ export const strings = {
   stopRequestLimit: (n: number) => `stopped: request limit reached (${n} model requests)`,
   stopDeadline: (ms: number) => `stopped: run deadline reached (${ms} ms)`,
   stopCancelled: "stopped: cancelled",
+  stopPipelineFailed: (stage: string) => `stopped: ${stage} failed; pending work was kept (see diagnostics.log)`,
   limitReached: (kind: string) => `compass harness: limit reached (${kind}) — run incomplete, evidence preserved.`,
   errorSeeReceipt: "error — see receipt for details",
   runFailed: (message: string) => `compass harness: run failed: ${message}`,

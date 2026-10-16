@@ -58,7 +58,7 @@ vi.mock("../../src/instrument.js", () => ({
 vi.mock("../../src/pipeline.js", () => ({
   runPipelineLoop: async () => {
     for (const event of state.events) state.sink?.(event);
-    return { totalSequences: state.sequences, totalInserted: 0, totalEvicted: 0 };
+    return { totalSequences: state.sequences, totalInserted: 0, totalEvicted: 0, stopReason: null };
   },
 }));
 

@@ -27,6 +27,12 @@ const loopState = vi.hoisted(() => ({
   passes: 0,
   /** Trios each pass emits, in pass order; later passes emit none (scope exhausted). */
   passTrios: [] as number[],
+  /** Stop reason each pass returns, in pass order; a missing entry means null. */
+  passStopReasons: [] as (string | null)[],
+  /** When non-zero, a pass waits this long and then arms the run counter's deadline. */
+  armCounterAfterMs: 0,
+  /** Source filters the mocked loop received, in call order. */
+  sourceFilters: [] as (string | null)[],
 }));
 
 vi.mock("../../src/settings-ui.js", () => ({
@@ -68,16 +74,28 @@ function writePortrait(dir: string, rules: string[]): void {
 }
 
 vi.mock("../../src/pipeline.js", () => ({
-  runPipelineLoop: async () => {
+  runPipelineLoop: async (
+    _settings: unknown,
+    _max: unknown,
+    shouldCancel: () => boolean,
+    sourceFilter: string | null,
+  ) => {
     loopState.passes++;
+    loopState.sourceFilters.push(sourceFilter);
+    if (loopState.armCounterAfterMs > 0) {
+      // Let the run's wall-clock deadline pass, then arm the counter's deadline stop.
+      await new Promise((resolve) => setTimeout(resolve, loopState.armCounterAfterMs));
+      shouldCancel();
+    }
+    const stopReason = loopState.passStopReasons[loopState.passes - 1] ?? null;
     const session = "/tmp/sessions/seed.jsonl";
     const emit = (hook: string, event: unknown) => loopState.hooks?.[hook]?.(event);
     if (loopState.passTrios.length > 0) {
       const count = loopState.passTrios[loopState.passes - 1] ?? 0;
       for (let i = 0; i < count; i++) emit("onTrioExamined", { sessionPath: session, notes: 0, notesText: [] });
-      return { totalSequences: count > 0 ? 1 : 0, totalInserted: 0, totalEvicted: 0 };
+      return { totalSequences: count > 0 ? 1 : 0, totalInserted: 0, totalEvicted: 0, stopReason };
     }
-    if (loopState.passes > 1) return { totalSequences: 0, totalInserted: 0, totalEvicted: 0 };
+    if (loopState.passes > 1) return { totalSequences: 0, totalInserted: 0, totalEvicted: 0, stopReason };
     emit("onTrioExamined", { sessionPath: session, notes: 2, notesText: ["a", "b"] });
     emit("onTrioExamined", { sessionPath: session, notes: 0, notesText: [] });
     writePortrait(loopState.portraitDir, ["r1", "r2", "r3"]);
@@ -90,7 +108,7 @@ vi.mock("../../src/pipeline.js", () => ({
       evicted: 0,
     });
     emit("onTrioExamined", { sessionPath: session, notes: 1, notesText: ["c"] });
-    return { totalSequences: 1, totalInserted: 1, totalEvicted: 0 };
+    return { totalSequences: 1, totalInserted: 1, totalEvicted: 0, stopReason };
   },
 }));
 
@@ -104,6 +122,9 @@ beforeEach(() => {
   loopState.hooks = null;
   loopState.passes = 0;
   loopState.passTrios = [];
+  loopState.passStopReasons = [];
+  loopState.armCounterAfterMs = 0;
+  loopState.sourceFilters = [];
   fs.rmSync(TEST_TMP, { recursive: true, force: true });
 });
 
@@ -214,7 +235,126 @@ describe("runPipeline passes", () => {
     expect(loopState.passes).toBe(3);
     const receipt = JSON.parse(fs.readFileSync(path.join(outputDir, "receipt.json"), "utf-8"));
     expect(receipt.counts.triosExamined).toBe(5);
-    expect(receipt.counts.pipeline).toEqual({ totalSequences: 2, totalInserted: 0, totalEvicted: 0, passes: 3 });
+    expect(receipt.counts.pipeline).toEqual({
+      totalSequences: 2,
+      totalInserted: 0,
+      totalEvicted: 0,
+      passes: 3,
+      stopReason: null,
+    });
     expect(receipt.stop.kind).toBe("completed");
+  });
+});
+
+interface RunReceipt {
+  stop: { kind: string; reason: string };
+  counts: { pipeline: { totalSequences: number; passes: number; stopReason: string | null } };
+}
+
+function readRunReceipt(outputDir: string): RunReceipt {
+  return JSON.parse(fs.readFileSync(path.join(outputDir, "receipt.json"), "utf-8")) as RunReceipt;
+}
+
+describe("runPipeline pipeline stop", () => {
+  function bootRun(outputDir: string, selection: RunSelection, limits: Limits): Promise<number> {
+    loopState.portraitDir = path.join(outputDir, "portrait");
+    writePortrait(loopState.portraitDir, ["r1"]);
+    fs.mkdirSync(outputDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(outputDir, "settings-snapshot.json"),
+      JSON.stringify({ portraitSettings: { model: "meta/test-model" }, hostPiSettings: {} }),
+      "utf-8",
+    );
+    return runPipeline({ limits, prepared: { selection, census: CENSUS }, outputDir, confirmMode: "flag" });
+  }
+
+  it("reports stopped with the build stage and exit 4, with no further pass", async () => {
+    loopState.passTrios = [1];
+    loopState.passStopReasons = ["build_failed"];
+    const outputDir = path.join(TEST_TMP, "stopped-build");
+
+    const exitCode = await bootRun(outputDir, selectionFor(outputDir), LIMITS);
+
+    expect(exitCode).toBe(4);
+    expect(loopState.passes).toBe(1);
+    const receipt = readRunReceipt(outputDir);
+    expect(receipt.stop.kind).toBe("stopped");
+    expect(receipt.stop.reason).toBe(strings.stopPipelineFailed("build"));
+    expect(receipt.counts.pipeline.stopReason).toBe("build_failed");
+  });
+
+  it("reports the extraction stage in T4 for extraction_failed", async () => {
+    loopState.passTrios = [1];
+    loopState.passStopReasons = ["extraction_failed"];
+    const outputDir = path.join(TEST_TMP, "stopped-extraction");
+
+    const exitCode = await bootRun(outputDir, selectionFor(outputDir), LIMITS);
+
+    expect(exitCode).toBe(4);
+    const receipt = readRunReceipt(outputDir);
+    expect(receipt.stop.kind).toBe("stopped");
+    expect(receipt.stop.reason).toBe(strings.stopPipelineFailed("extraction"));
+  });
+
+  it("reports the review stage in T4 for review_failed", async () => {
+    loopState.passTrios = [1];
+    loopState.passStopReasons = ["review_failed"];
+    const outputDir = path.join(TEST_TMP, "stopped-review");
+
+    const exitCode = await bootRun(outputDir, selectionFor(outputDir), LIMITS);
+
+    expect(exitCode).toBe(4);
+    const receipt = readRunReceipt(outputDir);
+    expect(receipt.stop.kind).toBe("stopped");
+    expect(receipt.stop.reason).toBe(strings.stopPipelineFailed("review"));
+  });
+
+  it("reports capped and returns 3 when the counter stops in the same pass", async () => {
+    loopState.passTrios = [1];
+    loopState.passStopReasons = ["build_failed"];
+    loopState.armCounterAfterMs = 350;
+    const outputDir = path.join(TEST_TMP, "capped-stop");
+
+    const exitCode = await bootRun(outputDir, selectionFor(outputDir), { ...LIMITS, maxRunMs: 300 });
+
+    expect(exitCode).toBe(3);
+    const receipt = readRunReceipt(outputDir);
+    expect(receipt.stop.kind).toBe("capped");
+    expect(receipt.counts.pipeline.stopReason).toBe("build_failed");
+  });
+
+  it("passes the isolated selected-file path as the source filter in scope=file and null in scope=all", async () => {
+    const isolatedSessionDir = path.join(TEST_TMP, "filter", "sessions");
+    const fileSelection: RunSelection = {
+      scope: "file",
+      runId: "t-filter",
+      outputDir: path.join(TEST_TMP, "filter"),
+      frozen: {
+        sourcePath: "/tmp/sessions/src.jsonl",
+        storedPath: "/tmp/fixtures/src.jsonl",
+        sha256: "x",
+        sizeBytes: 1,
+      },
+      isolatedSessionDir,
+      createdAt: new Date(0).toISOString(),
+    };
+    loopState.passTrios = [1];
+    await bootRun(path.join(TEST_TMP, "filter"), fileSelection, LIMITS);
+    expect(loopState.sourceFilters).toEqual([
+      path.join(isolatedSessionDir, "selected", "src.jsonl"),
+      path.join(isolatedSessionDir, "selected", "src.jsonl"),
+    ]);
+
+    loopState.passes = 0;
+    loopState.passTrios = [1];
+    loopState.sourceFilters = [];
+    const allSelection: RunSelection = {
+      scope: "all",
+      runId: "t-filter-all",
+      outputDir: path.join(TEST_TMP, "filter-all"),
+      createdAt: new Date(0).toISOString(),
+    };
+    await bootRun(path.join(TEST_TMP, "filter-all"), allSelection, LIMITS);
+    expect(loopState.sourceFilters).toEqual([null, null]);
   });
 });

@@ -17,6 +17,7 @@ import { renderConfirmation } from "../../scripts/compass/confirmation.js";
 import { buildManifestData } from "../../scripts/compass/manifest.js";
 import { executeRun, prepareRun } from "../../scripts/compass/run.js";
 import {
+  hashTree,
   restoreSnapshot,
   SnapshotError,
   snapshotPortraitState,
@@ -113,6 +114,43 @@ describe("verifySnapshot", () => {
   it("refuses a missing snapshot directory", () => {
     const snap = path.join(TEST_TMP, "absent");
     expectSnapshotError(() => verifySnapshot(snap), strings.startSnapshotNotFound(snap));
+  });
+});
+
+describe("snapshots/ directory in a frozen snapshot", () => {
+  it("copies snapshots/ with nested files and restores the same tree", () => {
+    const live = path.join(TEST_TMP, "live-work");
+    makePortraitDir(live);
+    fs.mkdirSync(path.join(live, "snapshots", "nested"), { recursive: true });
+    fs.writeFileSync(path.join(live, "snapshots", "state.json"), '{"seq":2}', "utf-8");
+    fs.writeFileSync(path.join(live, "snapshots", "nested", "file.md"), "nested\n", "utf-8");
+    const snap = path.join(TEST_TMP, "snap-work");
+    const { hashes } = snapshotPortraitState(live, snap);
+    expect(hashes["snapshots/state.json"]).toBeDefined();
+    expect(hashes["snapshots/nested/file.md"]).toBeDefined();
+    expect(verifySnapshot(snap)).toEqual(hashes);
+
+    const restored = path.join(TEST_TMP, "restored-work");
+    restoreSnapshot(snap, restored);
+    // The restored set (snapshot files, git, snapshots/) equals the source's.
+    expect(hashTree(restored)).toEqual(hashTree(live));
+  });
+
+  it("refuses a tampered snapshots file with the approved mismatch string", () => {
+    const live = path.join(TEST_TMP, "live-work-tamper");
+    makePortraitDir(live);
+    fs.mkdirSync(path.join(live, "snapshots"), { recursive: true });
+    fs.writeFileSync(path.join(live, "snapshots", "state.json"), '{"seq":2}', "utf-8");
+    const snap = path.join(TEST_TMP, "snap-work-tamper");
+    snapshotPortraitState(live, snap);
+    fs.writeFileSync(path.join(snap, "snapshots", "state.json"), '{"seq":99}', "utf-8");
+    expectSnapshotError(() => verifySnapshot(snap), strings.startSnapshotMismatch("snapshots/state.json", snap));
+  });
+
+  it("records no snapshot keys when the source has no snapshots directory", () => {
+    const { snap } = frozenSnapshot("no-work");
+    const hashes = JSON.parse(fs.readFileSync(path.join(snap, "hashes.json"), "utf-8")) as Record<string, string>;
+    expect(Object.keys(hashes).some((key) => key.startsWith("snapshots/"))).toBe(false);
   });
 });
 

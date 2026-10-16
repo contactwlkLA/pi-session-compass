@@ -213,3 +213,17 @@ describe("A13 prepare all-files summary", () => {
     expect(strings.prepareSelectionAll).toBe("selection: all session files");
   });
 });
+
+describe("A14 stopPipelineFailed", () => {
+  it("renders the pipeline failure line for each stop stage", () => {
+    expect(strings.stopPipelineFailed("extraction")).toBe(
+      "stopped: extraction failed; pending work was kept (see diagnostics.log)",
+    );
+    expect(strings.stopPipelineFailed("review")).toBe(
+      "stopped: review failed; pending work was kept (see diagnostics.log)",
+    );
+    expect(strings.stopPipelineFailed("build")).toBe(
+      "stopped: build failed; pending work was kept (see diagnostics.log)",
+    );
+  });
+});

@@ -17,6 +17,9 @@ export const SNAPSHOT_FILES = [
   "bg-scan-checkpoints.json",
 ] as const;
 
+/** Directory holding the work-state snapshots (scan positions and pending candidates). */
+const WORK_STATE_DIR = "snapshots";
+
 function copyDirRecursive(src: string, dest: string): void {
   fs.mkdirSync(dest, { recursive: true });
   for (const item of fs.readdirSync(src, { withFileTypes: true })) {
@@ -45,6 +48,14 @@ export function snapshotPortraitState(
     fs.copyFileSync(src, dest);
     hashes[name] = sha256File(dest);
   }
+  const workDir = path.join(sourceDir, WORK_STATE_DIR);
+  if (fs.existsSync(workDir)) {
+    const destWorkDir = path.join(destDir, WORK_STATE_DIR);
+    copyDirRecursive(workDir, destWorkDir);
+    for (const [name, hash] of Object.entries(hashTree(destWorkDir))) {
+      hashes[`${WORK_STATE_DIR}/${name}`] = hash;
+    }
+  }
   const gitDir = path.join(sourceDir, ".git");
   if (fs.existsSync(gitDir)) {
     copyDirRecursive(gitDir, path.join(destDir, ".git"));
@@ -71,6 +82,8 @@ export function restoreSnapshot(snapshotDir: string, destDir: string): void {
     const src = path.join(snapshotDir, name);
     if (fs.existsSync(src)) fs.copyFileSync(src, path.join(destDir, name));
   }
+  const workDir = path.join(snapshotDir, WORK_STATE_DIR);
+  if (fs.existsSync(workDir)) copyDirRecursive(workDir, path.join(destDir, WORK_STATE_DIR));
   const gitDir = path.join(snapshotDir, ".git");
   if (fs.existsSync(gitDir)) copyDirRecursive(gitDir, path.join(destDir, ".git"));
 }
