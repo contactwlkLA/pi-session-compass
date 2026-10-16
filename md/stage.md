@@ -1,6 +1,6 @@
 # pi-session-compass — Stage continuation
 
-Revision: **0.17.0** · Updated: **2026-10-16**
+Revision: **0.18.0** · Updated: **2026-10-16**
 
 Select the first unchecked stage. A checked stage requires verified milestone evidence. Unchecked means not started, partial, or blocked; use the continuation fields below. Stop after that stage’s completion or a documented stopping condition.
 
@@ -14,9 +14,9 @@ Select the first unchecked stage. A checked stage requires verified milestone ev
 ## Continuation
 
 - Active stage: **S5**
-- Next unfinished step: **S5-01 (corpus freeze, session split, gate scoring): CC writes the spec in stage-5-specs.md; Pi audits and codes in a fresh session**
+- Next unfinished step: **S5-02 (extraction cache, label sheet, scorer): CC writes the spec; Pi audits and codes in a FRESH session. Then S5-03 extraction run and labels**
 - Roles (user, 2026-10-15): **Pi is no longer parked. Pi codes, one model per Pi session (the user switches models between sessions). Claude Code plans, writes task specs, reviews, keeps the ledger (md/ledger.jsonl, schema md/ledger.schema.json), verifies, and commits; it writes no implementation. The coder comparison is a side quest: where it conflicts with the project, the project wins (resolutions in NOTES.md)**
-- Last completed step: **S4-03 PASS (shadow smoke, 2 Jev calls scored, jev-1.13.0, no key in artifacts; outputs/s4/s4-03-wire-check.md); S4 gate green (549/123, single-worker, concurrent). Before that: S4-02 accepted first pass (mimo-v2.6-flash): src/gate-config.ts holds every gate value (policy hash unchanged, ad7880acdc3b); harness `--gate-mode`, gate request counting, receipt/trace/sheet gate records; npm test 549/549, test:compass 123/123. Probe (0a7ef53, live): 26 trios, 0 `no_lesson` at threshold 0.1**
+- Last completed step: **S5-01 accepted first pass (875173f); pilot corpus frozen (fixtures/s5-pilot, seed s5-pilot: 30 sessions, 339 trios, dev 16/207, held-out 14/132); live gate scoring of all 339 (8.3 s, 339 requests, 9 no_lesson; outputs/s5/score-all/). Before that: S4-03 PASS (shadow smoke, 2 Jev calls scored, jev-1.13.0, no key in artifacts; outputs/s4/s4-03-wire-check.md); S4 gate green (549/123, single-worker, concurrent). Before that: S4-02 accepted first pass (mimo-v2.6-flash): src/gate-config.ts holds every gate value (policy hash unchanged, ad7880acdc3b); harness `--gate-mode`, gate request counting, receipt/trace/sheet gate records; npm test 549/549, test:compass 123/123. Probe (0a7ef53, live): 26 trios, 0 `no_lesson` at threshold 0.1**
 - Outcome: **S2 COMPLETE: termination, capture reset and retry fixes; compare run 46 requests / 26.0 min on the pipeline's 20 trios; branch s1/harness**
 - Blocker: **none**
 - Pending user inputs: **none**
@@ -39,6 +39,6 @@ Stage meanings and dependencies: [plan.md](plan.md). Operating rules: [AGENTS.md
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.15.0 | 2026-10-16 | S4-02 accepted; next S4-03. |
 | 0.16.0 | 2026-10-16 | S4-03 passed; M4 verified; checkpoint pending. |
 | 0.17.0 | 2026-10-16 | S4 complete; S5 pilot plan approved. |
+| 0.18.0 | 2026-10-16 | S5-01 done; pilot corpus frozen and scored. |
