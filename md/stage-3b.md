@@ -1,6 +1,6 @@
 # Stage 3 Part B — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.2.0** · Status: **Approved (user, 2026-10-15)**
+Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Approved (user, 2026-10-15)**
 
 Date: **2026-10-15**
 
@@ -12,7 +12,7 @@ Parent: [stage-3-task.md](stage-3-task.md) Part B. Contract: [architecture.md](a
 
 `Read md/stage-3b.md, sections "Coder rules" and "S3-B1-0N", and do that task only. Write the handoff file, then stop.`
 
-**Session split (user, 2026-10-15).** B-1 = S3-B1-01 … S3-B1-04 (stage-3-task B1, B2.3 boundaries (a) and (c), B2.6). B-2 = builder split, validated publication, boundary (b), restore with edit guard, crash tests (B2.1, B2.2, B2.3(b), B2.4, B2.5, B3). B-2 specs are written after B-1 is committed, since they build on its code.
+**Session split (user, 2026-10-15).** B-1 = S3-B1-01, S3-B1-02a, S3-B1-02b, S3-B1-03, S3-B1-04 (stage-3-task B1, B2.3 boundaries (a) and (c), B2.6). B-2 = builder split, validated publication, boundary (b), restore with edit guard, crash tests (B2.1, B2.2, B2.3(b), B2.4, B2.5, B3). B-2 specs are written after B-1 is committed, since they build on its code.
 
 ## Design decisions fixed before coding (CC)
 
@@ -32,7 +32,7 @@ Shown to the user as `Portrait ${source}: ${message}` (src/index.ts).
 | ID | Source | Message | Task |
 |---|---|---|---|
 | T1 | `extraction error` | `Rule extraction failed for a trio in ${path}. Its scan position was kept; the trio will be extracted again on the next run.` | S3-B1-01 |
-| T2 | `review error` | `Rule review failed; ${n} extracted ${n === 1 ? "rule was" : "rules were"} kept and will be reviewed on the next run.` | S3-B1-01, S3-B1-02 |
+| T2 | `review error` | `Rule review failed; ${n} extracted ${n === 1 ? "rule was" : "rules were"} kept and will be reviewed on the next run.` | S3-B1-01, S3-B1-02b |
 | T3 | `building error` | `Building failed; ${n} candidate ${n === 1 ? "rule was" : "rules were"} kept and will be built on the next run.` | S3-B1-03 |
 | T4 | harness receipt (scripts/compass/strings.ts) | `stopped: ${stage} failed; pending work was kept (see diagnostics.log)` with `${stage}` one of `extraction`, `review`, `build` | S3-B1-04 |
 
@@ -113,11 +113,11 @@ npm test
 npm run test:compass
 ```
 
-## S3-B1-02 — Scan positions and pending candidates in the snapshot (boundary a)
+## S3-B1-02a — Work-state module: pending candidates and scan positions in the snapshot
 
-Make the snapshot the store for scan positions and pending candidates. Each examined trio ends in one snapshot holding the new scan position and that trio's candidates. With post-review enabled, the raw rules are saved before the review runs and replaced (or removed) after it.
+Add the module that makes the snapshot the store for scan positions and pending candidates. This task builds and tests the module only; the scanner starts using it in S3-B1-02b.
 
-**Read:** src/snapshot-store.ts, src/collector.ts, src/storage.ts (`loadScanCheckpoints`, `saveScanCheckpoints`), src/types.ts, src/prompts.ts (export names only), src/commands/reset.ts, tests/snapshot-store.test.ts, tests/scan-position.test.ts, tests/extraction-outcomes.test.ts, tests/setup.ts.
+**Read:** src/snapshot-store.ts, src/storage.ts (`loadScanCheckpoints`, `saveScanCheckpoints`), src/types.ts, src/prompts.ts (export names only), tests/snapshot-store.test.ts, tests/setup.ts.
 
 **Interfaces (fixed):**
 
@@ -147,20 +147,46 @@ export function saveWorkState(portraitDir: string, state: SnapshotState): void;
 
 1. `loadWorkState` returns the latest snapshot's state. With no snapshot it returns `{ scanPositions: loadScanCheckpoints(portraitDir), pendingCandidates: [], publicationIntent: null }` and writes nothing. `SnapshotCorruptError` and `SnapshotUnsupportedError` propagate; they are never turned into an empty state.
 2. `saveWorkState` calls `writeSnapshot` with whichever of `portrait.md`, `evicted.md`, `dropped.md` exist in `portraitDir`, then writes `scanPositions` to `processed-sessions.json` (the mirror).
-3. `scanSessions` takes positions from `loadWorkState`, not from `loadScanCheckpoints`, and makes no direct `saveScanCheckpoints` call; every position save goes through `saveWorkState`.
-4. Post-review disabled: after a successful extraction one `saveWorkState` call stores the new position and the trio's candidates (`stage: "needsBuild"`, all `PendingCandidate` fields set). A zero-rule success stores the position only. A failed extraction writes no snapshot.
-5. Post-review enabled: first one snapshot with the new position and the raw rules as `needsPostReview` (with `reviewContext`); then the review. Success replaces them with the kept rules as `needsBuild` (new ordinals over the kept list, `reviewContext: null`) or removes them when none are kept, in a second snapshot. Failure keeps the raw `needsPostReview` candidates and returns `stopReason: "review_failed"` with T2.
-6. `/portrait:reset` additionally removes `<portraitDir>/snapshots/` (recursive, force). No reset text changes.
-7. Tests in a new `tests/work-state.test.ts`: criteria 1 (seed and no write; corrupt snapshot rejects and leaves `processed-sessions.json` unchanged), 2 (only existing files copied; mirror equals positions), 4 (all three cases, checked through `loadLatestSnapshot`), 5 (success, all-dropped, failure), 6. Existing scan-position restart tests still pass with positions coming from the snapshot.
+3. `EXTRACTION_POLICY_REVISION` is the first 12 hex characters of sha256 of `EXTRACTION_PROMPT`.
+4. Tests in a new `tests/work-state.test.ts`: criterion 1 (seed from `processed-sessions.json`, and no file written by a load; a corrupt snapshot rejects and leaves `processed-sessions.json` unchanged; an unsupported one rejects); criterion 2 (only existing files are copied, checked through `loadLatestSnapshot`'s manifest; the mirror equals the saved positions; a `PendingCandidate` round-trips through save and load); criterion 3.
+5. Existing tests pass.
 
-**Allowed scope:** src/work-state.ts (new), src/snapshot-store.ts (the `pendingCandidates` type only), src/collector.ts, src/types.ts, src/commands/reset.ts, tests/work-state.test.ts (new), tests/scan-position.test.ts, tests/extraction.test.ts, tests/extraction-outcomes.test.ts, tests/snapshot-store.test.ts, tests/portrait.test.ts (reset tests only).
+**Allowed scope:** src/work-state.ts (new), src/snapshot-store.ts (the `pendingCandidates` type only), src/types.ts, tests/work-state.test.ts (new), tests/snapshot-store.test.ts; for type fixes only: tests/portrait.test.ts, tests/compass/receipt-sink-errors.test.ts, tests/compass/running-table.test.ts, tests/compass/validation-rounds-receipt.test.ts.
 
-**Constraints:** the pipeline still builds from `scanResults.results` in this task (S3-B1-03 switches it); candidates stay pending. No change to snapshot layout, manifest, or error strings. T2 exactly as quoted.
+**Constraints:** no caller of the new module yet; src/collector.ts and src/pipeline.ts unchanged. No change to snapshot layout, manifest, or error strings. No user-facing text.
 
 **Verification:**
 
 ```
-npx vitest run tests/work-state.test.ts tests/snapshot-store.test.ts tests/scan-position.test.ts tests/extraction.test.ts tests/extraction-outcomes.test.ts tests/portrait.test.ts
+npx vitest run tests/work-state.test.ts tests/snapshot-store.test.ts
+npm test
+npm run test:compass
+```
+
+## S3-B1-02b — Scanner saves through the work state (boundary a); reset clears it
+
+Make the scanner read and save scan positions through the work-state module. Each examined trio ends in one snapshot holding the new scan position and that trio's candidates. With post-review enabled, the raw rules are saved before the review runs and replaced (or removed) after it. Reset also clears the snapshot.
+
+**Read:** src/work-state.ts, src/collector.ts, src/types.ts, src/commands/reset.ts, tests/work-state.test.ts, tests/scan-position.test.ts, tests/extraction-outcomes.test.ts, tests/setup.ts.
+
+**Interfaces (fixed):** as in S3-B1-02a; no new exports.
+
+**Acceptance criteria:**
+
+1. `scanSessions` takes positions from `loadWorkState`, not from `loadScanCheckpoints`, and makes no direct `saveScanCheckpoints` call; every position save goes through `saveWorkState`.
+2. Post-review disabled: after a successful extraction one `saveWorkState` call stores the new position and the trio's candidates (`stage: "needsBuild"`, all `PendingCandidate` fields set). A zero-rule success stores the position only. A failed extraction writes no snapshot.
+3. Post-review enabled: first one snapshot with the new position and the raw rules as `needsPostReview` (with `reviewContext`); then the review. Success replaces them with the kept rules as `needsBuild` (new ordinals over the kept list, `reviewContext: null`) or removes them when none are kept, in a second snapshot. Failure keeps the raw `needsPostReview` candidates and returns `stopReason: "review_failed"` with T2.
+4. `/portrait:reset` additionally removes `<portraitDir>/snapshots/` (recursive, force). No reset text changes.
+5. Tests (extend tests/work-state.test.ts or add tests/scan-work-state.test.ts): criterion 2 (all three cases, checked through `loadLatestSnapshot`), criterion 3 (success, all dropped, failure), criterion 4, and a corrupt snapshot makes `scanSessions` reject without seeding from `processed-sessions.json`. Existing scan-position restart tests still pass with positions coming from the snapshot.
+
+**Allowed scope:** src/collector.ts, src/types.ts, src/commands/reset.ts, tests/work-state.test.ts, tests/scan-work-state.test.ts (new), tests/scan-position.test.ts, tests/extraction.test.ts, tests/extraction-outcomes.test.ts, tests/portrait.test.ts (reset tests, and type fixes); for type fixes only: tests/compass/receipt-sink-errors.test.ts, tests/compass/running-table.test.ts, tests/compass/validation-rounds-receipt.test.ts.
+
+**Constraints:** src/work-state.ts unchanged unless a criterion here cannot be met without it (then say so under `Uncertain`). The pipeline still builds from `scanResults.results` in this task (S3-B1-03 switches it); candidates stay pending. T2 exactly as quoted.
+
+**Verification:**
+
+```
+npx vitest run tests/work-state.test.ts tests/scan-work-state.test.ts tests/scan-position.test.ts tests/extraction.test.ts tests/extraction-outcomes.test.ts tests/portrait.test.ts
 npm test
 npm run test:compass
 ```
@@ -194,7 +220,7 @@ export async function runPipelineLoop(settings, maxSequences, shouldCancel, sour
 6. Every caller passes `sourceFilter`: src/index.ts and src/commands/collect.ts pass `null`; scripts/compass/pipeline-boot.ts passes `null` (S3-B1-04 changes it).
 7. Tests (extend tests/pipeline.test.ts or add tests/pending-build.test.ts): a candidate saved by one run and not built (simulate a crash after boundary a) is built by the next run with no re-extraction; build failure keeps the candidates and gives T3 and `build_failed`; successful batches are acknowledged and a second run builds nothing; source filter (criterion 5); a pending `needsPostReview` group is reviewed at the start of the next run.
 
-**Allowed scope:** src/pipeline.ts, src/work-state.ts, src/collector.ts, src/types.ts, src/index.ts (the call only), src/commands/collect.ts (the call only), scripts/compass/pipeline-boot.ts (the call only), tests/pipeline.test.ts, tests/pending-build.test.ts (new), tests/work-state.test.ts, tests/extraction-outcomes.test.ts.
+**Allowed scope:** src/pipeline.ts, src/work-state.ts, src/collector.ts, src/types.ts, src/index.ts (the call only), src/commands/collect.ts (the call only), scripts/compass/pipeline-boot.ts (the call only), tests/pipeline.test.ts, tests/pending-build.test.ts (new), tests/work-state.test.ts, tests/extraction-outcomes.test.ts; for type fixes only: tests/portrait.test.ts, tests/compass/receipt-sink-errors.test.ts, tests/compass/running-table.test.ts, tests/compass/validation-rounds-receipt.test.ts.
 
 **Constraints:** builder internals unchanged (B-2 splits them). No boundary (b) and no publication intent. T3 exactly as quoted.
 
@@ -237,15 +263,16 @@ npm run test:compass
 Per task, following planner-prompt.md Step 2: handoff check, claim check against `git diff` and pasted output, scope check against Allowed scope, unrequested hunks, constraints, verification run, acceptance criteria, verdict; then the ledger entry in md/ledger.jsonl. At most two correction rounds per task.
 
 - **S3-B1-01:** the outcome type is used at both call sites; no path still maps `undefined` to `[]`; position unchanged on failure (check the test asserts the saved value, not just results); T1/T2 byte-exact.
-- **S3-B1-02:** one snapshot per examined trio (two with review); no remaining `saveScanCheckpoints` in the scan path; corrupt snapshot never seeds from legacy.
+- **S3-B1-02a:** load never writes; corrupt/unsupported never seed from legacy; only existing files copied.
+- **S3-B1-02b:** one snapshot per examined trio (two with review); no remaining `saveScanCheckpoints` in the scan path; corrupt snapshot never seeds from legacy.
 - **S3-B1-03:** acknowledgement removes only the built batch; failure path removes nothing; start-of-run drain precedes scanning.
 - **S3-B1-04:** receipt never says completed after a stop; `hashes.json` covers snapshot files.
 
-Commits: S3-B1-01 on its own; S3-B1-02 and S3-B1-03 together (S3-B1-02 alone leaves candidates pending that nothing builds); S3-B1-04 on its own. Each after CC's re-run of `npm test`, `npm run test:compass`, and `npx vitest run --maxWorkers=1` (standing approval b).
+Commits: S3-B1-01, S3-B1-02a, and S3-B1-04 each on their own; S3-B1-02b and S3-B1-03 together (S3-B1-02b alone leaves candidates pending that nothing builds). Each after CC's re-run of `npm test`, `npm run test:compass`, and `npx vitest run --maxWorkers=1` (standing approval b).
 
-Planner difficulty (fixed now, for the ledger): S3-B1-01 medium; S3-B1-02 hard; S3-B1-03 medium; S3-B1-04 easy.
+Planner difficulty (fixed before each task starts, for the ledger): S3-B1-01 medium; S3-B1-02a easy; S3-B1-02b medium; S3-B1-03 medium; S3-B1-04 easy. Sizing: S3-B1-01 peaked at 143,667 tokens of context, so each later spec keeps a shorter read list.
 
-**B-1 gate:** all four accepted and committed; P10 in bugs.md FIXED with commit and evidence; stage-3-task.md B1.1–B1.4, B2.3 (a, c), B2.6 checked; stage.md synced; report to the user before B-2.
+**B-1 gate:** all five accepted and committed; P10 in bugs.md FIXED with commit and evidence; stage-3-task.md B1.1–B1.4, B2.3 (a, c), B2.6 checked; stage.md synced; report to the user before B-2.
 
 ## Revision history
 
@@ -253,3 +280,4 @@ Planner difficulty (fixed now, for the ledger): S3-B1-01 medium; S3-B1-02 hard; 
 |---|---|---|
 | 0.1.0 | 2026-10-15 | B-1 task specs (S3-B1-01 to S3-B1-04) and protected text T1–T4, for approval. |
 | 0.2.0 | 2026-10-15 | Approved by the user, with T1–T4. |
+| 0.3.0 | 2026-10-15 | S3-B1-02 split into 02a (module) and 02b (scanner wiring, reset) for the ~100K context target; type-fix scope added (user-approved). |
