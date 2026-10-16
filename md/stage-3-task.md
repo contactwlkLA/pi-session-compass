@@ -115,4 +115,4 @@ Protected text expected in Part C: the migration notice (including the historica
 |---|---|---|
 | 0.3.0 | 2026-10-15 | Part A complete (A1, A2, gate). |
 | 0.4.0 | 2026-10-15 | Pi codes again from Part B; CC plans, reviews, and keeps the coder ledger. |
-| 0.5.0 | 2026-10-15 | B1 done (S3-B1-01 to 03); B2.3 boundaries (a) and (c) done. |
+| 0.5.0 | 2026-10-16 | B1 done; B2.3 boundaries (a) and (c) and B2.6 done (S3-B1-01 to 04). |

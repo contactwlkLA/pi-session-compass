@@ -14,7 +14,7 @@ Select the first unchecked stage. A checked stage requires verified milestone ev
 ## Continuation
 
 - Active stage: **S3**
-- Next unfinished step: **B-1 complete. Next: one proposal for user approval: architecture.md §6 cleanup (simple rollback) + trimmed B-2 + matching stage-3-task.md/plan.md edits; then B-2 specs (bigger tasks, speed mode)**
+- Next unfinished step: **User decision on md/proposal-s3-trim.md (architecture §6 cleanup to simple rollback; plan.md and stage-3-task.md edits; B-2 reduced to one task S3-B2-01, builder validation + all-skip without writes). On approval: apply the edits, delete the proposal file, write the S3-B2-01 spec (speed mode: bigger tasks, fresh Pi session per task, docs synced at part gates)**
 - Roles (user, 2026-10-15): **Pi is no longer parked. Pi codes, one model per Pi session (the user switches models between sessions). Claude Code plans, writes task specs, reviews, keeps the ledger (md/ledger.jsonl, schema md/ledger.schema.json), verifies, and commits; it writes no implementation. The coder comparison is a side quest: where it conflicts with the project, the project wins (resolutions in NOTES.md)**
 - Last completed step: **S3 B-1 complete: S3-B1-01..04 (78b8ffd, 335eb32, bd56689, afc2712, S3-B1-04 commit below), all accepted first pass; gate: npm test 457/457, test:compass 101/101, single-worker 457/457**
 - Outcome: **S2 COMPLETE: termination, capture reset and retry fixes; compare run 46 requests / 26.0 min on the pipeline's 20 trios; branch s1/harness**
@@ -39,6 +39,6 @@ Stage meanings and dependencies: [plan.md](plan.md). Operating rules: [AGENTS.md
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.10.0 | 2026-10-15 | S3-B1-01 to 03 done; next S3-B1-04 with spec audit. |
+| 0.10.0 | 2026-10-16 | B-1 complete (S3-B1-01 to 04); next: trimmed-B-2 proposal awaiting approval. |
 | 0.9.0 | 2026-10-15 | Pi un-parked: Pi codes, CC plans and reviews; coder ledger added. |
 | 0.8.0 | 2026-10-15 | S3 Part A complete; next Part B. |

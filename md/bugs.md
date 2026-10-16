@@ -62,4 +62,4 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 |---|---|---|
 | 0.6.0 | 2026-10-15 | P7–P9 fixed; B17 (order-dependent suite) found and fixed; B12 explained by B17. |
 | 0.7.0 | 2026-10-15 | P10 fixed (S3-B1-01); P11 (restart after a leading user record) added as WATCH. |
-| 0.8.0 | 2026-10-15 | E5 fixed by the user (mimo context settings); B18 (snapshots/ untracked in the portrait repo) added. |
+| 0.8.0 | 2026-10-16 | E5 fixed by the user (mimo context settings); B18 (snapshots/ untracked in the portrait repo) and B19 (shared test temp dirs, live portrait read in tests) added. |
