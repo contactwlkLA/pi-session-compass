@@ -1,6 +1,6 @@
 # pi-session-compass — Development Plan
 
-Revision: **0.7.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
+Revision: **0.8.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
 
 Contract: [Architecture specification](architecture.md)
 
@@ -135,6 +135,10 @@ Necessary failure tests:
 
 ## 8. Stage 6 — settings, acceptance, and handoff
 
+### Notes for planning (user, 2026-10-16)
+
+- **User-friendly setup.** The end product's configuration should be reviewable from one place, not spread across files: extend the single-file approach used for the gate (src/gate-config.ts, S4-02) to the rest of the plugin's setup (extraction and building models, limits, cooldowns), or present all of it in one settings view. Not urgent; plan it here.
+
 ### Tasks
 
 - [ ] **S6.T1 — Update user-facing settings and diagnostics.** Update settings/status help with actual candidate-batch units, run stop reasons, pending work, mode, bypass count, and evaluated policy/model. Correct the debug-path description and remove inert builder-prompt HTML comments in an isolated change. Verify prompt cleanup separately from gate effects.
@@ -168,6 +172,6 @@ Handoff contents: implementation diff/commit, exact dependency versions, test re
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.5.0 | 2026-10-16 | Stage 5 planning notes: prefix runs, extraction cache, parallel harness calls. |
 | 0.6.0 | 2026-10-16 | Stage 3 simple rollback (user-approved trim): two snapshot boundaries; S3.T4 is build validation only, with no restore or edit guard; verification and M3 match. |
 | 0.7.0 | 2026-10-16 | S3.T5 simplified (user-approved Part C check): reset takes the mutex; legacy positions seed once; no migration backup, cutoff, or notice. |
+| 0.8.0 | 2026-10-16 | Stage 6 planning note: user-friendly setup reviewable from one place. |
