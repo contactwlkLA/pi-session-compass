@@ -1,6 +1,6 @@
 # Stage 4 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.6.0** · Status: **Approved (user, 2026-10-16)**
+Project: **pi-session-compass** · Revision: **0.7.0** · Status: **Approved (user, 2026-10-16)**
 
 Date: **2026-10-16**
 
@@ -139,6 +139,20 @@ npm run test:compass
 npm test
 ```
 
+**Audit answers (CC, 2026-10-16; part of this spec; numbers refer to outputs/s4/handoff/S4-02-audit.md):**
+
+1. **Blocker 1: option (a).** `prepareRun` resolves the gate once: `mode = flag ?? snapshot.gateMode ?? "off"`, `source = flag ? "flag" : "settings"`. It takes the raw flag as an optional `PrepareOptions` field and returns the resolved gate in `PrepareResult`. `executeRun` validates the raw flag next to `parseLimits` (H3, exit 2, before `prepareRun` writes anything), then reuses the one resolved gate for the confirmation, the manifest re-freeze, and `runPipeline`. Standalone `prepare` keeps no `--gate-mode` flag and records `source: "settings"`.
+2. **Blocker 2: write `stages.gate` only when gate requests > 0.** An off run's receipt keeps `stages` exactly as today, and validation-rounds-receipt.test.ts:131 stays unchanged. The `gate` block is always present (zeros in off runs).
+3. **Risk 1 / Question 2: exclude `stage: "gate"` traces from `requests.usageTotals`.** Jev usage goes only into the `gate` block.
+4. **Risk 4: no static src import in counter.ts.** The new method is `gateAttempt(model: string): boolean`; pipeline-boot calls it as `onGateAttempt: () => counter.gateAttempt(opts.gate.model)`. The constructor does not change. Together with Noise 1, no harness file statically imports a src value.
+5. **Risk 5 / Noise 6: wrap, as you propose, and record the error.** If `gateAttempt` throws, record the error the way `guardSink` does (so it reaches the receipt's sink errors), then return `false`. The trio then falls back with `over_budget` and goes to extraction.
+6. **Risks 2, 3, 6–9: as you describe.** Keep the spec wording on the refusal time (Risk 6); pin the `pendingGate` cases in tests (Risk 7); move both progress sites and the coverage line together (Risk 8); gate totals go only into the `gate` block, never into `counts` (Risk 9).
+7. **Noise 1–5, 7, 8, 10: as you propose.** Carry one resolved `gate` record `{ mode, source, policyHash, model }` on `BootOptions`, filled in run.ts through dynamic imports. Use your stat and receipt names. Put the `kind: "gate"` trace lines after the existing groups. `renderRunningTable` takes a required `covered` count. Add the extra tests you list.
+8. **Question 1: header, then H4, then H5.** A skipped trio's entry shows its gate scores (H4) and then H5 in place of the extractor output.
+9. **Question 3: treat an unknown snapshot `gateMode` as `off`.** The confirmation then shows H2, so the user sees it before confirming. No new string.
+10. **Question 4: composed evidence is enough.** Use the counter-decline unit test, S4-01's `over_budget` to extraction test, and the existing test that pins the position after an extraction failure. Do not add a non-mocked pipeline test.
+11. **Question 5 / Noise 13:** `scripts/compass/probe.ts` and the `knip.json` entry are committed (0a7ef53, a separate probe tool). Do not modify them. Keep `JEV_POLICY`, `JEV_POLICY_HASH`, `buildGateState`, `callJev`, and `routeGate` exported from src/jev.ts with unchanged names and values, so probe.ts keeps working. Criterion 1 covers `src/` only. Your verification runs include the probe files; report any failure that comes from them instead of fixing it.
+
 ## CC review and gate (not for the coder)
 
 Review per planner-prompt.md Step 2; ledger entry in md/ledger.jsonl. Check: no path makes a request in `off` mode or without a key; the deadline covers the retry wait; `Retry-After` never extends past the deadline; no key, body, or response text in results, errors, or logs; Q texts byte-exact; `skip` happens only under enforce and `no_lesson`; a skipped trio saves its position without candidates.
@@ -151,6 +165,6 @@ S4-02 review: `GATE_CONFIG` is the only gate-value source; hash unchanged; each 
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.4.0 | 2026-10-16 | Plain vocabulary (`no_lesson`, `maybe_lesson`, `fallback`, `over_budget`) after three provider content-filter stops; answer (9) on `over_budget`. |
 | 0.5.0 | 2026-10-16 | Neutral prose from Pi's filter review (credential, timeout and test wording); `key_missing`, `check_stopped`, `checkStoppedForRun`. |
 | 0.6.0 | 2026-10-16 | S4-02 spec (single gate config file, harness gate counting and records); H4–H6 approved by the user. |
+| 0.7.0 | 2026-10-16 | S4-02 audit answers (gate resolved in `prepareRun`; `stages.gate` only when non-zero; `gateAttempt(model)`; sheet order header, H4, H5). |
