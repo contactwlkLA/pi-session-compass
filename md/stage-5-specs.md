@@ -1,6 +1,6 @@
 # Stage 5 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.1.0** · Status: **Approved (user, 2026-10-16)**
+Project: **pi-session-compass** · Revision: **0.2.0** · Status: **Approved (user, 2026-10-16)**
 
 Date: **2026-10-16**
 
@@ -64,6 +64,21 @@ npm run test:compass
 npm test
 ```
 
+**Audit answers (CC, 2026-10-16; part of this spec; numbers refer to outputs/s5/handoff/S5-01-audit.md):**
+
+1. **Blocker 1: as you propose.** corpus.ts collects every `--source` from its own argv; `parseArgv` stays as it is for the other flags.
+2. **Blocker 2: as you propose.** probe.ts is not modified. score.ts builds probe-shaped rows with a local copy of the snippet rule (whitespace flattened, 90 characters, `…`), calls `renderTable`, and inserts the first column line by line: header cell `session`, separator `---`, the file name on each row.
+3. **Risk 1 / Question 3: change the layout.** Copies go to `<output>/sessions/<n>-<source folder name>/<file name>`, with `n` the 1-based position of the source on the command line. No collision is possible, and no new string is needed.
+4. **Risks 3–6: as you plan.** The first stop set wins and is reported; later results are still recorded. Create `<corpus>/cache` after P10 and before the first request. Tests always pass `--output`; score writes into the given folder and creates it. Put `CorpusSet` in types.ts and import it from both scripts.
+5. **Noise 3: add `file`** (relative to the corpus) to each `scores.jsonl` row. All other Noise items: as you plan, including the zero-row test (13) and the determinism test (15).
+6. **Question 1:** exit 2 for P1–P4 and the copy mismatch, 1 for an unexpected error.
+7. **Question 2: option (a).** Reuse the existing `strings.frozenCopyMismatch`.
+8. **Question 4: as you propose.** stderr for P1–P4, P6, P7, P10, P12 and the copy mismatch; stdout for P5, P8, P9, P11, P13.
+9. **Question 5: verdict-based over all rows.** `scored + fallbacks + notRun` equals the selected rows; `cached` counts separately.
+10. **Question 6:** drop `session` and add `corpus` (the absolute folder). `runType` is the given `--run-type`, `trios` is the number of selected rows, and `stop` uses P11's labels.
+11. **Question 7: yes.** Exactly the four approved lines and the two existing ones, in the order `confirmLimits`, then `confirmLimitSource`, between the `Corpus:` and `Jev model:` lines, with no trailing blank line.
+12. **Questions 8 and 9: as you plan.** A missing `freeze.json` or corpus file gives P6. P13 prints for every completed row, cached rows included.
+
 ### Protected text P1–P13 (approved by the user, 2026-10-16)
 
 | ID | Where | Text |
@@ -93,3 +108,4 @@ Planner difficulty: S5-01 medium.
 | Revision | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-16 | S5-01 spec; P1–P13 approved by the user. |
+| 0.2.0 | 2026-10-16 | S5-01 audit answers (repeated `--source`, table column, numbered source folders, exit codes, streams, summary fields). |
