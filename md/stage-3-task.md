@@ -1,6 +1,6 @@
 # Stage 3 — Preserve pending work and safe restore
 
-Project: **pi-session-compass** · Revision: **0.4.0** · Status: **Approved (user, 2026-10-14)**
+Project: **pi-session-compass** · Revision: **0.5.0** · Status: **Approved (user, 2026-10-14)**
 
 Date: **2026-10-14**
 
@@ -51,16 +51,16 @@ Protected text expected in Part A: the truncated-or-rewritten source report; the
 
 ### B1 — Typed outcomes and pending candidates (S3.T2)
 
-- [ ] **1.** Split extraction success-empty from failure. A failed extraction leaves the trio eligible for retry and is never recorded as an empty result.
-- [ ] **2.** Derive trio IDs from the session header ID and entry IDs (or a hash of the trio's own records), never a whole-file hash. Derive candidate IDs from trio ID and ordinal.
-- [ ] **3.** Store pending candidates with source path and cwd. Preserve raw candidates before the optional post-review. In file mode, drain only candidates from the selected file.
-- [ ] **4.** A failed review or build keeps its candidates and stops cleanly.
+- [x] **1.** Split extraction success-empty from failure. A failed extraction leaves the trio eligible for retry and is never recorded as an empty result. *(78b8ffd S3-B1-01; P10)*
+- [x] **2.** Derive trio IDs from the session header ID and entry IDs (or a hash of the trio's own records), never a whole-file hash. Derive candidate IDs from trio ID and ordinal. *(78b8ffd S3-B1-01)*
+- [x] **3.** Store pending candidates with source path and cwd. Preserve raw candidates before the optional post-review. In file mode, drain only candidates from the selected file. *(335eb32, bd56689, afc2712; the harness passes the file filter in S3-B1-04)*
+- [x] **4.** A failed review or build keeps its candidates and stops cleanly. *(bd56689, afc2712; tests/pending-build.test.ts)*
 
 ### B2 — Validated publication and restore (S3.T4)
 
 - [ ] **1.** Separate builder decision calculation from file writes.
 - [ ] **2.** Whole-batch validation: exactly one action per candidate, valid references, no conflicting operations. A valid all-skip batch completes without file writes.
-- [ ] **3.** Wire the snapshot (A2) as the scan-position and pending-work authority, taken at the three boundaries: (a) after a trio's candidates are saved with the scan position; (b) after builder decisions are validated and the intended file digests are recorded, before any portrait file is written; (c) after publication completes.
+- [ ] **3.** *(B-1: (a) bd56689 and (c) afc2712 done; (b) in B-2)* Wire the snapshot (A2) as the scan-position and pending-work authority, taken at the three boundaries: (a) after a trio's candidates are saved with the scan position; (b) after builder decisions are validated and the intended file digests are recorded, before any portrait file is written; (c) after publication completes.
 - [ ] **4.** On restart, restore the last snapshot's state and files and redo what followed it, after a per-file edit guard: each portrait/archive file must equal the snapshot copy or the recorded intended digest; otherwise stop and report a conflict without overwriting.
 - [ ] **5.** Git stays an optional audit layer; a Git failure never discards candidates.
 - [ ] **6.** Update the harness trio counter and reports to read the scan position from the snapshot.
@@ -113,6 +113,6 @@ Protected text expected in Part C: the migration notice (including the historica
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.2.0 | 2026-10-15 | A1 done (A-1 to A-2c); Pi parked after A-2b; tests isolated per file (B17). |
 | 0.3.0 | 2026-10-15 | Part A complete (A1, A2, gate). |
 | 0.4.0 | 2026-10-15 | Pi codes again from Part B; CC plans, reviews, and keeps the coder ledger. |
+| 0.5.0 | 2026-10-15 | B1 done (S3-B1-01 to 03); B2.3 boundaries (a) and (c) done. |

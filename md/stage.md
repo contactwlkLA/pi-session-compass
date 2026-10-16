@@ -1,6 +1,6 @@
 # pi-session-compass — Stage continuation
 
-Revision: **0.9.0** · Updated: **2026-10-15**
+Revision: **0.10.0** · Updated: **2026-10-15**
 
 Select the first unchecked stage. A checked stage requires verified milestone evidence. Unchecked means not started, partial, or blocked; use the continuation fields below. Stop after that stage’s completion or a documented stopping condition.
 
@@ -14,12 +14,12 @@ Select the first unchecked stage. A checked stage requires verified milestone ev
 ## Continuation
 
 - Active stage: **S3**
-- Next unfinished step: **S3 Part B, split into two sessions (user decision 2026-10-15): B-1 = typed outcomes, pending candidates, snapshot wiring (B1 + B2.3, B2.6); B-2 = builder split, validated publication, restore with edit guard, crash tests (B2.1, B2.2, B2.4, B2.5, B3). First write md/stage-3b.md (task specs for the Pi coder, each under ~100K tokens of context) for user approval**
+- Next unfinished step: **S3-B1-04 (harness reads the work state), spec in md/stage-3b.md, starting with the Pi spec audit; then the B-1 gate; then write the B-2 specs (builder split, validated publication, boundary b, restore with edit guard, crash tests)**
 - Roles (user, 2026-10-15): **Pi is no longer parked. Pi codes, one model per Pi session (the user switches models between sessions). Claude Code plans, writes task specs, reviews, keeps the ledger (md/ledger.jsonl, schema md/ledger.schema.json), verifies, and commits; it writes no implementation. The coder comparison is a side quest: where it conflicts with the project, the project wins (resolutions in NOTES.md)**
-- Last completed step: **S3 Part A complete: A-1..A-2c (47a95b5) scanner 26 of 26 trios; A-3 snapshot store (2edb1ab); gates 420/420, 91/91, single-worker 420/420**
+- Last completed step: **S3-B1-01 (78b8ffd), 02a (335eb32), 02b (bd56689), 03 (afc2712), each accepted first pass; gates at afc2712: npm test 457/457, test:compass 91/91, single-worker 457/457, 20 default-order runs 0 failures**
 - Outcome: **S2 COMPLETE: termination, capture reset and retry fixes; compare run 46 requests / 26.0 min on the pipeline's 20 trios; branch s1/harness**
 - Blocker: **none**
-- Pending user inputs: **go-ahead for Part B; Part B protected text (restore conflict report, failed review/build stop message)**
+- Pending user inputs: **none for B-1; B-2 protected text (restore conflict report) when the B-2 specs are written**
 - Stage order: **plan order, S2.T1–T3 before the optional S2.T4 Jev probe (user decision 2026-10-14)**
 - Limits: **suggested at launch from the [compass.md](compass.md) run-type table; confirmed by the user for every live run**
 - Smoke result (S1.T4): **PASS** (2026-10-14, attempt 3, capped at 5 requests; outputs/s1-t4/smoke-result.md)
@@ -38,6 +38,6 @@ Stage meanings and dependencies: [plan.md](plan.md). Operating rules: [AGENTS.md
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.10.0 | 2026-10-15 | S3-B1-01 to 03 done; next S3-B1-04 with spec audit. |
 | 0.9.0 | 2026-10-15 | Pi un-parked: Pi codes, CC plans and reviews; coder ledger added. |
 | 0.8.0 | 2026-10-15 | S3 Part A complete; next Part B. |
-| 0.7.0 | 2026-10-15 | S3 Part A A-1..A-2c done; Pi parked; next A-3. |
