@@ -68,6 +68,7 @@ function scanSavingCandidates(texts: string[]): void {
 describe("runPipelineLoop", () => {
   const defaultSettings: PortraitSettings = {
     enabled: true,
+    gateMode: "off",
     intervalMs: 300_000,
     startupDelayMs: 2000,
     ruleLimit: 200,

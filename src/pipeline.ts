@@ -8,6 +8,7 @@ import { countPendingTrios, discoverFiles, reviewPendingCandidates, scanSessions
 import { getPortraitDir, getSessionDirs } from "./config.js";
 import { reportError } from "./error.js";
 import { setCachedPipelineState } from "./footer.js";
+import { resetGateRun } from "./gate.js";
 import { emitCooldown } from "./instrument.js";
 import { type LlmProgressInfo, NO_LLM_PROGRESS_SINK, setLlmProgressSink } from "./llm-call.js";
 import { NO_CANCEL_CHECK, runMaintenance } from "./maintenance-core.js";
@@ -133,6 +134,7 @@ export async function runPipelineLoop(
   shouldCancel: () => boolean,
   sourceFilter: string | null,
 ): Promise<PipelineStats> {
+  resetGateRun();
   const portraitDir = getPortraitDir();
   const pipelineState = loadPortraitState(portraitDir);
   const rateLimitMs = settings.rateLimitMs;

@@ -69,20 +69,20 @@ No live call before S4-03. S4-03 needs `TYPESAFE_API_KEY` in the environment.
 
 ### S4-01 — Jev adapter and plugin wiring (Pi; spec in [stage-4-specs.md](stage-4-specs.md))
 
-- [ ] **1.** `src/jev.ts`: policy constants (model pin, threshold, state cap, deadline, the Q table) and `JEV_POLICY_HASH`.
-- [ ] **2.** `serializeGateState(trio)` and the 32 KiB check.
-- [ ] **3.** `callJev(state, apiKey, fetchImpl, now, beforeAttempt)`: deadline, one retry, `Retry-After`, no retry on non-transient errors, response validation; returns `{ kind: "scored", answers, model, usage, attempts, latencyMs }` or `{ kind: "fallback", reason, attempts, latencyMs }`. `beforeAttempt` is called before each HTTP attempt (the harness counter hook) and may throw.
-- [ ] **4.** `routeGate(result)`: `no_lesson` only under the routing rule; else `maybe_lesson`.
-- [ ] **5.** Tests with a mocked `fetch` and clock: positive, low, mixed, and uncertain probabilities; missing, extra, or wrong-typed answers; NaN, negative, and >1 values; each error status; 429 with and without `Retry-After`; a retry that would overrun the deadline; timeout; network error; oversized state; the key never appears in any returned value or error text.
+- [x] **1.** `src/jev.ts`: policy constants (model pin, threshold, state cap, deadline, the Q table) and `JEV_POLICY_HASH`.
+- [x] **2.** `serializeGateState(trio)` and the 32 KiB check.
+- [x] **3.** `callJev(state, apiKey, fetchImpl, now, beforeAttempt)`: deadline, one retry, `Retry-After`, no retry on non-transient errors, response validation; returns `{ kind: "scored", answers, model, usage, attempts, latencyMs }` or `{ kind: "fallback", reason, attempts, latencyMs }`. `beforeAttempt` is called before each HTTP attempt (the harness counter hook) and returns false when the run is over budget.
+- [x] **4.** `routeGate(result)`: `no_lesson` only under the routing rule; else `maybe_lesson`.
+- [x] **5.** Tests with a mocked `fetch` and clock: positive, low, mixed, and uncertain probabilities; missing, extra, or wrong-typed answers; NaN, negative, and >1 values; each error status; 429 with and without `Retry-After`; a retry that would overrun the deadline; timeout; network error; oversized state; the key never appears in any returned value or error text.
 
 ### S4-02 — Harness (Pi)
 
 - [ ] **0.** *(user, 2026-10-16)* **One review point for the gate's setup.** Move every gate value out of `src/jev.ts` into a single file, `src/gate-config.ts`: the default mode, Jev model, endpoint, threshold, state cap, deadline, retry wait, and the four questions, each with a one-line comment on what it decides. `src/jev.ts`, `src/gate.ts`, the `gateMode` setting's default, and the harness read from it; no gate value is written anywhere else. The policy hash is computed from that file's values.
 
-- [ ] **1.** *(in S4-01)* Setting `gateMode` (S text) in src/schema.ts; default `off`.
-- [ ] **2.** *(in S4-01)* In `tryExtractTrio` (src/collector.ts), before extraction: `off` skips the gate; `shadow` calls it and always extracts; `enforce` skips extraction on `no_lesson` and saves the scan position as for a successful empty extraction.
-- [ ] **3.** *(in S4-01)* Run-scoped gate state (missing key → U1 once and no requests; three consecutive failures → U2 once and gate off for the run), reset at the start of each `runPipelineLoop`.
-- [ ] **4.** *(in S4-01)* Instrument hooks: `onGateAttempt` (called through `beforeAttempt`; the harness counts it and may decline it when over budget) and `onGateResult` (trio reference, mode, policy hash, decision, answers or fallback reason, model, latency, usage).
+- [x] **1.** *(in S4-01)* Setting `gateMode` (S text) in src/schema.ts; default `off`.
+- [x] **2.** *(in S4-01)* In `tryExtractTrio` (src/collector.ts), before extraction: `off` skips the gate; `shadow` calls it and always extracts; `enforce` skips extraction on `no_lesson` and saves the scan position as for a successful empty extraction.
+- [x] **3.** *(in S4-01)* Run-scoped gate state (missing key → U1 once and no requests; three consecutive failures → U2 once and gate off for the run), reset at the start of each `runPipelineLoop`.
+- [x] **4.** *(in S4-01)* Instrument hooks: `onGateAttempt` (called through `beforeAttempt`; the harness counts it and may decline it when over budget) and `onGateResult` (trio reference, mode, policy hash, decision, answers or fallback reason, model, latency, usage).
 - [ ] **5.** Harness: `--gate-mode off|shadow|enforce` (default: the setting); manifest and receipt record mode, policy hash, and source; the counter counts Jev attempts under stage `gate`; traces and the results sheet carry each trio's gate result; the receipt adds gate totals (scored, `no_lesson`, fallbacks by reason, Jev latency, Jev usage). H1–H3 as approved.
 - [ ] **6.** Tests: shadow never skips extraction; enforce skips only on `no_lesson` and advances the position; every fallback extracts; U1 and U2 once each; the counter declining a gate attempt (over budget) stops the run with the position unchanged; `/portrait:collect N` counts only productive trios; off makes no gate call.
 

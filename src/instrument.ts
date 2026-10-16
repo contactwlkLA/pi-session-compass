@@ -9,6 +9,8 @@
  * in the same process before running the pipeline loop.
  */
 
+import type { GateResultEvent } from "./gate.js";
+
 /** One extraction attempt over an agent→user→assistant trio, whether or not it produced notes. */
 export interface TrioExaminedEvent {
   sessionPath: string;
@@ -35,6 +37,10 @@ export interface InstrumentHooks {
   onTrioExamined?: (event: TrioExaminedEvent) => void;
   onBuild?: (event: BuildEvent) => void;
   onCooldown?: (event: CooldownEvent) => void;
+  /** Called before every Jev gate request; false declines it (the run is over budget). */
+  onGateAttempt?: () => boolean;
+  /** One recorded gate result, emitted for every non-off gate check. */
+  onGateResult?: (event: GateResultEvent) => void;
 }
 
 let hooks: InstrumentHooks = {};
@@ -54,4 +60,13 @@ export function emitBuild(event: BuildEvent): void {
 
 export function emitCooldown(event: CooldownEvent): void {
   hooks.onCooldown?.(event);
+}
+
+/** Whether a Jev gate request may be sent: no hook means allowed. */
+export function emitGateAttempt(): boolean {
+  return hooks.onGateAttempt?.() ?? true;
+}
+
+export function emitGateResult(event: GateResultEvent): void {
+  hooks.onGateResult?.(event);
 }

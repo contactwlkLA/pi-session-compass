@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2026 avtc <tarasenkov@gmail.com>
 
 /**
- * Portrait settings schema (20 settings), rendered via the `/portrait:settings` command
+ * Portrait settings schema (21 settings), rendered via the `/portrait:settings` command
  * (avtc-pi-settings-ui). Settings live in `~/.pi/agent/avtc-pi-portrait-settings.json` (global-only).
  *
  * Duration settings store milliseconds as plain numbers (settings-ui convention); they are named
@@ -10,10 +10,12 @@
  */
 
 import { type SettingsSchema, settingsFilePaths } from "avtc-pi-settings-ui";
+import type { GateMode } from "./gate.js";
 
 /** The portrait settings (shape declared here; defaults live in {@link PORTRAIT_SCHEMA}). */
 export interface PortraitSettings {
   enabled: boolean;
+  gateMode: GateMode; // Jev gate before extraction: no request / record only / skip rejects
   intervalMs: number | null; // recurring interval between background collections (null = manual-only)
   startupDelayMs: number; // one-time delay after app start before the first collection
   ruleLimit: number;
@@ -47,6 +49,15 @@ export const PORTRAIT_SCHEMA: SettingsSchema = {
       description: "Master switch for the portrait extension (background collection + injection).",
       type: "boolean",
       defaultValue: true,
+    },
+    {
+      id: "gateMode",
+      label: "Jev gate",
+      description:
+        "Checks each trio with the Jev classifier before extraction. Off: no check. Shadow: check and record, but extract every trio. Enforce: skip extraction for trios the gate rejects. Needs TYPESAFE_API_KEY.",
+      type: "string",
+      defaultValue: "off",
+      presets: ["off", "shadow", "enforce"],
     },
     {
       id: "intervalMs",
@@ -220,7 +231,7 @@ export const PORTRAIT_SCHEMA: SettingsSchema = {
   tabs: [
     {
       label: "General",
-      settingIds: ["enabled", "intervalMs", "startupDelayMs", "ruleLimit", "maxAgeDays"],
+      settingIds: ["enabled", "gateMode", "intervalMs", "startupDelayMs", "ruleLimit", "maxAgeDays"],
     },
     {
       label: "Building",

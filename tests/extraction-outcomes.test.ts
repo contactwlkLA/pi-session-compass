@@ -232,6 +232,7 @@ describe("successful extraction with no rules", () => {
 describe("pipeline stop", () => {
   const settings: PortraitSettings = {
     enabled: true,
+    gateMode: "off",
     intervalMs: 300_000,
     startupDelayMs: 2000,
     ruleLimit: 200,

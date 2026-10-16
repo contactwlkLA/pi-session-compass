@@ -13,6 +13,7 @@ import { appendDebug, openDebugDump } from "./debug.js";
 import { reportError } from "./error.js";
 import { extractContent } from "./filtering.js";
 import { setCachedPipelineState } from "./footer.js";
+import { checkTrio } from "./gate.js";
 import { emitTrioExamined } from "./instrument.js";
 import { type CompleteRecord, readCompleteRecords } from "./jsonl-reader.js";
 import { buildSingleUserMessage, callPortraitLlm, PAUSED } from "./llm-call.js";
@@ -549,6 +550,14 @@ async function streamAndExtract(opts: StreamAndExtractOptions): Promise<StreamAn
     records: [TrioRecord, TrioRecord, TrioRecord],
   ): Promise<TrioStep> {
     const settings = getPortraitSettings();
+    const gate = await checkTrio(trio, settings.gateMode, sessionFile);
+    if (gate.decision === "skip") {
+      // The gate rejected the trio: the scan moves past it exactly as after an
+      // extraction that found nothing — position saved, no candidates, no record
+      // of an examined trio.
+      savePosition();
+      return "continue";
+    }
     const extraction = await callExtractionLlm(
       { agentBefore: trio.agentBefore, userFeedback: trio.userFeedback, agentAfter: trio.agentAfter },
       settings.debugDumpLimit,

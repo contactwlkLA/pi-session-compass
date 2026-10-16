@@ -14,9 +14,9 @@ Select the first unchecked stage. A checked stage requires verified milestone ev
 ## Continuation
 
 - Active stage: **S4**
-- Next unfinished step: **S4-01 (md/stage-4-specs.md): Pi audits, then codes in a fresh session; then S4-02 (harness) spec; S4-03 live wire check needs TYPESAFE_API_KEY (user puts the export in a file CC sources only in the run command)**
+- Next unfinished step: **S4-02 (harness + item 0: all gate configuration in src/gate-config.ts): CC writes the spec; Pi audits and codes in a fresh session. Then S4-03 live wire check (needs TYPESAFE_API_KEY)**
 - Roles (user, 2026-10-15): **Pi is no longer parked. Pi codes, one model per Pi session (the user switches models between sessions). Claude Code plans, writes task specs, reviews, keeps the ledger (md/ledger.jsonl, schema md/ledger.schema.json), verifies, and commits; it writes no implementation. The coder comparison is a side quest: where it conflicts with the project, the project wins (resolutions in NOTES.md)**
-- Last completed step: **S3 Part C complete: S3-C-01 (mimo-v2.6-flash, accepted first pass); Part C gate: npm test 483/483, test:compass 101/101, single-worker 483/483, concurrent run of both suites green; M3 verified**
+- Last completed step: **S4-01 accepted first pass (mimo-v2.6-flash): Jev adapter (src/jev.ts), gate modes and run state (src/gate.ts), gateMode setting, gate step before extraction; npm test 546/546, test:compass 101/101**
 - Outcome: **S2 COMPLETE: termination, capture reset and retry fixes; compare run 46 requests / 26.0 min on the pipeline's 20 trios; branch s1/harness**
 - Blocker: **none**
 - Pending user inputs: **TYPESAFE_API_KEY (for S4-03)**
