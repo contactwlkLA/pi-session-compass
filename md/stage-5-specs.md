@@ -1,6 +1,6 @@
 # Stage 5 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.2.0** · Status: **Approved (user, 2026-10-16)**
+Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Approved (user, 2026-10-16)**
 
 Date: **2026-10-16**
 
@@ -97,11 +97,124 @@ npm test
 | P12 | score: bad concurrency | `compass score: --concurrency must be an integer from 1 to 8` |
 | P13 | score: progress | `trio ${done}/${n}: ${verdict}` |
 
+## S5-02a — Extraction-only run, cached per trio
+
+One new harness command, `extract.ts`, runs the production extractor on each trio of a frozen corpus set, several at a time, counted against run limits, and caches each result so a rerun never pays twice. No review, no building, no portrait. Every test mocks the model; no live call.
+
+**Read:** scripts/compass/score.ts (whole: the checks, cache, worker pool, stop rules, outputs); scripts/compass/corpus.ts (`trioKey`); scripts/compass/pipeline-boot.ts lines 175–265 (settings snapshot, model runtime, model resolution, `wrapStreamFn`, attempt sink, `setCapturedModel`); scripts/compass/run.ts lines 1–30 and 215–230 (env isolation before any src import); scripts/compass/settings.ts (`captureSettingsSnapshot`); scripts/compass/counter.ts (`wrapStreamFn`, `refusedDuring`, `exhausted`, `stopReason`, `snapshot`); src/collector.ts lines 900–1020 (`callExtractionLlm`); src/llm-call.ts (`LlmAttemptEvent`, `setLlmAttemptSink`, `setCapturedModel`); src/work-state.ts (`EXTRACTION_POLICY_REVISION`). Test templates: tests/compass/score.test.ts, tests/compass/running-table.test.ts (mocked model calls).
+
+**Where and how (CC's plan):**
+
+1. **src/collector.ts: export `callExtractionLlm`.** Add `export` only; no other change.
+2. **scripts/compass/model-boot.ts (new): the model setup, shared.** Move steps 2–4 of `runPipeline` (model runtime from `~/.pi/agent` auth and models files, model resolution with the existing `modelUnavailable` / `noModelOverride` errors, `wrapStreamFn` installed as the default stream function, `setCapturedModel`) into one exported function. `runPipeline` calls it; its behavior, strings, receipts, and tests stay exactly as they are. The attempt sink stays with each caller.
+3. **scripts/compass/corpus-run.ts (new): what score and extract share.** Move from score.ts, without changing its behavior: the freeze check, the key re-read, the `--set` and `--concurrency` parsing, cache reading (tolerant of a cut last line) and appending, the worker pool (start only while no stop is set, rows in corpus order), and the not-run row. score.ts imports them; its tests pass unchanged.
+4. **scripts/compass/extract.ts (new).** Usage: `extract.ts --corpus <dir> --set dev|heldout|all --run-type <t> --max-model-requests N --max-run-ms N --limits-source <s> [--concurrency N] [--output <dir>] [--confirmed]`.
+   - **Env isolation first:** set `PI_PORTRAIT_STATE_DIR` to `<output>/portrait` (created empty) before any src import. All src imports are dynamic, as in run.ts.
+   - **Checks before any request,** in score's order: limits, `--set`, `--concurrency`, freeze, key re-read. Then capture the settings snapshot to `<output>/settings-snapshot.json`, boot the model (model-boot.ts; an access error is printed as run.ts prints it, exit 1), and compute the **extractor revision**: the first 12 hex of `sha256Text(`${EXTRACTION_POLICY_REVISION}\n${provider}/${id}\n${thinkingLevel}`)`.
+   - **Cache:** `<corpus>/cache/extract-<revision>.jsonl`, one line per successful extraction: `{ key, notes, attempts, usage: { input, output }, latencyMs }`. Read before the run block; a hit makes no request. Failed extractions are not cached.
+   - **Run block:** P14, P15, the existing limit and limit-source lines, P16, then P8's `Output:` line. Without `--confirmed`, print P9 and exit 2. No request before confirmation.
+   - **Per trio:** `callExtractionLlm(trio, 0)` (dumps off). A `PAUSED` throw or a `failed` outcome makes the row `failed`. Attribute attempts and usage to the trio through an `AsyncLocalStorage` store, set around each call and read by the attempt sink, so concurrent trios never mix. A trio's `latencyMs` runs from its start to its finish.
+   - **Stops:** the counter's ceiling (`request limit` / `time limit`, as in score); three failed extractions in a row in completion order, reset by a success (`three failed extractions in a row`). The first stop wins; running trios finish and are recorded; the rest are `not_run`.
+   - **Outputs**, default `<root>/outputs/s5/extract-<set>-<timestamp>/`: `extract.jsonl` (one row per selected trio in corpus order: `{ key, set, sessionId, file, index, outcome, notes, attempts, usage, latencyMs, cached }`, with `outcome` one of `success`, `failed`, `not_run`; `notes` is `[]` unless `success`); `summary.json` (`runType`, `corpus`, `set`, `corpusFreeze`, `limits` with `source`, `confirmed: true`, `concurrency`, `model`, `thinkingLevel`, `revision`, `postExtractionEnabled` from the snapshot (recorded only; review never runs), `trios`, `cached`, `outcomes` counts, `requests`, `elapsedMs`, usage totals for this run's requests, `stop`). P17 per finished trio, P18 at the end. Exit codes as in score: 0, 3 (limit), 4 (three failures), 2 (refused), 1 (unexpected).
+5. **scripts/compass/strings.ts:** P14–P18 exactly as approved. **knip.json:** add extract.ts as an entry.
+
+**Edge cases to cover:** a cache hit for every trio (no request, model still booted, P15 shows them cached); a failed extraction (row `failed`, not cached, a rerun tries it again); two trios in flight whose attempts interleave (each row gets only its own usage); a limit reached with trios in flight; three failures in a row (exit 4); `postExtractionEnabled: true` in the snapshot (recorded, no review call).
+
+**Acceptance criteria:**
+
+1. `runPipeline` behaves as before (all existing compass tests pass unchanged), and score.ts behaves as before (its tests pass unchanged).
+2. extract refuses before any request on each check, and without `--confirmed`.
+3. Every model request passes the counter; requests never exceed the limit; cached trios make no request.
+4. Rows come out in corpus order with up to N trios in flight; per-trio usage and attempts are exact under concurrency.
+5. No change in src/ beyond the one `export`.
+
+**Tests** (tests/compass/extract.test.ts, new): mock the model layer as running-table.test.ts does, with controllable per-call delays and usage; one test per acceptance criterion and per edge case.
+
+**Allowed scope:** src/collector.ts (the `export` keyword only), scripts/compass/model-boot.ts (new), scripts/compass/corpus-run.ts (new), scripts/compass/extract.ts (new), scripts/compass/score.ts (moving shared code out only), scripts/compass/pipeline-boot.ts (calling model-boot only), scripts/compass/strings.ts, scripts/compass/types.ts, knip.json (entries only), tests/compass/extract.test.ts (new).
+
+**Constraints:** P14–P18 exactly as approved; no other new user-facing text. Existing strings, receipts, and exit codes unchanged. Tests never read `~/.pi` and make no live request.
+
+**Verification:**
+
+```
+npx vitest run --config vitest.compass.config.ts tests/compass/extract.test.ts tests/compass/score.test.ts
+npm run test:compass
+npm test
+```
+
+## S5-02b — Label sheet and offline policy scorer
+
+Two offline commands. `labels.ts` writes a readable sheet of trios to label or check, and validates a labels file. `evaluate.ts` scores a candidate gate policy against the labels and sweeps thresholds on the development set. No network, no model.
+
+**Read:** scripts/compass/corpus-run.ts and score.ts (row formats); scripts/compass/extract.ts (row format); scripts/compass/corpus.ts (`trios.jsonl` format); scripts/compass/util.ts; src/jev.ts (`JEV_POLICY`, `routeGate`, for the shipped rule). Test template: tests/compass/score.test.ts.
+
+**Labels file** (`labels-<set>.jsonl`, written by CC): one line per trio, `{ key, label, correction, source, note }`. `label` is `lesson` or `no_lesson`; `correction` is a boolean; `source` is `cc-draft`, `cc-draft-user-checked`, or `user`; `note` is a string (may be empty).
+
+**Where and how (CC's plan):**
+
+1. **scripts/compass/labels.ts (new), `export`.** Usage: `labels.ts export --corpus <dir> --set dev|heldout --scores <scores.jsonl> --extract <extract.jsonl> [--labels <labels.jsonl>] --select all|review --seed <text> --output <file.md>`.
+   - `all`: every trio of the set. `review` (needs `--labels`, else P27): every trio labeled `no_lesson`, every disagreement (labeled `lesson` with 0 extractor rules, or `no_lesson` with ≥ 1 rule), and a seeded 10% sample of the rest (the first `ceil(n / 10)` by `sha256Text(`${seed}\n${key}`)` order).
+   - Sheet: P20, then per trio in corpus order: P21, P22, P23 plus one `  - ${rule}` line per rule, P24, then P25's three labeled blocks: the last 800 characters of agent before, the whole user reply, the first 800 characters of agent after, each in a fenced block.
+2. **labels.ts `check`.** Usage: `labels.ts check --corpus <dir> --set dev|heldout --labels <labels.jsonl>`. Every key of the set appears exactly once, no key outside the set, every field valid. Each problem prints P26 to stderr (all problems, then exit 2). On success print P26's summary line (with the file's sha256) and exit 0.
+3. **scripts/compass/evaluate.ts (new), `policy`.** Usage: `evaluate.ts policy --corpus <dir> --set dev|heldout --labels <l> --scores <s> --extract <e> --policy <policy.json> [--output <dir>]`. A policy file is `{ name, questions: [<ids>], thresholds: { <id>: number } }` (P33 when invalid). A trio is **rejected** when it was scored and every listed question's answer is ≤ its threshold; a fallback or unscored trio is never rejected. Report (P29, plus `evaluate.json` with every count, the rejected keys, and the missed `lesson` and correction keys): rejected of total; `lesson` trios kept of all `lesson` trios; correction misses (rejected trios labeled `correction: true`); the miss-rate bound `3 / (lesson trios)` when there are no misses, else the observed rate; extraction saved (the rejected trios' requests and tokens from `extract.jsonl`); gate cost (all scored trios' Jev tokens).
+4. **evaluate.ts `sweep`.** Usage: `evaluate.ts sweep --corpus <dir> --set dev --labels <l> --scores <s> --extract <e> [--output <dir>]`. Refuses any set but `dev` (P28, exit 2). Rules: `all four` and `without steering`, thresholds 0.05 to 0.50 in steps of 0.05. Writes `sweep.md`: P30's header and one row per rule and threshold (rejected, lesson kept with percent, correction misses), plus `sweep.json`.
+5. **Inputs must agree:** every key in the labels, scores, and extract files belongs to the corpus set given, and the scores and extract files cover the whole set (P26 problem lines, exit 2).
+6. **scripts/compass/strings.ts:** P19–P33 exactly as approved. **knip.json:** add both commands as entries.
+
+**Acceptance criteria:**
+
+1. `review` selection is deterministic for a seed and includes every `no_lesson` label and every disagreement.
+2. `check` reports every problem in one run.
+3. The policy counts match a hand-computed example (tests with a small fixture of labels, scores, and extract rows), including fallbacks never rejected and the bound.
+4. `sweep` refuses `heldout`.
+5. No network access (tests stub `fetch` to fail), and no write outside `--output`.
+
+**Tests** (tests/compass/labels.test.ts and tests/compass/evaluate.test.ts, new): one per acceptance criterion and each P26 problem kind.
+
+**Allowed scope:** scripts/compass/labels.ts (new), scripts/compass/evaluate.ts (new), scripts/compass/strings.ts, scripts/compass/types.ts, knip.json (entries only), tests/compass/labels.test.ts (new), tests/compass/evaluate.test.ts (new).
+
+**Constraints:** P19–P33 exactly as approved; no other new text. No change to src/ or to existing harness behavior.
+
+**Verification:**
+
+```
+npx vitest run --config vitest.compass.config.ts tests/compass/labels.test.ts tests/compass/evaluate.test.ts
+npm run test:compass
+npm test
+```
+
+### Protected text P14–P33 (approved by the user, 2026-10-16)
+
+| ID | Where | Text |
+|---|---|---|
+| P14 | extract: header | `compass extract — extraction only (no review, no building, no portrait)` |
+| P15 | extract: corpus line | `Corpus: ${dir} · set ${set}: ${n} trios (${cached} cached, ${toRun} to extract)` |
+| P16 | extract: model line | `Extractor: ${provider}/${id} · thinking ${thinking} · revision ${revision} · ${concurrency} at once` |
+| P17 | extract: progress | `trio ${done}/${n}: ${rules} rules` or `trio ${done}/${n}: failed` |
+| P18 | extract: end | `Extracted ${ok} · cached ${cached} · failed ${failed} · not run ${notRun} · requests ${requests} · stop: ${stop}` with `${stop}` one of `completed`, `request limit`, `time limit`, `three failed extractions in a row` |
+| P19 | labels/evaluate: missing flag | `compass ${tool}: ${flag} is required` |
+| P20 | sheet title | `# Label sheet — ${set}, ${n} trios (${selection})` |
+| P21 | sheet entry header | `## ${file} · trio ${index} · ${key}` |
+| P22 | sheet Jev line | `Jev: correction ${c}, preference ${p}, steering ${s}, confusion ${f}` (two decimals), or `Jev: fallback (${reason})`, or `Jev: not scored` |
+| P23 | sheet extractor line | `Extractor: ${n} rules`, or `Extractor: failed`, or `Extractor: not run` |
+| P24 | sheet label line | `Label: ${label} · correction ${yes\|no} · ${source}`, plus ` · ${note}` when the note is not empty, or `Label: (none)` |
+| P25 | sheet text blocks | `Agent before (last 800 characters):` / `User reply:` / `Agent after (first 800 characters):` |
+| P26 | labels: problems and summary | `compass labels: ${key} ${problem}` with `${problem}` one of `is missing`, `appears more than once`, `is not in set ${set}`, `has an invalid field: ${field}`; summary `Labels ${set}: ${n} trios · lesson ${l} · no_lesson ${nl} · corrections ${c} · sha256 ${sha}` |
+| P27 | labels: review without labels | `compass labels: --select review needs --labels` |
+| P28 | evaluate: sweep on held-out | `compass evaluate: the threshold sweep runs on dev only` |
+| P29 | evaluate: policy report | `Policy ${name} on ${set}: rejected ${r} of ${n} · lesson kept ${k} of ${K} (${pct}%) · correction misses ${m} · miss bound ${bound} · extraction saved ${req} requests, ${in} in / ${out} out tokens · gate cost ${gin} in / ${gout} out tokens` |
+| P30 | evaluate: sweep table header | `\| rule \| threshold \| rejected \| lesson kept \| correction misses \|` with rule names `all four` and `without steering` |
+| P31 | labels: bad selection | `compass labels: --select must be all or review` |
+| P32 | labels/evaluate: input mismatch | `compass ${tool}: ${file} does not cover set ${set} of ${corpus}` |
+| P33 | evaluate: bad policy | `compass evaluate: ${file} is not a valid policy` |
+
 ## CC review and gate (not for the coder)
 
 Review per planner-prompt.md Step 2; ledger entry in md/ledger.jsonl. Check: no request before the checks pass; the counter is the only path to a request; cache rules (only scored and `oversized_state`); split is by session and seeded; rows in corpus order; P1–P13 byte-exact; no key in any artifact. Then CC runs the freeze on D1's two folders (offline) and reports the census before any live scoring.
 
-Planner difficulty: S5-01 medium.
+Planner difficulty: S5-01 medium; S5-02a medium-high (model-boot move, concurrency attribution); S5-02b medium.
+
+S5-02a review: `runPipeline` unchanged; one `export` in src; usage attributed per trio under concurrency. S5-02b review: review selection, counts by hand on the fixture, sweep refuses held-out.
 
 ## Revision history
 
@@ -109,3 +222,4 @@ Planner difficulty: S5-01 medium.
 |---|---|---|
 | 0.1.0 | 2026-10-16 | S5-01 spec; P1–P13 approved by the user. |
 | 0.2.0 | 2026-10-16 | S5-01 audit answers (repeated `--source`, table column, numbered source folders, exit codes, streams, summary fields). |
+| 0.3.0 | 2026-10-16 | S5-02a (extraction) and S5-02b (label sheet, scorer) specs; P14–P33 approved by the user. |

@@ -1,6 +1,6 @@
 # Stage 5 — Evaluate the Jev gate
 
-Project: **pi-session-compass** · Revision: **0.2.0** · Status: **Approved (user, 2026-10-16)**
+Project: **pi-session-compass** · Revision: **0.2.1** · Status: **Approved (user, 2026-10-16)**
 
 Date: **2026-10-16**
 
@@ -24,7 +24,7 @@ Pi codes two harness tasks from CC specs. CC runs the live scoring and extractio
 | Task | Plan tasks | Outcome | Who |
 |---|---|---|---|
 | S5-01 — Corpus and gate scoring | S5.T1, S5.T2 (freeze) | Frozen corpus copy, census, session-level dev/held-out split; gate-only scoring of a set (concurrent, cached by trio and policy hash) | Pi |
-| S5-02 — Extraction cache, label sheet, scorer | S5.T2, S5.T3 (tooling) | Extraction-only run per trio (concurrent, cached by trio and extractor revision, no building); label sheet export/import; offline policy scorer and threshold sweep | Pi |
+| S5-02 — Extraction cache, label sheet, scorer (coded as S5-02a extraction and S5-02b labels + scorer) | S5.T2, S5.T3 (tooling) | Extraction-only run per trio (concurrent, cached by trio and extractor revision, no building); label sheet export/import; offline policy scorer and threshold sweep | Pi |
 | S5-03 — Score, extract, label (dev + held-out) | S5.T2, S5.T3 | Gate scores and extractor output for both sets; labels drafted and checked; split and labels frozen before tuning | CC + user |
 | S5-04 — Tune on dev, then test once on held-out | S5.T3, S5.T4 | Policy chosen on dev; one held-out evaluation; audit of rejects and misses; one paired off/enforce run for measured cost | CC |
 | S5-05 — Pilot report | S5.T5 | Decision report with numerators, denominators, bounds, cost, and limitations; go/no-go for the scale-up | CC |
@@ -93,3 +93,4 @@ Pi codes two harness tasks from CC specs. CC runs the live scoring and extractio
 |---|---|---|
 | 0.1.0 | 2026-10-16 | Draft: evidence, five tasks, fixed design, decisions D1–D3. |
 | 0.2.0 | 2026-10-16 | Pilot on TxnHunter-3 + agy-sessions-3; D1–D3 decided; S5-06 scale-up on TxnHunter-dashboard-v3 after a go. |
+| 0.2.1 | 2026-10-16 | S5-02 coded in two parts (02a, 02b). |
