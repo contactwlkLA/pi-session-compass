@@ -1,6 +1,6 @@
 # Stage 4 — Add the Jev gate and run limits
 
-Project: **pi-session-compass** · Revision: **0.4.0** · Status: **Approved (user, 2026-10-16)**
+Project: **pi-session-compass** · Revision: **0.5.0** · Status: **Approved (user, 2026-10-16)**
 
 Date: **2026-10-16**
 
@@ -77,6 +77,8 @@ No live call before S4-03. S4-03 needs `TYPESAFE_API_KEY` in the environment.
 
 ### S4-02 — Harness (Pi)
 
+- [ ] **0.** *(user, 2026-10-16)* **One review point for the gate's setup.** Move every gate value out of `src/jev.ts` into a single file, `src/gate-config.ts`: the default mode, Jev model, endpoint, threshold, state cap, deadline, retry wait, and the four questions, each with a one-line comment on what it decides. `src/jev.ts`, `src/gate.ts`, the `gateMode` setting's default, and the harness read from it; no gate value is written anywhere else. The policy hash is computed from that file's values.
+
 - [ ] **1.** *(in S4-01)* Setting `gateMode` (S text) in src/schema.ts; default `off`.
 - [ ] **2.** *(in S4-01)* In `tryExtractTrio` (src/collector.ts), before extraction: `off` skips the gate; `shadow` calls it and always extracts; `enforce` skips extraction on `no_lesson` and saves the scan position as for a successful empty extraction.
 - [ ] **3.** *(in S4-01)* Run-scoped gate state (missing key → U1 once and no requests; three consecutive failures → U2 once and gate off for the run), reset at the start of each `runPipelineLoop`.
@@ -103,6 +105,6 @@ Threshold tuning, labels, held-out sets, and savings claims (S5). README/CONFIGU
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.2.0 | 2026-10-16 | Approved: questions rewritten for coding-agent sessions; U, S, H texts; S4-01 now holds the adapter and the plugin wiring (knip rejects an unused module), S4-02 the harness. |
 | 0.3.0 | 2026-10-16 | S4-01 audit: `limit_refused` added; only failures after a real request count toward the three. |
 | 0.4.0 | 2026-10-16 | Plain vocabulary in the design and tasks (`no_lesson`, `maybe_lesson`, `fallback`, `over_budget`); approved texts unchanged. |
+| 0.5.0 | 2026-10-16 | S4-02 item 0: all gate configuration in one file, src/gate-config.ts (user). |
