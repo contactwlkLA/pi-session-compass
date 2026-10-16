@@ -1,6 +1,6 @@
 # Stage 5 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Approved (user, 2026-10-16)**
+Project: **pi-session-compass** · Revision: **0.4.0** · Status: **Approved (user, 2026-10-16)**
 
 Date: **2026-10-16**
 
@@ -142,6 +142,16 @@ npm run test:compass
 npm test
 ```
 
+**Audit answers (CC, 2026-10-16; part of this spec; numbers refer to outputs/s5/handoff/S5-02a-audit.md):**
+
+1. **Question 1: option (a).** extract prints P6, P7, and P12 verbatim for the shared checks, `compass score:` prefix included; the shared code takes the message from its caller or returns a result the caller prints. A missing `--corpus` keeps the P6 fall-through, as in score.
+2. **Question 2:** the model access error prints `compass harness: ${accessError}` on stderr and exits 1, as `runPipeline` does.
+3. **Question 3:** `summary.usage` is the counter snapshot's `usageTotals`.
+4. **Question 4:** a `failed` row keeps the attempts and usage its own calls consumed.
+5. **Question 5:** yes, `Extracted` counts cached successes, as P11 does.
+6. **Question 6:** yes. Install the diagnostics sink as `runPipeline` does, writing to `<output>/diagnostics.log`; existing message text only.
+7. **Risks 1–9 and Noise 1–13: as you plan.** In particular: `bootModel` returns the model or an error and `runPipeline` keeps its receipt, stderr, and exit lines where they are (Risk 1); move score code verbatim (Risk 2); drop an attempt event with no store (Risk 3); dynamic imports after isolation (Risk 4); mock `scripts/compass/settings.js` in extract.test so no test reads `~/.pi` (Risk 5); `retries: 0` and `timeoutMs: null` in the test snapshot (Risk 6); failing streams reject inside `result()` (Risk 8); P17 prints `1 rules` verbatim (Noise 5).
+
 ## S5-02b — Label sheet and offline policy scorer
 
 Two offline commands. `labels.ts` writes a readable sheet of trios to label or check, and validates a labels file. `evaluate.ts` scores a candidate gate policy against the labels and sweeps thresholds on the development set. No network, no model.
@@ -220,6 +230,6 @@ S5-02a review: `runPipeline` unchanged; one `export` in src; usage attributed pe
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.1.0 | 2026-10-16 | S5-01 spec; P1–P13 approved by the user. |
 | 0.2.0 | 2026-10-16 | S5-01 audit answers (repeated `--source`, table column, numbered source folders, exit codes, streams, summary fields). |
 | 0.3.0 | 2026-10-16 | S5-02a (extraction) and S5-02b (label sheet, scorer) specs; P14–P33 approved by the user. |
+| 0.4.0 | 2026-10-16 | S5-02a audit answers (reuse P6/P7/P12, access error, usage source, diagnostics sink). |
