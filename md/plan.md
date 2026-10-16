@@ -1,6 +1,6 @@
 # pi-session-compass — Development Plan
 
-Revision: **0.6.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
+Revision: **0.7.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
 
 Contract: [Architecture specification](architecture.md)
 
@@ -79,7 +79,7 @@ Deferred and outside this plan: workspace/all-scope selection, public selection 
 
 - [ ] **S3.T4 — Validate builds.** Strengthen whole-batch validation: exactly one action per candidate, valid references, and no conflicting operations. A valid all-skip batch completes without file writes. Git remains an optional audit layer; a Git failure never discards candidates.
 
-- [ ] **S3.T5 — Integrate shared locking, migration, and reset.** Make migration, reset, and maintenance use the collection mutex. Import old offsets once with a backup, reconstructed assistant context, and a legacy cutoff preventing automatic re-extraction. Preserve the existing portrait and make the legacy progress files nonauthoritative. Include the snapshot in the reset confirmation. Teach advisory background counters about the new scan position without letting them write progress.
+- [ ] **S3.T5 — Integrate shared locking, migration, and reset.** Make reset use the collection mutex, as collection and maintenance already do. With no snapshot yet, seed scan positions once from the legacy progress file; from the first snapshot on, the snapshot is the authority and the legacy file is a read-only mirror for the advisory background counter. Preserve the existing portrait. Reset clears the snapshot.
 
 - [ ] **S3.T6 — Verify lifecycle and cancellation behavior.** Ensure stop/pause/reload/shutdown do not release the mutation lock while a writer remains active. Do not promise immediate abort for operations that cannot be interrupted; retain the existing “stop after current step” behavior with bounded remote calls. Existing cache/injection semantics stay intact.
 
@@ -93,9 +93,9 @@ Necessary failure tests:
 - An all-skip result completes without file writes; an optional-review failure preserves raw rules.
 - Restarted scanning emits the same trios as uninterrupted scanning, including append-at-EOF cases.
 - File-mode runs leave pending candidates from other sources untouched.
-- Migration imports old offsets once, reset clears the snapshot under the mutex, and legacy checkpoint files are no longer authoritative.
+- Legacy positions seed the scan once, reset clears the snapshot under the mutex, and legacy checkpoint files are no longer authoritative.
 
-**Milestone M3:** pending-work and validation tests pass in isolated fixtures. Old offsets cannot establish historical completeness; migration must state this explicitly.
+**Milestone M3:** pending-work and validation tests pass in isolated fixtures. Old offsets cannot establish historical completeness.
 
 ## 6. Stage 4 — add the Jev gate and run limits
 
@@ -139,7 +139,7 @@ Necessary failure tests:
 
 - [ ] **S6.T1 — Update user-facing settings and diagnostics.** Update settings/status help with actual candidate-batch units, run stop reasons, pending work, mode, bypass count, and evaluated policy/model. Correct the debug-path description and remove inert builder-prompt HTML comments in an isolated change. Verify prompt cleanup separately from gate effects.
 
-- [ ] **S6.T2 — Write operating and rollback instructions.** Document how to enable shadow, inspect evidence, activate enforce after evaluation, turn the gate off, roll back by hand from a snapshot after a failure, select an input file and an independent output directory, inspect selected paths, rescan explicitly, and migrate back safely. Gate-off rollback retains the recovery improvements. Downgrade rollback requires preserving pending candidates from the snapshot and using the migration backup; it is not just replacing package files.
+- [ ] **S6.T2 — Write operating and rollback instructions.** Document how to enable shadow, inspect evidence, activate enforce after evaluation, turn the gate off, roll back by hand from a snapshot after a failure, select an input file and an independent output directory, inspect selected paths, rescan explicitly, and migrate back safely. Gate-off rollback retains the recovery improvements. Downgrade rollback requires preserving pending candidates from the snapshot; the older plugin resumes from the legacy progress file, which stays in sync as a mirror. It is not just replacing package files.
 
 - [ ] **S6.T3 — Validate the release candidate.** Run the exit checks below and retain the results.
 
@@ -168,6 +168,6 @@ Handoff contents: implementation diff/commit, exact dependency versions, test re
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.4.0 | 2026-10-14 | Added the user's parked ideas to the deferred list. |
 | 0.5.0 | 2026-10-16 | Stage 5 planning notes: prefix runs, extraction cache, parallel harness calls. |
 | 0.6.0 | 2026-10-16 | Stage 3 simple rollback (user-approved trim): two snapshot boundaries; S3.T4 is build validation only, with no restore or edit guard; verification and M3 match. |
+| 0.7.0 | 2026-10-16 | S3.T5 simplified (user-approved Part C check): reset takes the mutex; legacy positions seed once; no migration backup, cutoff, or notice. |

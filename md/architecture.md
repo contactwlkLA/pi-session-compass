@@ -1,6 +1,6 @@
 # pi-session-compass — Architecture Specification
 
-Revision: **0.5.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
+Revision: **0.6.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
 
 Companion: [Development plan](plan.md)
 
@@ -211,9 +211,9 @@ In file mode, pending candidates from other sources stay pending and untouched.
 
 ### Migration and reset
 
-On first use, back up existing state and import old offsets once. Reconstruct the preceding assistant context and retain a legacy cutoff so previously committed user records are not automatically re-extracted. If the source is missing or no valid boundary can be established, retain the legacy entry and report it instead of guessing. Importing offsets cannot recover already lost work or prove prior completeness. Preserve the existing portrait; do not automatically reset or re-extract history. Offer an explicit rescan option for a selected corpus if the owner wants completeness checked. Background progress counters are advisory and must use the new scan-position authority without writing progress.
+With no snapshot yet, scan positions are seeded once from the legacy progress file; the first saved snapshot then becomes the authority, and the legacy file is kept only as a read-only mirror for the advisory background counter. Legacy positions resume unchecked, and the first trio after each one may lack its preceding assistant context; this is accepted. Importing offsets cannot recover already lost work or prove prior completeness. Preserve the existing portrait; do not automatically reset or re-extract history.
 
-Keep existing portrait/archive filenames and formatting. Include the snapshot in the existing reset confirmation, hold the collection mutex, and clear snapshot state as part of the reset protocol. Old byte-checkpoint files become migration inputs, not a second live authority. Do not mutate state while downgrading to an unmodified older plugin; restore the migration backup only after preserving pending candidates.
+Keep existing portrait/archive filenames and formatting. Reset holds the collection mutex and clears the snapshot; its confirmation text is unchanged.
 
 ## 7. Evidence, quality, and activation
 
@@ -269,6 +269,6 @@ Official Jev documentation: the API reference, models and version-pinning, and N
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.3.0 | 2026-10-12 | Added the `probe` run type to the run-type list. |
 | 0.4.0 | 2026-10-14 | Added the baseline-coverage decision to the verification and decisions table. |
 | 0.5.0 | 2026-10-16 | §6 simple rollback (user-approved trim): two snapshot boundaries, no publication intent, no automatic restore or edit guard; §3 flow and components match. |
+| 0.6.0 | 2026-10-16 | §6 migration and reset simplified (user-approved Part C check): legacy positions seed once; no backup, cutoff, or notice; reset holds the mutex. |

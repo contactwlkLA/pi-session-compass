@@ -1,6 +1,6 @@
 # Stage 3 — Preserve pending work
 
-Project: **pi-session-compass** · Revision: **0.6.0** · Status: **Approved (user, 2026-10-14)**
+Project: **pi-session-compass** · Revision: **0.7.0** · Status: **Approved (user, 2026-10-14)**
 
 Date: **2026-10-14**
 
@@ -14,7 +14,7 @@ Use [stage.md](stage.md) for continuation. The stage runs in three parts, **A �
 |---|---|---|---|
 | A — Scan position and snapshot store | S3.T3, S3.T1 | Scanner reaches all 26 census trios; snapshot module exists and is tested, not yet wired | ~2 h |
 | B — Pending work, build validation | S3.T2, S3.T4 | Candidates survive failures and crashes; builds publish only after whole-batch validation; a restart resumes from the snapshot | ~2.5 h |
-| C — Locking, migration, lifecycle, M3 | S3.T5, S3.T6 | Shared lock, one-time legacy import, reset covers the snapshot; lifecycle safe; M3 verified | ~1.5 h |
+| C — Locking, reset, lifecycle, M3 | S3.T5, S3.T6 | Reset takes the shared lock; lifecycle test; test hygiene (B18, B19); M3 verified | ~1 h |
 
 Pair setup (user, 2026-10-14): Pi writes the code from a per-part brief; Claude Code plans, reviews, verifies, and commits. Part A: [stage-3a-pi.md](stage-3a-pi.md) (Pi) and [stage-3a-cc.md](stage-3a-cc.md) (CC). Pi wrote Blocks A-1 to A-2b; the user then parked Pi over Pi/mimo configuration problems (bugs.md E5), so Claude Code coded A-2c and A-3, with the same brief and review gates. From Part B (user, 2026-10-15), Pi codes again from per-task specs and Claude Code plans, reviews, keeps the coder ledger, and commits; see [NOTES.md](NOTES.md) and [planner-prompt.md](planner-prompt.md).
 
@@ -77,31 +77,33 @@ Protected text expected in Part B: the failed review/build stop message. New val
 
 ## Part C — Locking, migration, lifecycle, M3
 
+One task, S3-C-01 ([stage-3c.md](stage-3c.md)), after the user-approved simplicity check (2026-10-16). No protected text.
+
 ### C1 — Shared locking, migration, and reset (S3.T5)
 
-- [ ] **1.** Migration, reset, and maintenance use the collection mutex.
-- [ ] **2.** Import old offsets once, with a backup, reconstructed assistant context, and a legacy cutoff that prevents automatic re-extraction. Old offsets point past a closing assistant record, so the import moves them back to the trio boundary or records the cutoff.
-- [ ] **3.** Preserve the existing portrait; the legacy progress files become nonauthoritative. Migration states that old offsets cannot establish historical completeness.
-- [ ] **4.** The reset confirmation includes the snapshot; reset clears it under the mutex.
-- [ ] **5.** Advisory background counters read the new scan position and never write progress.
+- [ ] **1.** Reset takes the collect lock, as collection and maintenance already do; a busy lock returns the existing "Collection already in progress." message.
+- [x] **2.** With no snapshot, scan positions seed once from `processed-sessions.json`; the snapshot is the authority from its first save; the legacy file is a read-only mirror for the background counter. *(S3-B1-02a/02b)*
+- [x] **3.** Reset clears the snapshot. *(S3-B1-02b)*
+- [ ] **4.** New portrait repos ignore `snapshots/` (B18).
 
 ### C2 — Lifecycle and cancellation (S3.T6)
 
-- [ ] **1.** Stop, pause, reload, and shutdown do not release the mutation lock while a writer is active.
-- [ ] **2.** Keep the existing "stop after current step" behavior with bounded remote calls; promise no immediate abort for steps that cannot be interrupted.
-- [ ] **3.** Existing cache and injection semantics stay intact (existing tests pass unchanged).
+- [x] **1.** Stop, pause, reload, and shutdown do not release the collect lock while a writer is active; the run's `finally` releases it. *(existing src/index.ts behavior)*
+- [x] **2.** Keep the existing "stop after current step" behavior with bounded remote calls.
+- [ ] **3.** A test proves shutdown during a held collect lock keeps it held; existing cache and injection tests pass unchanged.
 
-### C3 — Lifecycle tests
+### C3 — Test hygiene
 
-- [ ] **1.** Migration imports old offsets once; a second start does not re-import.
-- [ ] **2.** Reset clears the snapshot under the mutex; legacy checkpoint files are no longer authoritative.
-- [ ] **3.** A stop or reload during a write leaves the lock held until the writer finishes.
+- [ ] **1.** tests/compass temp dirs are unique per run, and no test reads the live `~/.pi/portrait` (B19).
 
-Protected text expected in Part C: the migration notice (including the historical-completeness statement); the reset confirmation text with the snapshot.
+### Part C gate
+
+- [ ] **1.** Both full suites pass, raw results quoted, plus single-worker and one concurrent run of both suites. Commit and push.
+- [ ] **2.** Sync this file, stage.md, and bugs.md.
 
 ## Stage completion — M3
 
-- [ ] **1.** All plan.md Stage 3 verification items pass on isolated fixtures (B3, C3, A1 tests). Old offsets cannot establish historical completeness, and migration says so.
+- [ ] **1.** All plan.md Stage 3 verification items pass on isolated fixtures (A1, B3, C tests). Old offsets cannot establish historical completeness.
 - [ ] **2.** Both full suites pass, raw results quoted. Sync the task checks, stage.md, and bugs.md. Commit and push.
 - [ ] **3.** Checkpoint with the user before S4.
 
@@ -109,6 +111,6 @@ Protected text expected in Part C: the migration notice (including the historica
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.4.0 | 2026-10-15 | Pi codes again from Part B; CC plans, reviews, and keeps the coder ledger. |
 | 0.5.0 | 2026-10-16 | B1 done; B2.3 boundaries (a) and (c) and B2.6 done (S3-B1-01 to 04). |
 | 0.6.0 | 2026-10-16 | Simple rollback (user-approved trim): B2 is build validation only; no publication intent, restore, edit guard, or per-boundary crash tests. Part B complete (S3-B2-01). |
+| 0.7.0 | 2026-10-16 | Part C simplified to one task, S3-C-01 (user-approved): reset lock, B18, B19, lifecycle test; no migration machinery or protected text. |
