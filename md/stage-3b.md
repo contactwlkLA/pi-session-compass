@@ -1,6 +1,6 @@
 # Stage 3 Part B — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.4.0** · Status: **Approved (user, 2026-10-15)**
+Project: **pi-session-compass** · Revision: **0.5.0** · Status: **Approved (user, 2026-10-15)**
 
 Date: **2026-10-15**
 
@@ -18,12 +18,23 @@ Parent: [stage-3-task.md](stage-3-task.md) Part B. Contract: [architecture.md](a
 
 These hold for every B-1 task; a coder may not change them.
 
-1. **Outcomes.** Extraction and post-review return a typed outcome, `success` (zero or more rules) or `failed`. PAUSED keeps propagating as now. Only `success` advances the scan position. A failed extraction is never recorded as an empty result (P10).
+1. **Outcomes.** Extraction and post-review return a typed outcome, `success` (zero or more rules) or `failed`. PAUSED keeps propagating as now. Only a successful extraction advances the scan position (a failed post-review after a successful extraction keeps the advanced position and the raw rules; see As built). A failed extraction is never recorded as an empty result (P10).
 2. **Trio ID.** sha256 hex of `${sessionId}\n${idBefore}\n${idUser}\n${idAfter}` when the header session id and all three record `id`s are strings; otherwise sha256 hex of the three records' texts joined by `\n`. Candidate ID: `${trioId}:${ordinal}`, ordinal from 0 in the rule list it came from.
 3. **Work state lives in the snapshot.** `SnapshotState.scanPositions` and `pendingCandidates` (src/snapshot-store.ts) become the authority. When no snapshot exists yet, the first load seeds positions from `processed-sessions.json` (read only). After every snapshot write, positions are also written to `processed-sessions.json` as a mirror, read only by the background counter; Part C replaces the seed with a proper migration and retires the mirror.
 4. **Snapshot boundaries in B-1.** (a) after each examined trio: the new scan position plus that trio's candidates, in one snapshot; (c) after a build batch has written its files: those candidates removed. Boundary (b), the publication intent, is B-2. Until B-2, a crash between a build's file writes and boundary (c) can insert the same rules twice; that window is known and B-2 closes it.
 5. **A failed extraction, review, or build stops the run cleanly:** the pipeline reports one approved message, keeps all pending candidates, sets phase idle, skips auto-maintenance, and returns a `stopReason`.
 6. **Reset (interim).** `/portrait:reset` also removes `<portraitDir>/snapshots/`, so a reset still restarts the scan. No reset text changes until Part C.
+
+## As built (B-1 resolutions, after Pi's audit of this file, 2026-10-15)
+
+Where the task texts above disagree or leave a choice open, the code follows these answers:
+
+- **Review failure position.** S3-B1-02b criterion 3 replaces S3-B1-01 criterion 2 for review failures: the position advances with the extraction, the raw rules are kept as `needsPostReview`, and the next run reviews them (S3-B1-03). A failed extraction still saves nothing.
+- **What a stopped run builds.** A scan pass that stops returns no results, so nothing more is built after it. A failed pending review at the start of a run stops before the drain's build. A failed build stops the round; the failed batch and the batches after it stay pending. A stopped run never removes a candidate it has not built.
+- **Candidate ordinals.** Ordinals run over the list currently stored for the trio: raw rules over the raw list, and after a successful review, kept rules over the kept list (the raw candidates are removed first). IDs are unique among stored candidates; they do not record a rule's position in the raw list.
+- **Counts in messages.** T2 counts the failing trio's raw rules. T3 counts the `needsBuild` candidates still pending for the run's source filter.
+- **Drain.** `reviewPendingCandidates` reviews each stored group in order whatever `postExtractionEnabled` says, and stops at the first failure. The drain's review and build calls get the same cooldowns as the loop's.
+- **Not covered, by user direction (keep crash safety simple):** a dedicated Git-commit-failure test, and rules for malformed work-state entries (a group without `reviewContext` is skipped and stays pending).
 
 ## Protected text (approved by the user, 2026-10-15)
 
@@ -32,7 +43,7 @@ Shown to the user as `Portrait ${source}: ${message}` (src/index.ts).
 | ID | Source | Message | Task |
 |---|---|---|---|
 | T1 | `extraction error` | `Rule extraction failed for a trio in ${path}. Its scan position was kept; the trio will be extracted again on the next run.` | S3-B1-01 |
-| T2 | `review error` | `Rule review failed; ${n} extracted ${n === 1 ? "rule was" : "rules were"} kept and will be reviewed on the next run.` | S3-B1-01, S3-B1-02b |
+| T2 | `review error` | `Rule review failed; ${n} extracted ${n === 1 ? "rule was" : "rules were"} kept and will be reviewed on the next run.` | S3-B1-01, S3-B1-02b, S3-B1-03 |
 | T3 | `building error` | `Building failed; ${n} candidate ${n === 1 ? "rule was" : "rules were"} kept and will be built on the next run.` | S3-B1-03 |
 | T4 | harness receipt (scripts/compass/strings.ts) | `stopped: ${stage} failed; pending work was kept (see diagnostics.log)` with `${stage}` one of `extraction`, `review`, `build` | S3-B1-04 |
 
@@ -50,6 +61,8 @@ T1 and T4 are new beyond the stage-3-task list. Without T4, a stopped run's rece
 - Before declaring done, run every command under **Verification** and paste each result line.
 - If a fix attempt fails twice, stop and report under `Not done`.
 - Do not add measurement, logging of your own performance, or commentary on your own quality.
+- An existing test may be adapted when this task changes the behavior it exercises, even in a file listed for type fixes only: keep every assertion that still applies, and list each adapted test and why under `Done`.
+- References such as P10, §6, or stage-3-task item numbers are for Claude Code's bookkeeping; you can ignore them.
 
 **Spec audit (first step of every task, from S3-B1-04)**. Before changing any file, audit the task: read its Read list and the code at each "Where" location, then write `outputs/s3-b/handoff/<task_id>-audit.md` with these sections and stop:
 
@@ -223,8 +236,8 @@ export async function runPipelineLoop(settings, maxSequences, shouldCancel, sour
 
 1. At the start of `runPipelineLoop`, before the first scan: `reviewPendingCandidates`, then build the pending `needsBuild` candidates (criterion 2). A stop here ends the run as in S3-B1-01 criterion 4.
 2. After each scan pass, the pipeline builds `selectPendingForBuild(loadWorkState(dir), sourceFilter)` in batches of `buildingBatchSize`, passing candidate texts to `buildPortrait` as today. After a batch succeeds, `saveWorkState` removes exactly that batch's candidate IDs (boundary c); the counters (`totalInserted`, `rulesInsertedSinceMaintenance`) update as today.
-3. When `buildPortrait` returns `undefined`, no candidate is removed, `reportError` is called once with T3 (source `building error`, `${n}` = pending `needsBuild` count after the failure), and the run stops with `stopReason: "build_failed"` (S3-B1-01 criterion 4).
-4. A Git commit failure inside the build does not keep or drop candidates differently: a batch whose files were written is acknowledged.
+3. When `buildPortrait` returns `undefined`, no candidate of the failed batch (or of later batches) is removed, `reportError` is called once with T3 (source `building error`, `${n}` = pending `needsBuild` count after the failure), and the run stops with `stopReason: "build_failed"` (S3-B1-01 criterion 4).
+4. A Git commit failure inside the build does not keep or drop candidates differently: a batch is acknowledged exactly when `buildPortrait` returns its result.
 5. `selectPendingForBuild` with a path returns only that source's candidates, and building leaves other sources' candidates in the snapshot untouched.
 6. Every caller passes `sourceFilter`: src/index.ts and src/commands/collect.ts pass `null`; scripts/compass/pipeline-boot.ts passes `null` (S3-B1-04 changes it).
 7. Tests (extend tests/pipeline.test.ts or add tests/pending-build.test.ts): a candidate saved by one run and not built (simulate a crash after boundary a) is built by the next run with no re-extraction; build failure keeps the candidates and gives T3 and `build_failed`; successful batches are acknowledged and a second run builds nothing; source filter (criterion 5); a pending `needsPostReview` group is reviewed at the start of the next run.
@@ -300,6 +313,6 @@ Planner difficulty (fixed before each task starts, for the ledger): S3-B1-01 med
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.2.0 | 2026-10-15 | Approved by the user, with T1–T4. |
 | 0.3.0 | 2026-10-15 | S3-B1-02 split into 02a (module) and 02b (scanner wiring, reset) for the ~100K context target; type-fix scope added (user-approved). |
 | 0.4.0 | 2026-10-15 | S3-B1-04 rewritten with CC's where/how plan; spec-audit step with a Noise section (user-approved). |
+| 0.5.0 | 2026-10-15 | Pi audit of this file: As built section, test-adaptation and reference rules for the coder, wording fixes (user-approved). |
