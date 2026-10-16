@@ -1,0 +1,769 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 avtc <tarasenkov@gmail.com>
+
+/**
+ * Corpus scoring: every refusal path runs before any request; the counter is
+ * the only path to fetch; the cache rules; concurrency with corpus-order rows;
+ * the stop rules; and the credential staying out of every artifact. fetch is
+ * mocked and rejects by default, TYPESAFE_API_KEY is set and restored per
+ * test, and every corpus is frozen by the corpus command in a temp folder —
+ * nothing reads ~/.pi.
+ */
+
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { main as freezeCorpus } from "../../scripts/compass/corpus.js";
+import { main as scoreCorpus } from "../../scripts/compass/score.js";
+import { strings } from "../../scripts/compass/strings.js";
+import type { CorpusSet, CorpusTrio } from "../../scripts/compass/types.js";
+import { sha256File, sha256Text } from "../../scripts/compass/util.js";
+
+const ROOT = process.cwd();
+// Unique per test-file run so overlapping suite runs never share a directory.
+const TEST_TMP_ROOT = path.join(ROOT, "outputs", "test-tmp");
+fs.mkdirSync(TEST_TMP_ROOT, { recursive: true });
+const TEST_TMP = fs.mkdtempSync(path.join(TEST_TMP_ROOT, "score-"));
+
+const KEY = "score-credential-placeholder-0000";
+const HASH = "ad7880acdc3b";
+const MODEL = "jev-1.13.0";
+
+const sessionHeader = (id: string): Record<string, unknown> => ({ type: "session", id, cwd: "/tmp/project" });
+const assistant = (text: string): Record<string, unknown> => ({
+  type: "message",
+  message: { role: "assistant", content: [{ type: "text", text }] },
+});
+const user = (text: string): Record<string, unknown> => ({
+  type: "message",
+  message: { role: "user", content: [{ type: "text", text }] },
+});
+
+/** A header plus `count` trios: header, first assistant, then one user/assistant pair per trio. */
+function trioRecords(header: Record<string, unknown> | null, count: number): Record<string, unknown>[] {
+  const records: Record<string, unknown>[] = [];
+  if (header !== null) records.push(header);
+  records.push(assistant("the plan the agent laid out"));
+  for (let i = 0; i < count; i++) {
+    records.push(user(`the user's feedback number ${i + 1}`));
+    records.push(assistant(`the agent's reply number ${i + 1}`));
+  }
+  return records;
+}
+
+function writeSession(dir: string, name: string, records: Record<string, unknown>[]): void {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, name), `${records.map((record) => JSON.stringify(record)).join("\n")}\n`, "utf-8");
+}
+
+/** The split as the task defines it, restated here to check runs against the spec. */
+function setFor(seed: string, sessionId: string): CorpusSet {
+  return parseInt(sha256Text(`${seed}\n${sessionId}`).slice(0, 8), 16) % 2 === 0 ? "dev" : "heldout";
+}
+
+/** A seed that lands every given session id in the wanted set. */
+function seedLanding(sessionIds: string[], wanted: CorpusSet, prefix: string): string {
+  for (let attempt = 0; attempt < 1000; attempt++) {
+    const seed = `${prefix}-${attempt}`;
+    if (sessionIds.every((id) => setFor(seed, id) === wanted)) return seed;
+  }
+  throw new Error(`no seed lands ${sessionIds.join(", ")} in ${wanted}`);
+}
+
+/** A seed that lands the first session in dev and the second in heldout. */
+function seedSplitting(first: string, second: string): string {
+  for (let attempt = 0; attempt < 1000; attempt++) {
+    const seed = `split-${attempt}`;
+    if (setFor(seed, first) === "dev" && setFor(seed, second) === "heldout") return seed;
+  }
+  throw new Error(`no seed lands ${first} in dev and ${second} in heldout`);
+}
+
+const LOW_ANSWERS = {
+  correction: { type: "noul", noul: 0.01 },
+  preference: { type: "noul", noul: 0.02 },
+  steering: { type: "noul", noul: 0 },
+  confusion: { type: "noul", noul: 0.05 },
+};
+
+function scoredResponse(): Response {
+  return new Response(
+    JSON.stringify({ model: MODEL, answers: LOW_ANSWERS, usage: { input_tokens: 12, output_tokens: 3 } }),
+    {
+      status: 200,
+    },
+  );
+}
+
+function statusResponse(status: number): Response {
+  return new Response("", { status });
+}
+
+const fetchMock = vi.fn((): Promise<Response> => Promise.reject(new Error("network is unavailable in tests")));
+const REAL_FETCH = globalThis.fetch;
+let savedKey: string | undefined;
+
+async function capture(run: () => Promise<number>): Promise<{ code: number; out: string; err: string }> {
+  const outSpy = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+  const errSpy = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+  try {
+    const code = await run();
+    return {
+      code,
+      out: outSpy.mock.calls.map((call) => String(call[0])).join(""),
+      err: errSpy.mock.calls.map((call) => String(call[0])).join(""),
+    };
+  } finally {
+    outSpy.mockRestore();
+    errSpy.mockRestore();
+  }
+}
+
+/** Freeze one source folder of session files and return the corpus directory. */
+async function freezeSource(
+  name: string,
+  seed: string,
+  files: Record<string, Record<string, unknown>[]>,
+): Promise<string> {
+  const source = path.join(TEST_TMP, `source-${name}`);
+  for (const [fileName, records] of Object.entries(files)) writeSession(source, fileName, records);
+  const corpusDir = path.join(TEST_TMP, `corpus-${name}`);
+  const result = await capture(() => freezeCorpus(["--source", source, "--output", corpusDir, "--seed", seed]));
+  expect(result.code).toBe(0);
+  return corpusDir;
+}
+
+interface ScoreRun {
+  corpus: string;
+  set: string;
+  output: string;
+  requests: string;
+  runMs: string;
+  /** null omits the switch entirely, so the default applies. */
+  concurrency: string | null;
+  confirmed: boolean;
+}
+
+function scoreArgv(run: ScoreRun): string[] {
+  const argv = [
+    "--corpus",
+    run.corpus,
+    "--set",
+    run.set,
+    "--run-type",
+    "smoke",
+    "--max-model-requests",
+    run.requests,
+    "--max-run-ms",
+    run.runMs,
+    "--limits-source",
+    "user-override",
+    "--output",
+    run.output,
+  ];
+  if (run.concurrency !== null) argv.push("--concurrency", run.concurrency);
+  if (run.confirmed) argv.push("--confirmed");
+  return argv;
+}
+
+function defaultRun(corpus: string, output: string): ScoreRun {
+  return {
+    corpus,
+    set: "all",
+    output,
+    requests: "50",
+    runMs: "600000",
+    concurrency: "4",
+    confirmed: true,
+  };
+}
+
+interface ScoreRowJson {
+  key: string;
+  set: CorpusSet;
+  sessionId: string;
+  file: string;
+  index: number;
+  verdict: string;
+  answers: Record<string, number> | null;
+  reason: string | null;
+  model: string | null;
+  attempts: number;
+  latencyMs: number;
+  usage: { inputTokens: number; outputTokens: number } | null;
+  cached: boolean;
+}
+
+function readRows(outputDir: string): ScoreRowJson[] {
+  return fs
+    .readFileSync(path.join(outputDir, "scores.jsonl"), "utf-8")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => JSON.parse(line) as ScoreRowJson);
+}
+
+function readCorpusRows(corpusDir: string): CorpusTrio[] {
+  return fs
+    .readFileSync(path.join(corpusDir, "trios.jsonl"), "utf-8")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => JSON.parse(line) as CorpusTrio);
+}
+
+function readSummary(outputDir: string): Record<string, unknown> {
+  return JSON.parse(fs.readFileSync(path.join(outputDir, "summary.json"), "utf-8")) as Record<string, unknown>;
+}
+
+function readCacheLines(corpusDir: string): Record<string, unknown>[] {
+  const cachePath = path.join(corpusDir, "cache", `gate-${HASH}.jsonl`);
+  if (!fs.existsSync(cachePath)) return [];
+  return fs
+    .readFileSync(cachePath, "utf-8")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
+
+/** The one-session corpus most tests run against: three trios, dev and heldout irrelevant. */
+function threeTrioFiles(): Record<string, Record<string, unknown>[]> {
+  return { "alpha.jsonl": trioRecords(sessionHeader("sess-alpha"), 3) };
+}
+
+beforeEach(() => {
+  savedKey = process.env.TYPESAFE_API_KEY;
+  delete process.env.TYPESAFE_API_KEY;
+  fetchMock.mockReset();
+  fetchMock.mockImplementation(() => Promise.reject(new Error("network is unavailable in tests")));
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
+  fs.rmSync(TEST_TMP, { recursive: true, force: true });
+  fs.mkdirSync(TEST_TMP, { recursive: true });
+});
+
+afterEach(() => {
+  if (savedKey === undefined) delete process.env.TYPESAFE_API_KEY;
+  else process.env.TYPESAFE_API_KEY = savedKey;
+  globalThis.fetch = REAL_FETCH;
+  vi.restoreAllMocks();
+  fs.rmSync(TEST_TMP, { recursive: true, force: true });
+});
+
+describe("refusals before any request", () => {
+  it("refuses a limits error with the harness message and makes no request", async () => {
+    const corpus = await freezeSource("limits", "seed", threeTrioFiles());
+    const outDir = path.join(TEST_TMP, "score-out");
+
+    const { code, err } = await capture(() =>
+      scoreCorpus([
+        "--corpus",
+        corpus,
+        "--set",
+        "all",
+        "--run-type",
+        "smoke",
+        "--max-model-requests",
+        "5",
+        "--limits-source",
+        "user-override",
+        "--output",
+        outDir,
+        "--confirmed",
+      ]),
+    );
+
+    expect(code).toBe(2);
+    expect(err).toBe(`${strings.missingSwitch("max-run-ms")}\n`);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fs.existsSync(outDir)).toBe(false);
+  });
+
+  it("refuses an unknown set with the approved message", async () => {
+    const corpus = await freezeSource("set-guard", "seed", threeTrioFiles());
+    const outDir = path.join(TEST_TMP, "score-out");
+
+    const { code, err } = await capture(() =>
+      scoreCorpus(scoreArgv({ ...defaultRun(corpus, outDir), set: "development" })),
+    );
+
+    expect(code).toBe(2);
+    expect(err).toBe(`${strings.scoreBadSet}\n`);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fs.existsSync(outDir)).toBe(false);
+  });
+
+  it.each(["0", "9", "4.5", "abc"])("refuses an out-of-range concurrency of %s", async (value) => {
+    const corpus = await freezeSource("concurrency-guard", "seed", threeTrioFiles());
+    const outDir = path.join(TEST_TMP, `score-out-${value}`);
+
+    const { code, err } = await capture(() =>
+      scoreCorpus(scoreArgv({ ...defaultRun(corpus, outDir), concurrency: value })),
+    );
+
+    expect(code).toBe(2);
+    expect(err).toBe(`${strings.scoreBadConcurrency}\n`);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a corpus whose freeze file is missing", async () => {
+    const corpus = await freezeSource("no-freeze", "seed", threeTrioFiles());
+    fs.rmSync(path.join(corpus, "freeze.json"));
+    const outDir = path.join(TEST_TMP, "score-out");
+
+    const { code, err } = await capture(() => scoreCorpus(scoreArgv(defaultRun(corpus, outDir))));
+
+    expect(code).toBe(2);
+    expect(err).toBe(`${strings.scoreCorpusChanged(corpus)}\n`);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses an edited corpus file", async () => {
+    const corpus = await freezeSource("edited-meta", "seed", threeTrioFiles());
+    const corpusJson = path.join(corpus, "corpus.json");
+    fs.writeFileSync(corpusJson, `${fs.readFileSync(corpusJson, "utf-8")}\n`, "utf-8");
+    const outDir = path.join(TEST_TMP, "score-out");
+
+    const { code, err } = await capture(() => scoreCorpus(scoreArgv(defaultRun(corpus, outDir))));
+
+    expect(code).toBe(2);
+    expect(err).toBe(`${strings.scoreCorpusChanged(corpus)}\n`);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a frozen session copy edited after the freeze", async () => {
+    const corpus = await freezeSource("edited-copy", "seed", threeTrioFiles());
+    const copy = path.join(corpus, "sessions", "1-source-edited-copy", "alpha.jsonl");
+    const edited = fs
+      .readFileSync(copy, "utf-8")
+      .replace("the agent's reply number 1", "a reply that changed after the freeze");
+    fs.writeFileSync(copy, edited, "utf-8");
+    const outDir = path.join(TEST_TMP, "score-out");
+
+    const { code, err } = await capture(() => scoreCorpus(scoreArgv(defaultRun(corpus, outDir))));
+
+    expect(code).toBe(2);
+    expect(err).toBe(`${strings.scoreCorpusChanged(corpus)}\n`);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fs.existsSync(outDir)).toBe(false);
+  });
+
+  it("refuses without --confirmed, before the credential check and any request", async () => {
+    const corpus = await freezeSource("unconfirmed", "seed", threeTrioFiles());
+    const outDir = path.join(TEST_TMP, "score-out");
+
+    const { code, out, err } = await capture(() =>
+      scoreCorpus(scoreArgv({ ...defaultRun(corpus, outDir), confirmed: false })),
+    );
+
+    expect(code).toBe(2);
+    expect(out).toContain(`${strings.scoreNotConfirmed}\n`);
+    expect(err).toBe("");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fs.existsSync(outDir)).toBe(false);
+  });
+
+  it("refuses without TYPESAFE_API_KEY even when every trio is cached", async () => {
+    const corpus = await freezeSource("no-key-cached", "seed", threeTrioFiles());
+    process.env.TYPESAFE_API_KEY = KEY;
+    fetchMock.mockImplementation(async () => scoredResponse());
+    const firstRun = await capture(() =>
+      scoreCorpus(scoreArgv(defaultRun(corpus, path.join(TEST_TMP, "score-first")))),
+    );
+    expect(firstRun.code).toBe(0);
+    expect(readCacheLines(corpus)).toHaveLength(3);
+    fetchMock.mockClear();
+
+    delete process.env.TYPESAFE_API_KEY;
+    const outDir = path.join(TEST_TMP, "score-out");
+    const { code, out, err } = await capture(() => scoreCorpus(scoreArgv(defaultRun(corpus, outDir))));
+
+    expect(code).toBe(2);
+    expect(err).toBe(`${strings.scoreNoKey}\n`);
+    expect(out).toContain("(3 cached, 0 to score)");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fs.existsSync(outDir)).toBe(false);
+  });
+});
+
+describe("a completed run", () => {
+  it("prints the approved run block, one progress line per trio, and the final line", async () => {
+    const corpus = await freezeSource("block", seedSplitting("sess-alpha", "sess-beta"), {
+      "alpha.jsonl": trioRecords(sessionHeader("sess-alpha"), 3),
+      "beta.jsonl": trioRecords(sessionHeader("sess-beta"), 3),
+    });
+    const outDir = path.join(TEST_TMP, "score-out");
+    process.env.TYPESAFE_API_KEY = KEY;
+    fetchMock.mockImplementation(async () => scoredResponse());
+
+    const { code, out, err } = await capture(() => scoreCorpus(scoreArgv(defaultRun(corpus, outDir))));
+
+    expect(code).toBe(0);
+    expect(err).toBe("");
+    const lines = out.split("\n");
+    expect(lines[0]).toBe("compass score — Jev classifier only (no extraction, no building, no portrait)");
+    expect(lines[1]).toBe(`Corpus: ${corpus} · set all: 6 trios (0 cached, 6 to score)`);
+    expect(lines[2]).toBe(strings.confirmLimits(50, 600000));
+    expect(lines[3]).toBe(strings.confirmLimitSource("user-override"));
+    expect(lines[4]).toBe(`Jev model: ${MODEL} · policy ${HASH} · 4 at once`);
+    expect(lines[5]).toBe(`Output: ${outDir}`);
+    expect(lines[6]).toMatch(/^trio 1\/6: no_lesson$/);
+    const progress = lines.filter((line) => /^trio \d+\/6: /.test(line));
+    expect(progress.map((line) => Number(line.slice("trio ".length).split("/")[0]))).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(lines[lines.length - 2]).toBe(
+      "Scored 6 · cached 0 · fallbacks 0 · not run 0 · requests 6 · stop: completed",
+    );
+  });
+
+  it("writes rows in corpus order, the session column on the table, and the summary", async () => {
+    const corpus = await freezeSource("artifacts", seedSplitting("sess-alpha", "sess-beta"), {
+      "alpha.jsonl": trioRecords(sessionHeader("sess-alpha"), 3),
+      "beta.jsonl": trioRecords(sessionHeader("sess-beta"), 3),
+    });
+    const outDir = path.join(TEST_TMP, "score-out");
+    process.env.TYPESAFE_API_KEY = KEY;
+    fetchMock.mockImplementation(async () => scoredResponse());
+
+    const { code } = await capture(() => scoreCorpus(scoreArgv(defaultRun(corpus, outDir))));
+    expect(code).toBe(0);
+
+    const rows = readRows(outDir);
+    expect(rows.map((row) => row.key)).toEqual(readCorpusRows(corpus).map((row) => row.key));
+    expect(Object.keys(rows[0]).sort()).toEqual(
+      [
+        "key",
+        "set",
+        "sessionId",
+        "file",
+        "index",
+        "verdict",
+        "answers",
+        "reason",
+        "model",
+        "attempts",
+        "latencyMs",
+        "usage",
+        "cached",
+      ].sort(),
+    );
+    expect(rows[0]).toMatchObject({
+      set: "dev",
+      sessionId: "sess-alpha",
+      file: "sessions/1-source-artifacts/alpha.jsonl",
+      index: 1,
+      verdict: "no_lesson",
+      cached: false,
+      model: MODEL,
+    });
+    expect(rows[3]).toMatchObject({ set: "heldout", sessionId: "sess-beta", index: 1 });
+
+    const table = fs.readFileSync(path.join(outDir, "scores-table.md"), "utf-8").split("\n");
+    expect(table[0]).toBe("| session | # | verdict | correction | preference | steering | confusion | user reply |");
+    expect(table[1]).toBe("|---|---|---|---|---|---|---|---|");
+    expect(table[2]).toMatch(/^\| alpha\.jsonl \| 1 \| no_lesson \| 0\.01 \| 0\.02 \| 0\.00 \| 0\.05 \|/);
+    expect(table.some((line) => line.startsWith("| beta.jsonl | 1 |"))).toBe(true);
+
+    const summary = readSummary(outDir);
+    expect(summary).toMatchObject({
+      runType: "smoke",
+      corpus,
+      trios: 6,
+      set: "all",
+      limits: { maxRequests: 50, maxRunMs: 600000, source: "user-override" },
+      stop: "completed",
+      requests: 6,
+      policyHash: HASH,
+      concurrency: 4,
+      cached: 0,
+      confirmed: true,
+      corpusFreeze: sha256File(path.join(corpus, "freeze.json")),
+      verdicts: { no_lesson: 6 },
+      modelsReturned: [MODEL],
+      usage: { inputTokens: 72, outputTokens: 18 },
+    });
+    expect(summary).not.toHaveProperty("session");
+    expect(summary.latencyMs).toMatchObject({ mean: expect.any(Number), max: expect.any(Number) });
+  });
+
+  it("scores only the requested set", async () => {
+    const corpus = await freezeSource("set-select", seedSplitting("sess-alpha", "sess-beta"), {
+      "alpha.jsonl": trioRecords(sessionHeader("sess-alpha"), 3),
+      "beta.jsonl": trioRecords(sessionHeader("sess-beta"), 3),
+    });
+    process.env.TYPESAFE_API_KEY = KEY;
+    fetchMock.mockImplementation(async () => scoredResponse());
+
+    const devOut = path.join(TEST_TMP, "score-dev");
+    const dev = await capture(() => scoreCorpus(scoreArgv({ ...defaultRun(corpus, devOut), set: "dev" })));
+
+    expect(dev.code).toBe(0);
+    expect(dev.out).toContain(`Corpus: ${corpus} · set dev: 3 trios (0 cached, 3 to score)`);
+    const devRows = readRows(devOut);
+    expect(devRows).toHaveLength(3);
+    expect(new Set(devRows.map((row) => row.set))).toEqual(new Set(["dev"]));
+    expect(new Set(devRows.map((row) => row.sessionId))).toEqual(new Set(["sess-alpha"]));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    // The second run scores only the held-out sessions: the dev trios come from the cache.
+    const heldOut = path.join(TEST_TMP, "score-heldout");
+    const held = await capture(() => scoreCorpus(scoreArgv({ ...defaultRun(corpus, heldOut), set: "heldout" })));
+
+    expect(held.code).toBe(0);
+    expect(held.out).toContain(`Corpus: ${corpus} · set heldout: 3 trios (0 cached, 3 to score)`);
+    const heldRows = readRows(heldOut);
+    expect(heldRows).toHaveLength(3);
+    expect(new Set(heldRows.map((row) => row.set))).toEqual(new Set(["heldout"]));
+    expect(new Set(heldRows.map((row) => row.sessionId))).toEqual(new Set(["sess-beta"]));
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+
+    // The whole corpus now: nothing left to score, so no further request.
+    const allOut = path.join(TEST_TMP, "score-all");
+    const all = await capture(() => scoreCorpus(scoreArgv({ ...defaultRun(corpus, allOut), set: "all" })));
+
+    expect(all.code).toBe(0);
+    expect(all.out).toContain(`Corpus: ${corpus} · set all: 6 trios (6 cached, 0 to score)`);
+    const allRows = readRows(allOut);
+    expect(allRows).toHaveLength(6);
+    expect(allRows.filter((row) => row.cached)).toHaveLength(6);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
+
+  it("completes a set that selects no trio at all", async () => {
+    const corpus = await freezeSource("empty-set", seedLanding(["sess-alpha", "sess-beta"], "heldout", "held"), {
+      "alpha.jsonl": trioRecords(sessionHeader("sess-alpha"), 3),
+      "beta.jsonl": trioRecords(sessionHeader("sess-beta"), 3),
+    });
+    const outDir = path.join(TEST_TMP, "score-out");
+    process.env.TYPESAFE_API_KEY = KEY;
+
+    const { code, out } = await capture(() =>
+      scoreCorpus(scoreArgv({ ...defaultRun(corpus, outDir), set: "dev", concurrency: null })),
+    );
+
+    expect(code).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Without --concurrency the block still reports the default of four at once.
+    expect(out).toContain(`Jev model: ${MODEL} · policy ${HASH} · 4 at once`);
+    expect(out).toContain(`Corpus: ${corpus} · set dev: 0 trios (0 cached, 0 to score)`);
+    expect(out).toContain("Scored 0 · cached 0 · fallbacks 0 · not run 0 · requests 0 · stop: completed");
+    expect(readRows(outDir)).toHaveLength(0);
+    const summary = readSummary(outDir);
+    expect(summary).toMatchObject({ trios: 0, requests: 0, stop: "completed" });
+    expect(summary.verdicts).toEqual({});
+  });
+});
+
+describe("stops", () => {
+  it("declines at the request ceiling, records the running trios, and exits 3", async () => {
+    const corpus = await freezeSource("limit", "seed", {
+      "alpha.jsonl": trioRecords(sessionHeader("sess-alpha"), 6),
+    });
+    const outDir = path.join(TEST_TMP, "score-out");
+    process.env.TYPESAFE_API_KEY = KEY;
+    fetchMock.mockImplementation(async () => scoredResponse());
+
+    const { code } = await capture(() => scoreCorpus(scoreArgv({ ...defaultRun(corpus, outDir), requests: "1" })));
+
+    expect(code).toBe(3);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const rows = readRows(outDir);
+    expect(rows).toHaveLength(6);
+    expect(rows.filter((row) => row.verdict === "no_lesson")).toHaveLength(1);
+    expect(rows.filter((row) => row.reason === "over_budget")).toHaveLength(3);
+    expect(rows.filter((row) => row.verdict === "not_run").map((row) => row.index)).toEqual([5, 6]);
+    expect(readSummary(outDir)).toMatchObject({ stop: "request limit", requests: 1 });
+  });
+
+  it("stops on the run deadline and exits 3", async () => {
+    const corpus = await freezeSource("deadline", "seed", threeTrioFiles());
+    const outDir = path.join(TEST_TMP, "score-out");
+    process.env.TYPESAFE_API_KEY = KEY;
+    fetchMock.mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return scoredResponse();
+    });
+
+    const { code } = await capture(() =>
+      scoreCorpus(scoreArgv({ ...defaultRun(corpus, outDir), runMs: "50", concurrency: "1" })),
+    );
+
+    expect(code).toBe(3);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const rows = readRows(outDir);
+    expect(rows.map((row) => row.verdict)).toEqual(["no_lesson", "not_run", "not_run"]);
+    expect(readSummary(outDir)).toMatchObject({ stop: "time limit", requests: 1 });
+  });
+
+  it("stops on an authentication error and exits 4", async () => {
+    const corpus = await freezeSource("auth", "seed", threeTrioFiles());
+    const outDir = path.join(TEST_TMP, "score-out");
+    process.env.TYPESAFE_API_KEY = KEY;
+    let calls = 0;
+    fetchMock.mockImplementation(async () => {
+      calls++;
+      return calls === 1 ? scoredResponse() : statusResponse(401);
+    });
+
+    const { code, out } = await capture(() =>
+      scoreCorpus(scoreArgv({ ...defaultRun(corpus, outDir), concurrency: "1" })),
+    );
+
+    expect(code).toBe(4);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(readRows(outDir).map((row) => row.verdict)).toEqual(["no_lesson", "fallback", "not_run"]);
+    expect(readRows(outDir)[1].reason).toBe("http_401");
+    expect(out).toContain("Scored 1 · cached 0 · fallbacks 1 · not run 1 · requests 2 · stop: auth error");
+    expect(readSummary(outDir)).toMatchObject({ stop: "auth error", requests: 2 });
+  });
+
+  it("stops after three failed requests in a row and exits 4", async () => {
+    const corpus = await freezeSource("streak", "seed", {
+      "alpha.jsonl": trioRecords(sessionHeader("sess-alpha"), 6),
+    });
+    const outDir = path.join(TEST_TMP, "score-out");
+    process.env.TYPESAFE_API_KEY = KEY;
+    fetchMock.mockImplementation(async () => statusResponse(500));
+
+    const { code, out } = await capture(() =>
+      scoreCorpus(scoreArgv({ ...defaultRun(corpus, outDir), concurrency: "1" })),
+    );
+
+    expect(code).toBe(4);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const rows = readRows(outDir);
+    expect(rows.map((row) => row.verdict)).toEqual([
+      "fallback",
+      "fallback",
+      "fallback",
+      "not_run",
+      "not_run",
+      "not_run",
+    ]);
+    expect(rows.slice(0, 3).every((row) => row.reason === "http_500")).toBe(true);
+    expect(out).toContain(
+      "Scored 0 · cached 0 · fallbacks 3 · not run 3 · requests 3 · stop: three failed requests in a row",
+    );
+    expect(readSummary(outDir)).toMatchObject({ stop: "three failed requests in a row", requests: 3 });
+  });
+});
+
+describe("concurrency", () => {
+  it("keeps at most N requests in flight and rows in corpus order when responses finish out of order", async () => {
+    const corpus = await freezeSource("pool", "seed", {
+      "alpha.jsonl": trioRecords(sessionHeader("sess-alpha"), 6),
+    });
+    const outDir = path.join(TEST_TMP, "score-out");
+    process.env.TYPESAFE_API_KEY = KEY;
+    let pending = 0;
+    let maxPending = 0;
+    let call = 0;
+    const delays = [80, 10, 10, 10, 10, 10];
+    fetchMock.mockImplementation(async () => {
+      const index = call++;
+      pending++;
+      maxPending = Math.max(maxPending, pending);
+      await new Promise((resolve) => setTimeout(resolve, delays[index]));
+      pending--;
+      return scoredResponse();
+    });
+
+    const { code } = await capture(() => scoreCorpus(scoreArgv({ ...defaultRun(corpus, outDir), concurrency: "3" })));
+
+    expect(code).toBe(0);
+    expect(maxPending).toBe(3);
+    const rows = readRows(outDir);
+    expect(rows.map((row) => row.key)).toEqual(readCorpusRows(corpus).map((row) => row.key));
+    expect(rows[0].latencyMs).toBeGreaterThan(rows[1].latencyMs);
+    expect(readSummary(outDir)).toMatchObject({ requests: 6, stop: "completed" });
+  });
+});
+
+describe("cache", () => {
+  it("serves every cached trio without a request on a rerun", async () => {
+    const corpus = await freezeSource("cache-hit", "seed", threeTrioFiles());
+    process.env.TYPESAFE_API_KEY = KEY;
+    fetchMock.mockImplementation(async () => scoredResponse());
+    const firstOut = path.join(TEST_TMP, "score-first");
+    const first = await capture(() => scoreCorpus(scoreArgv(defaultRun(corpus, firstOut))));
+    expect(first.code).toBe(0);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(readCacheLines(corpus)).toHaveLength(3);
+    fetchMock.mockClear();
+
+    const outDir = path.join(TEST_TMP, "score-out");
+    const { code, out } = await capture(() => scoreCorpus(scoreArgv(defaultRun(corpus, outDir))));
+
+    expect(code).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(out).toContain(`Corpus: ${corpus} · set all: 3 trios (3 cached, 0 to score)`);
+    expect(out).toContain("Scored 3 · cached 3 · fallbacks 0 · not run 0 · requests 0 · stop: completed");
+    expect(readRows(outDir).every((row) => row.cached)).toBe(true);
+    expect(readSummary(outDir)).toMatchObject({ cached: 3, requests: 0, stop: "completed" });
+  });
+
+  it("keeps failed requests out of the cache so a rerun tries them again", async () => {
+    const corpus = await freezeSource("cache-failure", "seed", {
+      "alpha.jsonl": trioRecords(sessionHeader("sess-alpha"), 1),
+    });
+    process.env.TYPESAFE_API_KEY = KEY;
+    fetchMock.mockImplementation(async () => statusResponse(500));
+    const outDir = path.join(TEST_TMP, "score-first");
+
+    const { code } = await capture(() => scoreCorpus(scoreArgv({ ...defaultRun(corpus, outDir), concurrency: "1" })));
+
+    expect(code).toBe(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(readRows(outDir)).toHaveLength(1);
+    expect(readRows(outDir)[0]).toMatchObject({ verdict: "fallback", reason: "http_500" });
+    expect(readCacheLines(corpus)).toHaveLength(0);
+  });
+
+  it("caches an oversized state and serves it from the cache afterwards", async () => {
+    const corpus = await freezeSource("cache-oversized", "seed", {
+      "bulky.jsonl": [
+        sessionHeader("sess-bulky"),
+        assistant("the plan the agent laid out"),
+        user("x".repeat(40 * 1024)),
+        assistant("the agent's reply"),
+      ],
+    });
+    const outDir = path.join(TEST_TMP, "score-first");
+    process.env.TYPESAFE_API_KEY = KEY;
+
+    const first = await capture(() => scoreCorpus(scoreArgv(defaultRun(corpus, outDir))));
+
+    expect(first.code).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(readRows(outDir)).toEqual([
+      expect.objectContaining({ verdict: "fallback", reason: "oversized_state", attempts: 0, cached: false }),
+    ]);
+    expect(readCacheLines(corpus)).toEqual([
+      expect.objectContaining({ key: readCorpusRows(corpus)[0].key, verdict: "fallback", reason: "oversized_state" }),
+    ]);
+
+    const secondOut = path.join(TEST_TMP, "score-second");
+    const second = await capture(() => scoreCorpus(scoreArgv(defaultRun(corpus, secondOut))));
+
+    expect(second.code).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(readRows(secondOut)[0]).toMatchObject({ reason: "oversized_state", cached: true });
+    expect(second.out).toContain("(1 cached, 0 to score)");
+  });
+});
+
+describe("credential hygiene", () => {
+  it("keeps the key out of every artifact", async () => {
+    const corpus = await freezeSource("hygiene", "seed", threeTrioFiles());
+    const outDir = path.join(TEST_TMP, "score-out");
+    process.env.TYPESAFE_API_KEY = KEY;
+    fetchMock.mockImplementation(async () => scoredResponse());
+
+    const { code } = await capture(() => scoreCorpus(scoreArgv(defaultRun(corpus, outDir))));
+    expect(code).toBe(0);
+
+    const artifacts = [
+      fs.readFileSync(path.join(outDir, "scores.jsonl"), "utf-8"),
+      fs.readFileSync(path.join(outDir, "summary.json"), "utf-8"),
+      fs.readFileSync(path.join(outDir, "scores-table.md"), "utf-8"),
+      fs.readFileSync(path.join(corpus, "cache", `gate-${HASH}.jsonl`), "utf-8"),
+    ];
+    for (const artifact of artifacts) expect(artifact).not.toContain(KEY);
+  });
+});

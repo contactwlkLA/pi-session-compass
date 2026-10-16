@@ -52,10 +52,10 @@ Pi codes two harness tasks from CC specs. CC runs the live scoring and extractio
 
 ### S5-01 — Corpus and gate scoring (Pi; spec to follow)
 
-- [ ] **1.** Corpus freeze: copy, receipt, census per file.
-- [ ] **2.** Session-level split with a seeded hash; frozen split file.
-- [ ] **3.** Gate-only scoring of a set: probe.ts generalized to many files, 4 concurrent, gate cache, counter and limits, results in jsonl and a table.
-- [ ] **4.** Tests: split is stable and leak-free; a cache hit makes no request; the limit stops new requests; no key in any artifact.
+- [x] **1.** Corpus freeze: copy, receipt, census per file.
+- [x] **2.** Session-level split with a seeded hash; frozen split file.
+- [x] **3.** Gate-only scoring of a set: probe.ts generalized to many files, 4 concurrent, gate cache, counter and limits, results in jsonl and a table.
+- [x] **4.** Tests: split is stable and leak-free; a cache hit makes no request; the limit stops new requests; no key in any artifact.
 
 ### S5-02 — Extraction cache, label sheet, scorer (Pi; spec to follow)
 

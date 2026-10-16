@@ -102,3 +102,19 @@ export interface CounterSnapshot {
   traces: TraceEntry[];
   usageTotals: { input: number; output: number; unknown: number };
 }
+
+/** One corpus partition: the development set or the held-out set. */
+export type CorpusSet = "dev" | "heldout";
+
+/** One trio line of a frozen corpus's trios.jsonl. */
+export interface CorpusTrio {
+  key: string;
+  set: CorpusSet;
+  sessionId: string;
+  /** Path of the frozen copy, relative to the corpus root. */
+  file: string;
+  /** 1-based position of the trio within its session file. */
+  index: number;
+  lines: { agentBefore: number; userFeedback: number; agentAfter: number };
+  chars: { agentBefore: number; userFeedback: number; agentAfter: number };
+}

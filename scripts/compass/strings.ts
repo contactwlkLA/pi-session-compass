@@ -101,6 +101,41 @@ export const strings = {
     "  execute  --session <jsonl> --run-type <t> --max-model-requests N --max-run-ms N --limits-source <s> " +
     "[--confirmed] [--start-snapshot <dir>] [--gate-mode off|shadow|enforce]",
 
+  // ── Corpus freeze ──
+  corpusMissingFlags: "compass corpus: --source <dir> (one or more), --output <dir> and --seed <text> are required",
+  corpusNotDirectory: (dir: string) => `compass corpus: ${dir} is not a directory`,
+  corpusOutputExists: (dir: string) => `compass corpus: ${dir} already exists; a frozen corpus is never overwritten`,
+  corpusCountMismatch: (file: string, detector: number, census: number) =>
+    `compass corpus: ${file} has ${detector} trios by the detector and ${census} by the census; nothing was frozen`,
+  corpusFrozen: (
+    sessions: number,
+    trios: number,
+    devSessions: number,
+    devTrios: number,
+    heldSessions: number,
+    heldTrios: number,
+    dir: string,
+  ) =>
+    `Corpus frozen: ${sessions} sessions, ${trios} trios · dev ${devSessions} sessions / ${devTrios} trios ` +
+    `· held-out ${heldSessions} sessions / ${heldTrios} trios → ${dir}`,
+
+  // ── Corpus scoring ──
+  scoreCorpusChanged: (dir: string) =>
+    `compass score: the corpus at ${dir} changed after it was frozen; no request was made`,
+  scoreBadSet: "compass score: --set must be dev, heldout, or all",
+  scoreHeader: "compass score — Jev classifier only (no extraction, no building, no portrait)",
+  scoreCorpus: (dir: string, set: string, trios: number, cached: number, toScore: number) =>
+    `Corpus: ${dir} · set ${set}: ${trios} trios (${cached} cached, ${toScore} to score)`,
+  scoreModel: (model: string, hash: string, concurrency: number) =>
+    `Jev model: ${model} · policy ${hash} · ${concurrency} at once`,
+  scoreOutput: (dir: string) => `Output: ${dir}`,
+  scoreNotConfirmed: "Not confirmed: pass --confirmed after the user approves these values. No request was made.",
+  scoreNoKey: "compass score: TYPESAFE_API_KEY is not set. No request was made.",
+  scoreDone: (scored: number, cached: number, fallbacks: number, notRun: number, requests: number, stop: string) =>
+    `Scored ${scored} · cached ${cached} · fallbacks ${fallbacks} · not run ${notRun} · requests ${requests} · stop: ${stop}`,
+  scoreBadConcurrency: "compass score: --concurrency must be an integer from 1 to 8",
+  scoreProgress: (done: number, total: number, verdict: string) => `trio ${done}/${total}: ${verdict}`,
+
   // ── Sheets ──
   resultsSheetTitle: (runType: string) => `compass ${runType} results — samples, not a measurement`,
   runningTableTitle: (runType: string) => `compass ${runType} — running table`,
