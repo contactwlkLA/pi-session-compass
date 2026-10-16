@@ -115,6 +115,12 @@ Necessary failure tests, using simulated crashes at each snapshot boundary:
 
 ## 7. Stage 5 — evaluate policy and savings
 
+### Notes for planning (user, 2026-10-16)
+
+- **Shorter measurement runs.** The scanner reads the frozen session in order, so a copy cut off after trio k holds exactly trios 1–k. Measure on a short prefix and compare trio by trio with the S1 baseline's rows for those trios; no new baseline is needed. Per-trio extraction and gate decisions compare cleanly; builder outcomes do not, since the portrait accumulates.
+- **Extraction cache (do first).** Key stored extraction results by `trioId` + `policyRevision` and reuse them in comparison runs; only the stage under test (gate, builder) makes model requests. Harness-only; reused results count as zero requests.
+- **Parallel extraction and gate calls (harness only).** Per-trio extraction and Jev calls are independent, so a measurement run can issue a few at once (e.g. 4) within provider rate limits; building stays sequential. The plugin stays sequential (architecture.md §3).
+
 ### Tasks
 
 - [ ] **S5.T1 — Prepare policy-development fixtures.** Use the supplied session for development examples, including “im lost,” “avoid wrong start,” mixed instructions, and “sure.” Treat previous candidate examples as human hypotheses, not model-produced positives. Do not expand deterministic exclusions broadly without testing short refusals/corrections.

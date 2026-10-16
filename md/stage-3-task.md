@@ -63,7 +63,7 @@ Protected text expected in Part A: the truncated-or-rewritten source report; the
 - [ ] **3.** *(B-1: (a) bd56689 and (c) afc2712 done; (b) in B-2)* Wire the snapshot (A2) as the scan-position and pending-work authority, taken at the three boundaries: (a) after a trio's candidates are saved with the scan position; (b) after builder decisions are validated and the intended file digests are recorded, before any portrait file is written; (c) after publication completes.
 - [ ] **4.** On restart, restore the last snapshot's state and files and redo what followed it, after a per-file edit guard: each portrait/archive file must equal the snapshot copy or the recorded intended digest; otherwise stop and report a conflict without overwriting.
 - [ ] **5.** Git stays an optional audit layer; a Git failure never discards candidates.
-- [ ] **6.** Update the harness trio counter and reports to read the scan position from the snapshot.
+- [x] **6.** Update the harness trio counter and reports to read the scan position from the snapshot. *(S3-B1-04: start snapshots carry `snapshots/`; no harness code reads scan positions; receipts report a pipeline stop)*
 
 ### B3 — Crash and failure tests
 

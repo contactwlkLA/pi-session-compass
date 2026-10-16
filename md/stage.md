@@ -14,9 +14,9 @@ Select the first unchecked stage. A checked stage requires verified milestone ev
 ## Continuation
 
 - Active stage: **S3**
-- Next unfinished step: **S3-B1-04 (harness reads the work state), spec in md/stage-3b.md, starting with the Pi spec audit; then the B-1 gate; then write the B-2 specs (builder split, validated publication, boundary b, restore with edit guard, crash tests)**
+- Next unfinished step: **B-1 complete. Next: one proposal for user approval: architecture.md §6 cleanup (simple rollback) + trimmed B-2 + matching stage-3-task.md/plan.md edits; then B-2 specs (bigger tasks, speed mode)**
 - Roles (user, 2026-10-15): **Pi is no longer parked. Pi codes, one model per Pi session (the user switches models between sessions). Claude Code plans, writes task specs, reviews, keeps the ledger (md/ledger.jsonl, schema md/ledger.schema.json), verifies, and commits; it writes no implementation. The coder comparison is a side quest: where it conflicts with the project, the project wins (resolutions in NOTES.md)**
-- Last completed step: **S3-B1-01 (78b8ffd), 02a (335eb32), 02b (bd56689), 03 (afc2712), each accepted first pass; gates at afc2712: npm test 457/457, test:compass 91/91, single-worker 457/457, 20 default-order runs 0 failures**
+- Last completed step: **S3 B-1 complete: S3-B1-01..04 (78b8ffd, 335eb32, bd56689, afc2712, S3-B1-04 commit below), all accepted first pass; gate: npm test 457/457, test:compass 101/101, single-worker 457/457**
 - Outcome: **S2 COMPLETE: termination, capture reset and retry fixes; compare run 46 requests / 26.0 min on the pipeline's 20 trios; branch s1/harness**
 - Blocker: **none**
 - Pending user inputs: **none for B-1; B-2 protected text (restore conflict report) when the B-2 specs are written**
