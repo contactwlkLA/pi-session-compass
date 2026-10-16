@@ -1,6 +1,6 @@
 # Stage 4 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.5.0** · Status: **Approved (user, 2026-10-16)**
+Project: **pi-session-compass** · Revision: **0.6.0** · Status: **Approved (user, 2026-10-16)**
 
 Date: **2026-10-16**
 
@@ -85,16 +85,72 @@ npm test
 npm run test:compass
 ```
 
+## S4-02 — One gate config file; harness counts and records the gate
+
+Two parts. First, every gate value moves into one file the user can review. Second, the harness learns the gate: it selects the mode, counts each Jev request against the run limits, and records every gate result in the receipt, traces, results sheet, and running table. Every test mocks the network; no live call.
+
+**Vocabulary:** as in S4-01 (`no_lesson`, `maybe_lesson`, `fallback`, `over_budget`).
+
+**Read:** src/jev.ts and src/gate.ts (whole); src/schema.ts (the `gateMode` entry); src/collector.ts lines 548–565 (the `checkTrio` step); scripts/compass/counter.ts (whole); scripts/compass/pipeline-boot.ts lines 100–135 (`renderRunningTable`), 156–345 (`runPipeline`), 393–515 (`writeReceipt`, `writeSheet`); scripts/compass/run.ts lines 130–215 (`executeRun`); scripts/compass/confirmation.ts lines 1–70; scripts/compass/manifest.ts (whole); scripts/compass/strings.ts (whole); md/stage-4-task.md sections "Protected text" (H1–H3) and "S4-02". Test templates: tests/compass/running-table.test.ts (mocked `runPipelineLoop` with `loopState`), tests/compass/strings.test.ts, tests/gate.test.ts.
+
+**Where and how (CC's plan):**
+
+1. **src/gate-config.ts (new): the single review point (user, 2026-10-16).** One exported frozen object, `GATE_CONFIG`, holding every gate value, each with a one-line comment that says what it decides: `defaultMode` (`"off"`), `model`, `endpoint`, `threshold`, `stateCapBytes`, `deadlineMs`, `defaultRetryWaitMs`, `failureLimit` (3), and `questions` (the four Q entries, built from the prefix exactly as in S4-01). A short file header says: this file is the whole gate setup; nothing else hard-codes a gate value; any change here changes the policy hash. Then:
+   - src/jev.ts: `JEV_POLICY` is built from `GATE_CONFIG` (same fields and types, still deep-frozen); `JEV_POLICY_HASH` keeps the same field order (`model`, `threshold`, `stateCapBytes`, `questions`), so the hash value does not change.
+   - src/gate.ts: `FAILURE_LIMIT` comes from `GATE_CONFIG.failureLimit`.
+   - src/schema.ts: the `gateMode` setting's `defaultValue` is `GATE_CONFIG.defaultMode`.
+   - Remove the moved literals from src/jev.ts and src/gate.ts. U1 and U2 stay in src/gate.ts (they are messages, not configuration).
+   - The tests keep the approved strings as literals (a test checks that `GATE_CONFIG` matches them), and `JEV_POLICY_HASH` is unchanged from S4-01 (assert the S4-01 value).
+2. **src/collector.ts.** Pass `path.resolve(sessionFile)` to `checkTrio`, so a gate event's `sourcePath` matches the candidates' `sourcePath`.
+3. **scripts/compass/counter.ts.** Add `gateAttempt(): boolean` to `RequestCounter`: run the same checks as `guard()`; when a ceiling is reached, record the refusal time as `wrapStreamFn` does and return `false`; otherwise increment `requestCount`, push a `TraceEntry` with `model` = the Jev model, `provider: "typesafe"`, `stage: "gate"`, `outcome: "ok"`, and return `true`. A declined gate attempt stops nothing by itself: the trio falls back to extraction, the counter declines that request too, and the run stops as for any limit (S4-01 answer 9).
+4. **scripts/compass/run.ts.** Parse `--gate-mode` (`off`, `shadow`, `enforce`); when absent, use the settings snapshot's `gateMode`. An invalid value prints H3 to stderr and exits 2 before any model request. Pass the mode and its source (`"flag"` or `"settings"`) to the confirmation, the manifest, and `runPipeline`.
+5. **Confirmation (scripts/compass/confirmation.ts).** Add H1 or H2 (approved) after the model line. H1 shows the mode and `JEV_POLICY_HASH`.
+6. **Manifest (scripts/compass/manifest.ts).** Add `gate: { mode, source, policyHash, model }`.
+7. **scripts/compass/pipeline-boot.ts.**
+   - Before the pass loop: `runSettings.gateMode = opts.gateMode` (the getter already returns `runSettings`).
+   - Hooks: `onGateAttempt: () => counter.gateAttempt()`; `onGateResult` appends the event to `gateEvents`, updates `stats` (`gateChecks`, `gateNoLesson`, `gateMaybeLesson`, `gateFallbacks` by reason, `gateSkipped` for `routed: "skip"`, summed `gateLatencyMs`, summed Jev usage), and holds the event as `pendingGate` for the trio that follows.
+   - `onTrioExamined`: attach `pendingGate` (if any) to the trio's sheet entry, then clear it. A `routed: "skip"` event becomes its own sheet entry at once (no trio event follows it).
+   - Pass loop: count progress as `triosExamined + gateSkipped`, so a pass whose trios were all skipped still counts as progress.
+   - Receipt: a `gate` block `{ mode, source, policyHash, model, checks, noLesson, maybeLesson, skipped, fallbacks: { <reason>: n }, requests, latencyMsTotal, usage: { inputTokens, outputTokens } }`; `stages.gate` = gate requests; `traces.jsonl` gets one `{ kind: "gate", ...event }` line per event.
+   - Results sheet: under each trio, the H4 line when a gate event is attached. A skipped trio gets its own entry: the existing trio header, then H5 instead of the extractor output.
+   - Running table: the coverage line counts examined plus skipped trios. The table rows stay per examined trio.
+8. **scripts/compass/strings.ts.** Add H1–H5; change `usageExecute` to H6.
+
+**Edge cases to cover:** `--gate-mode` absent with snapshot `gateMode` missing (treat as `off`); `--gate-mode enforce` with every trio `no_lesson` (the pass loop still ends, coverage counts the skipped trios, no extraction requests); a gate attempt declined at the request ceiling (trace not pushed, refusal time recorded, run ends capped); a fallback (no answers) on the sheet; off mode leaves the receipt's `gate` block with zero counts and no `gate` traces.
+
+**Acceptance criteria:**
+
+1. `GATE_CONFIG` is the only place any gate value is written in `src/`; `JEV_POLICY_HASH` equals its S4-01 value; the setting default reads from it.
+2. `--gate-mode` parses and validates (H3, exit 2); mode and source reach the confirmation (H1/H2), the manifest, and the pipeline settings.
+3. Each Jev attempt counts as one request with `stage: "gate"`; at the ceiling a gate attempt is declined, and the run ends `capped` with the trio's position unchanged.
+4. The receipt `gate` block, `stages.gate`, the `gate` trace lines, the sheet's H4/H5 lines, and the coverage count are correct for shadow, enforce (with skips), fallback, and off runs.
+5. Tests in tests/compass (copy the mocked-pipeline pattern; drive `onGateAttempt`/`onGateResult` from the mock) cover criteria 2–4 and every edge case; tests/jev.test.ts and tests/gate.test.ts cover criterion 1.
+6. Existing tests pass.
+
+**Allowed scope:** src/gate-config.ts (new), src/jev.ts, src/gate.ts, src/schema.ts (the default only), src/collector.ts (the `checkTrio` argument only), scripts/compass/counter.ts, scripts/compass/run.ts, scripts/compass/confirmation.ts, scripts/compass/manifest.ts, scripts/compass/pipeline-boot.ts, scripts/compass/strings.ts, scripts/compass/types.ts, tests/jev.test.ts, tests/gate.test.ts, tests/compass/*.test.ts.
+
+**Constraints:** H1–H6 exactly as approved; no other new user-facing strings. Existing receipt fields, exit codes, and strings unchanged except `usageExecute` (H6). No changes to extraction, building, or snapshots.
+
+**Verification:**
+
+```
+npx vitest run tests/jev.test.ts tests/gate.test.ts
+npm run test:compass
+npm test
+```
+
 ## CC review and gate (not for the coder)
 
 Review per planner-prompt.md Step 2; ledger entry in md/ledger.jsonl. Check: no path makes a request in `off` mode or without a key; the deadline covers the retry wait; `Retry-After` never extends past the deadline; no key, body, or response text in results, errors, or logs; Q texts byte-exact; `skip` happens only under enforce and `no_lesson`; a skipped trio saves its position without candidates.
 
-Planner difficulty: S4-01 medium.
+Planner difficulty: S4-01 medium; S4-02 medium.
+
+S4-02 review: `GATE_CONFIG` is the only gate-value source; hash unchanged; each gate attempt counted once and declined at the ceiling; H1–H6 byte-exact; the sheet pairs each gate event with its own trio.
 
 ## Revision history
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.3.0 | 2026-10-16 | Body synced with the audit answers (re-audit round 2). |
 | 0.4.0 | 2026-10-16 | Plain vocabulary (`no_lesson`, `maybe_lesson`, `fallback`, `over_budget`) after three provider content-filter stops; answer (9) on `over_budget`. |
 | 0.5.0 | 2026-10-16 | Neutral prose from Pi's filter review (credential, timeout and test wording); `key_missing`, `check_stopped`, `checkStoppedForRun`. |
+| 0.6.0 | 2026-10-16 | S4-02 spec (single gate config file, harness gate counting and records); H4–H6 pending approval. |

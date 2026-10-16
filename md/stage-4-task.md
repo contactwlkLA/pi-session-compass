@@ -64,6 +64,9 @@ No live call before S4-03. S4-03 needs `TYPESAFE_API_KEY` in the environment.
 | H1 | confirmation, when the mode is not `off` | `Jev gate: ${mode} (policy ${hash}) — each eligible trio also makes one Jev request (two with a retry).` |
 | H2 | confirmation, when the mode is `off` | `Jev gate: off` |
 | H3 | error for a bad `--gate-mode` | `--gate-mode must be off, shadow, or enforce` |
+| H4 | results sheet, under a trio with a gate result | `Gate: ${decision}` then, when scored, ` — correction ${c}, preference ${p}, steering ${s}, confusion ${f}` (two decimals), or, for a fallback, ` — fallback: ${reason}` |
+| H5 | results sheet, a trio the gate skipped | `Extractor: not run (gate: no_lesson, enforce mode)` |
+| H6 | `usageExecute` (replaces the current line) | `  execute  --session <jsonl> --run-type <t> --max-model-requests N --max-run-ms N --limits-source <s> [--confirmed] [--start-snapshot <dir>] [--gate-mode off\|shadow\|enforce]` |
 
 ## Tasks
 
