@@ -1,6 +1,6 @@
 # Coder comparison: discussion notes (2026-10-15)
 
-Revision: **0.3.0** · Updated: **2026-10-15**
+Revision: **0.4.0** · Updated: **2026-10-15**
 
 Short reminder of what was decided before starting Stage 3 work in `/home/wai/compass-ext4`.
 
@@ -23,7 +23,7 @@ Short reminder of what was decided before starting Stage 3 work in `/home/wai/co
   - Peak context per call = input + cacheRead + cacheWrite (Pi's `input` excludes cached tokens).
 - **Thinking level:** a level name is only a relative label within one model; it does not mean the same reasoning budget across models. MiMo v2.6 offers only `high` or none, and runs at `high`. Haiku ran S3-B1-01 at `high` and runs at `xhigh` from its next session (user, 2026-10-15). Keep it fixed within a task attempt; the ledger records it per attempt.
 - **Speed:** the user expects Haiku to be much faster than MiMo 2.6 flash at similar quality. If only one HARNESS field gets filled, make it `coder_active_s` (from Pi timestamps; includes test run time).
-- **MiMo variants:** 2.6 flash is the planned coder; 2.6 pro ranks higher on Artificial Analysis and may be added later as its own block.
+- **MiMo variants:** 2.6 pro is the MiMo coder from S3-B1-02a (user, 2026-10-15): on Artificial Analysis it scores close to Haiku at xhigh, and it costs more than 2.6 flash. Flash may be added later as its own block.
 - **`reasoning` token field:** a measured count, not a setting; optional, null is fine.
 - **Inherited defects:** recorded with `inherited: true`; not counted against the current coder.
 - **What to trust most:** first-pass acceptance, correction rounds, claim mismatches, scope discipline, verification run. Cost and time depend on the task.
@@ -49,6 +49,6 @@ The comparison is a side quest. Where it conflicts with the project rules (AGENT
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.1.0 | 2026-10-15 | Discussion notes. |
 | 0.2.0 | 2026-10-15 | Roles, one model per Pi session, file locations, project-first conflict resolutions. |
 | 0.3.0 | 2026-10-15 | Thinking levels are per-model labels; Haiku moves to xhigh from its next session. |
+| 0.4.0 | 2026-10-15 | MiMo coder is 2.6 pro, not flash. |

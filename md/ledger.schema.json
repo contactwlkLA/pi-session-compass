@@ -24,6 +24,7 @@
         "properties": {
           "round": { "type": "integer", "minimum": 1 },
 
+          "coder_turns": { "type": ["integer", "null"], "description": "HARNESS: model calls (assistant turns) in the coder's Pi session for this round" },
           "coder_active_s":  { "type": ["number", "null"], "description": "HARNESS: seconds from coder receiving the task/feedback to coder stopping. Excludes relay gap." },
           "review_active_s": { "type": ["number", "null"], "description": "HARNESS: seconds the reviewer spent on this round. Excludes relay gap." },
           "relay_gap_s":     { "type": ["number", "null"], "description": "HUMAN/HARNESS: idle time between agents in this round. Recorded for transparency, EXCLUDED from time_to_accept_s." },
