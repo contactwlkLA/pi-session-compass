@@ -105,7 +105,7 @@ One task, S3-C-01 ([stage-3c.md](stage-3c.md)), after the user-approved simplici
 
 - [x] **1.** All plan.md Stage 3 verification items pass on isolated fixtures (A1, B3, C tests). Old offsets cannot establish historical completeness.
 - [x] **2.** Both full suites pass, raw results quoted. Sync the task checks, stage.md, and bugs.md. Commit and push. *(Part C gate, 2026-10-16)*
-- [ ] **3.** Checkpoint with the user before S4.
+- [x] **3.** Checkpoint with the user before S4. *(user, 2026-10-16: proceed to S4 planning)*
 
 ## Revision history
 
