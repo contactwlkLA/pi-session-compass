@@ -1,6 +1,6 @@
 # pi-session-compass — Development Plan
 
-Revision: **0.8.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
+Revision: **0.9.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
 
 Contract: [Architecture specification](architecture.md)
 
@@ -168,10 +168,12 @@ Handoff contents: implementation diff/commit, exact dependency versions, test re
 
 **Milestone M6:** release candidate and handoff evidence are complete, with the delivered gate mode stated.
 
+**Delivered (2026-10-17):** gate mode `off`. Activation checks 1 and 2 are unmet on the scale-up folder (corrections missed 3 of 29, lessons kept 94%); check 3 is met. Handoff: [handoff.md](handoff.md). Stage 6 ran a narrowed scope ([stage-6-task.md](stage-6-task.md)); the rest of S6.T1 and S6.T2 is deferred there.
+
 ## Revision history
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.6.0 | 2026-10-16 | Stage 3 simple rollback (user-approved trim): two snapshot boundaries; S3.T4 is build validation only, with no restore or edit guard; verification and M3 match. |
 | 0.7.0 | 2026-10-16 | S3.T5 simplified (user-approved Part C check): reset takes the mutex; legacy positions seed once; no migration backup, cutoff, or notice. |
 | 0.8.0 | 2026-10-16 | Stage 6 planning note: user-friendly setup reviewable from one place. |
+| 0.9.0 | 2026-10-17 | S6 delivered mode `off` and the handoff recorded. |

@@ -47,7 +47,7 @@ Parent: [Development plan](plan.md), Stage 6. Evidence: outputs/s5/pilot-report.
 
 ### S6-04 — Delivered mode and handoff (CC)
 
-- [ ] **1.** Record the delivered mode `off` and the unmet activation checks (scale-up: corrections missed 3 of 29, lessons kept 94%).
+- [x] **1.** Record the delivered mode `off` and the unmet activation checks (scale-up: corrections missed 3 of 29, lessons kept 94%).
 - [ ] **2.** Handoff: commit, dependency versions, test results, frozen policy and settings, fixture references, receipts; sync plan.md, stage.md, compass.md, bugs.md, and the ledger. Checkpoint with the user.
 
 ## Deferred (not in S6)
@@ -62,4 +62,4 @@ Parent: [Development plan](plan.md), Stage 6. Evidence: outputs/s5/pilot-report.
 | Revision | Date | Change |
 |---|---|---|
 | 0.2.0 | 2026-10-17 | Approved by the user; the log locates a trio by trio ID and record IDs (line numbers are not available at the gate). |
-| 0.3.0 | 2026-10-17 | Gate log adds `attempts` (user, after the S6-01 audit); S6-01, S6-02, S6-03 done; gate-log line about 600 bytes. |
+| 0.3.0 | 2026-10-17 | Gate log adds `attempts` (user, after the S6-01 audit); S6-01, S6-02, S6-03 done; gate-log line about 600 bytes; delivered mode recorded. |

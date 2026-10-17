@@ -1,8 +1,8 @@
 # pi-session-compass
 
-Revision: **0.3.0** · Stage 1 complete; Stage 2 next.
+Revision: **0.4.0** · Stage 6 handoff; gate delivered `off`.
 
-pi-session-compass improves session-to-behavioral-rule collection with explicit session-file selection, recoverable work, and a Jev gate before expensive extraction. The gate writes no rules; the existing extractor and builder do that work. Features and performance gains remain unverified.
+pi-session-compass improves session-to-behavioral-rule collection with explicit session-file selection, recoverable work, and a Jev gate before expensive extraction. The gate writes no rules; the existing extractor and builder do that work. Measured results and the delivered mode are in [handoff.md](handoff.md).
 
 ## Start
 
@@ -49,6 +49,6 @@ See [architecture.md](architecture.md) and [plan.md](plan.md) as needed. Based o
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.1.0 | 2026-10-11 | Initial committed draft. |
 | 0.2.0 | 2026-10-12 | Added the optional `probe` run type. |
 | 0.3.0 | 2026-10-14 | Rule 7: a capped non-smoke run can stand as the measurement when the user accepts it and the stage documents record it (the S1 baseline). Status line updated. |
+| 0.4.0 | 2026-10-17 | Status line and summary point to the handoff. |
