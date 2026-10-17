@@ -1,6 +1,6 @@
 # Stage 5 — Evaluate the Jev gate
 
-Project: **pi-session-compass** · Revision: **0.2.1** · Status: **Approved (user, 2026-10-16)**
+Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Approved (user, 2026-10-16)**
 
 Date: **2026-10-16**
 
@@ -48,6 +48,8 @@ Pi codes two harness tasks from CC specs. CC runs the live scoring and extractio
 - **D2 — Labels:** CC drafts every label from a written rubric. The user checks every trio drafted `no_lesson`, every disagreement with the extractor, and a 10% random sample of the rest; the sheet records what the user changed.
 - **D3 — Size:** every trio in the two pilot folders. The pilot result is labeled preliminary if held-out has fewer than 60 `lesson` trios or few corrections.
 
+- **D4 — Labeling rule for task instructions and reminders: OPEN** (user, 2026-10-17: keep tracking, decide later with more concrete evidence; no premature change). Evidence so far (dev set only): steering follows the user's reply (rank correlation +0.42 with its length; agent text +0.22 before, +0.09 after); 36 dev trios score steering ≥ 0.5 with the other three ≤ 0.20, nearly all one-off next steps (option picks, task commands, questions, pasted shell commands). Candidates: (a) reviewer: a task instruction is `no_lesson` unless it states a lasting preference; (b) CC: also count corrections and repeated reminders about agent behavior ("wait for my go", "don't run ahead") as `lesson`. The user sees these reminders as frustration with models that run ahead, not as lessons, and doubts the portrait's usefulness unless the labeling changes. Related fact: the S1-start portrait already holds such rules ("Require explicit user approval … before executing consequential actions", "Respect requested scope … unsolicited implementation", "Distinguish exploration from execution"), yet the reminders recur. Labels (S5-03 item 2) wait for D4; S5-02a/b and the extraction run do not depend on it.
+
 ## Tasks
 
 ### S5-01 — Corpus and gate scoring (Pi; spec to follow)
@@ -91,6 +93,6 @@ Pi codes two harness tasks from CC specs. CC runs the live scoring and extractio
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.1.0 | 2026-10-16 | Draft: evidence, five tasks, fixed design, decisions D1–D3. |
 | 0.2.0 | 2026-10-16 | Pilot on TxnHunter-3 + agy-sessions-3; D1–D3 decided; S5-06 scale-up on TxnHunter-dashboard-v3 after a go. |
 | 0.2.1 | 2026-10-16 | S5-02 coded in two parts (02a, 02b). |
+| 0.3.0 | 2026-10-17 | D4 (labeling rule for task instructions and reminders) recorded as open; labels wait for it. |
