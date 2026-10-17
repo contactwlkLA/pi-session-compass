@@ -1,0 +1,59 @@
+# Stage 7 — Task specs (Pi codes, Claude Code reviews)
+
+Project: **pi-session-compass** · Revision: **0.1.0** · Status: **Ready (stage-7-task.md approved by the user, 2026-10-17)**
+
+Date: **2026-10-17**
+
+Parent: [stage-7-task.md](stage-7-task.md) (fixed design 1–3).
+
+**Coder rules, spec audit, and handoff format:** [stage-3b.md](stage-3b.md), section "Coder rules", unchanged, except that the audit and handoff go to `outputs/s7/handoff/<task_id>-audit.md` and `outputs/s7/handoff/<task_id>-r<round>.md`. Do not touch `~/.pi`: every test uses the temporary portrait dir from tests/setup.ts.
+
+## S7-01 — Quick fixes
+
+Six independent small bugs from md/bugs.md. Fix each with a test; change nothing else. One string changes (item 4, user-approved); no other user-facing string is added or changed.
+
+**Read:** md/bugs.md rows B11, B13, B14, B15, B20, B21; scripts/compass/pipeline-boot.ts (`onBuild` and the results-sheet builder lines, around 245–260 and 560–570); src/instrument.ts (`BuildEvent`); src/builder.ts (`emitBuild` call around line 155, `resolveCandidateText` around line 182); scripts/compass/snapshot.ts (`verifySnapshot`); scripts/compass/strings.ts (`startSnapshot*`, `confirmLimits`); scripts/compass/types.ts (`RUN_TYPES`); md/compass.md (run-type table); tests/reload-lifecycle.test.ts (`fakeCtx`); src/index.ts (the `session_start` handler, line ~326: it returns unless `ctx.mode === "tui"` and `PI_SUBAGENT_PARENT_PID` is unset); scripts/compass/evaluate.ts (`Counts`, `missBound`); the matching tests in tests/compass/ (strings, start-snapshot, gate-harness or running-table for the sheet, limits-counter, evaluate).
+
+**Where and how (CC's plan):**
+
+1. **B11 — sheet shows the rule text for inserts.** `BuildEvent` decisions gain an optional `candidateText` (the candidate's text, resolved in src/builder.ts with the existing `resolveCandidateText(d.candidate, candidates)` when the decision names a candidate and the ID resolves). This is instrumentation only: nothing else in building reads it. In the sheet builder, the label becomes `decision.text ?? decision.candidateText ?? decision.candidate ?? strings.sheetNoText`. A merge keeps its merged `text`; a skip shows the candidate's text.
+2. **B13 — corrupt hashes.json.** In `verifySnapshot`, wrap the `JSON.parse` of hashes.json; on a parse error, or a parsed value that is not an object of string values, throw `new SnapshotError(strings.startSnapshotMismatch("hashes.json", dir))`. The caller's existing refusal path (message, exit code, no model request) handles it unchanged.
+3. **B14 — `probe` run type.** Add `"probe"` to `RUN_TYPES` in compass.md table order (`smoke`, `baseline`, `compare`, `probe`, `evaluate`, `collect`). Its limits stay UNSET (no stored suggestion), like `baseline`.
+4. **B15 — rounded minutes (approved text).** `confirmLimits` prints minutes rounded to one decimal, with no trailing `.0`: `Math.round(runMs / 6000) / 10`. Approved before/after: `Limits: 100 model requests · 100000 ms (1.6666666666666667 min) wall clock` → `Limits: 100 model requests · 100000 ms (1.7 min) wall clock`. Unchanged: `900000 ms (15 min)`, `90000 ms (1.5 min)`, `5400000 ms (90 min)`.
+5. **B20 — the reload test holds the lock.** Give `fakeCtx` in tests/reload-lifecycle.test.ts `mode: "tui"` and make sure `PI_SUBAGENT_PARENT_PID` is unset for the test (restore it after), so `acquireLock()` runs. Add an assertion that the lock is held after `session_start` and released after `session_shutdown`. **If the test then fails, do not change src/: stop, report the failure under `Not done`, and write the handoff.**
+6. **B21 — correction-miss bound.** `missBound` divides by `counts.correctionTrios`, not `counts.lessonTrios` (`3 / ${correctionTrios}` with no misses, `${misses} / ${correctionTrios}` otherwise). The report line text is otherwise unchanged.
+
+**Acceptance criteria:**
+
+1. B11: a sheet test with one build of an insert (no `text`), a merge (with `text`), and a skip shows the insert's and the skip's candidate text and the merge's text; an unresolvable candidate ID still shows the ID.
+2. B13: a start snapshot whose hashes.json is `{not json` and one whose hashes.json is `[1,2]` are both refused with the `startSnapshotMismatch` text naming `hashes.json`, the existing exit code, and no model request; no stack trace on stderr.
+3. B14: `parseLimits` (or the run-type parser) accepts `--run-type probe`; its stored suggestion is UNSET; the existing run-type tests still pass.
+4. B15: `confirmLimits(100, 100_000)` gives the approved after-text; the existing A1 expectations (`15 min`, `1.5 min`) and a `5_400_000` case (`90 min`) pass.
+5. B20: the reload test asserts the lock is held after `session_start` and released after `session_shutdown`, and passes — or the handoff reports its failure as stated in item 5.
+6. B21: the held-out-shaped fixture with 4 lesson trios of which 2 carry `correction: true` and no misses reports `3 / 2`; with one miss, `1 / 2`. Update the existing evaluate test expectations (`1 / 4`, `3 / 4`) only if their fixtures' correction count differs from their lesson count, and list each under `Done`.
+7. No other user-facing string added or changed; no change to gate, extraction, building decisions, snapshots, or scan behavior.
+
+**Allowed scope:** src/instrument.ts, src/builder.ts (the `emitBuild` call only), scripts/compass/pipeline-boot.ts, scripts/compass/snapshot.ts, scripts/compass/strings.ts (`confirmLimits` only), scripts/compass/types.ts, scripts/compass/evaluate.ts, tests/reload-lifecycle.test.ts, and the tests/compass/*.test.ts files that cover these (adapt or add; list each).
+
+**Constraints:** no change to md/compass.md; no new setting; no new dependency.
+
+**Verification:**
+
+```
+npx vitest run tests/reload-lifecycle.test.ts
+npx vitest run --config vitest.compass.config.ts
+npm test
+npm run test:compass
+```
+
+## CC review and gate (not for the coder)
+
+Review per planner-prompt.md Step 2; ledger entry in md/ledger.jsonl. Check: `candidateText` is read only by the harness; the B13 refusal makes no model request; B15 output matches the approved text byte for byte; B20 did not change src/; B21's report text is otherwise identical. Update md/bugs.md (status, fix commit, evidence) for each bug.
+
+Planner difficulty: S7-01 easy.
+
+## Revision history
+
+| Revision | Date | Change |
+|---|---|---|
+| 0.1.0 | 2026-10-17 | S7-01 quick-fixes spec. |
