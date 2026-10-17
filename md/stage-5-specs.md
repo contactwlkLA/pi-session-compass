@@ -332,6 +332,8 @@ npm run test:compass
 npm test
 ```
 
+**Audit answers (CC, 2026-10-17; part of this spec; numbers refer to outputs/s5/handoff/S5-04a-audit.md):** as you plan throughout. Noise 1: keep `HASH` for the opaque fixtures and add `LIVE_HASH = "f302de0ce97b"` for the six live sites in tests/compass/gate-harness.test.ts. Noise 3–6: as proposed (widened answer type, no guard for an empty list, tests/gate.test.ts touched only if it fails, the existing body assertion covers criterion 4). Risk 1: the orphaned gate cache is expected; no rescoring is part of this task.
+
 ## CC review and gate (not for the coder)
 
 Review per planner-prompt.md Step 2; ledger entry in md/ledger.jsonl. Check: no request before the checks pass; the counter is the only path to a request; cache rules (only scored and `oversized_state`); split is by session and seeded; rows in corpus order; P1–P13 byte-exact; no key in any artifact. Then CC runs the freeze on D1's two folders (offline) and reports the census before any live scoring.
