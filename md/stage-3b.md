@@ -1,6 +1,6 @@
 # Stage 3 Part B — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.6.0** · Status: **Approved (user, 2026-10-15; S3-B2-01 and V1–V6, 2026-10-16)**
+Project: **pi-session-compass** · Revision: **0.7.0** · Status: **Approved (user, 2026-10-15; S3-B2-01 and V1–V6, 2026-10-16)**
 
 Date: **2026-10-15**
 
@@ -60,7 +60,8 @@ T1 and T4 are new beyond the stage-3-task list. Without T4, a stopped run's rece
 - The repo lint forbids optional parameters; add required parameters and update every caller in scope.
 - Before declaring done, run every command under **Verification** and paste each result line.
 - If a fix attempt fails twice, stop and report under `Not done`.
-- Do not add measurement, logging of your own performance, or commentary on your own quality.
+- Do not add measurement, logging of your own performance, or commentary on your own quality. Exception: when the user starts the session with the `session-instrument` skill, log and tally its reason codes as the skill says.
+- Test fixtures: write the fixture values first, derive the expected counts into a small table, then write the assertions from that table. Do not compute expectations in your head while designing the data.
 - An existing test may be adapted when this task changes the behavior it exercises, even in a file listed for type fixes only: keep every assertion that still applies, and list each adapted test and why under `Done`.
 - References such as P10, §6, or stage-3-task item numbers are for Claude Code's bookkeeping; you can ignore them.
 
@@ -369,6 +370,6 @@ Planner difficulty (fixed before each task starts, for the ledger): S3-B1-01 med
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.4.0 | 2026-10-15 | S3-B1-04 rewritten with CC's where/how plan; spec-audit step with a Noise section (user-approved). |
 | 0.5.0 | 2026-10-15 | Pi audit of this file: As built section, test-adaptation and reference rules for the coder, wording fixes (user-approved). |
 | 0.6.0 | 2026-10-16 | B-2 cut to S3-B2-01 (simple rollback, user-approved); S3-B2-01 spec added. |
+| 0.7.0 | 2026-10-17 | Coder rules: fixture-first test expectations; session-instrument exception (user). |
