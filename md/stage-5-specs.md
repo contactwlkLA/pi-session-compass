@@ -1,6 +1,6 @@
 # Stage 5 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.5.0** · Status: **S5-01, S5-02a/b approved; S5-02c draft (R1–R5, P34–P39 awaiting approval)**
+Project: **pi-session-compass** · Revision: **0.5.0** · Status: **Approved (user, 2026-10-17)**
 
 Date: **2026-10-16**
 
@@ -258,7 +258,7 @@ npm run test:compass
 npm test
 ```
 
-### Protected text R1–R5 and P34–P39 (draft, awaiting user approval)
+### Protected text R1–R5 and P34–P39 (approved by the user, 2026-10-17)
 
 **R — reply-code questions** (`reply-codes-v1`; each `instructions` is the gate's prefix + the question):
 
@@ -297,4 +297,4 @@ S5-02a review: `runPipeline` unchanged; one `export` in src; usage attributed pe
 |---|---|---|
 | 0.3.0 | 2026-10-16 | S5-02a (extraction) and S5-02b (label sheet, scorer) specs; P14–P33 approved by the user. |
 | 0.4.0 | 2026-10-16 | S5-02a audit answers (reuse P6/P7/P12, access error, usage source, diagnostics sink). |
-| 0.5.0 | 2026-10-17 | S5-02c reply codes spec; R1–R5 and P34–P39 for approval. |
+| 0.5.0 | 2026-10-17 | S5-02c reply codes spec; R1–R5 and P34–P39 approved by the user. |
