@@ -1,6 +1,6 @@
 # Stage 6 — Settings, acceptance, and handoff
 
-Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Complete (user accepted the handoff, 2026-10-17)**
+Project: **pi-session-compass** · Revision: **0.3.1** · Status: **Complete (user accepted the handoff, 2026-10-17)**
 
 Date: **2026-10-17**
 
@@ -54,7 +54,7 @@ Parent: [Development plan](plan.md), Stage 6. Evidence: outputs/s5/pilot-report.
 
 - The rest of plan S6.T1: settings and status help text (candidate-batch units, stop reasons, pending work, bypass count), the debug-path description, removing inert builder-prompt HTML comments.
 - The one-place settings view (plan §8 planning note).
-- A retuned policy for implicit corrections (scale-report option 2); the untouched 463-trio dashboard-v3 split stays available as its held-out set.
+- A retuned policy for implicit corrections (scale-report option 2); the untouched 463-trio project C split stays available as its held-out set.
 - Bug B21 (evaluator's miss-bound denominator).
 
 ## Revision history
@@ -63,3 +63,4 @@ Parent: [Development plan](plan.md), Stage 6. Evidence: outputs/s5/pilot-report.
 |---|---|---|
 | 0.2.0 | 2026-10-17 | Approved by the user; the log locates a trio by trio ID and record IDs (line numbers are not available at the gate). |
 | 0.3.0 | 2026-10-17 | Gate log adds `attempts` (user, after the S6-01 audit); S6-01, S6-02, S6-03 done; gate-log line about 600 bytes; delivered mode recorded; handoff accepted. |
+| 0.3.1 | 2026-10-17 | Private project names and quoted user replies replaced with neutral descriptions. |

@@ -1,6 +1,6 @@
 # pi-session-compass — Development Plan
 
-Revision: **0.9.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
+Revision: **0.9.1** · Status: **Draft for review** · Date: **2026-10-11 PDT**
 
 Contract: [Architecture specification](architecture.md)
 
@@ -121,7 +121,7 @@ Necessary failure tests:
 
 ### Tasks
 
-- [ ] **S5.T1 — Prepare policy-development fixtures.** Use the supplied session for development examples, including “im lost,” “avoid wrong start,” mixed instructions, and “sure.” Treat previous candidate examples as human hypotheses, not model-produced positives. Do not expand deterministic exclusions broadly without testing short refusals/corrections.
+- [ ] **S5.T1 — Prepare policy-development fixtures.** Use the supplied session for development examples, including confusion, a warning against a wrong start, mixed instructions, and one-word approvals. Treat previous candidate examples as human hypotheses, not model-produced positives. Do not expand deterministic exclusions broadly without testing short refusals/corrections.
 
 - [ ] **S5.T2 — Label and freeze development and held-out sets.** Select additional session trios and freeze development/held-out splits before threshold tuning. Human labels identify potential reusable behavioral lessons; extractor outputs supply a second comparison. Save disagreements and the relevant source references. Label correction-type cases explicitly. Size the held-out set to the activation criteria in S5.T5.
 
@@ -174,6 +174,6 @@ Handoff contents: implementation diff/commit, exact dependency versions, test re
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.7.0 | 2026-10-16 | S3.T5 simplified (user-approved Part C check): reset takes the mutex; legacy positions seed once; no migration backup, cutoff, or notice. |
 | 0.8.0 | 2026-10-16 | Stage 6 planning note: user-friendly setup reviewable from one place. |
 | 0.9.0 | 2026-10-17 | S6 delivered mode `off` and the handoff recorded. |
+| 0.9.1 | 2026-10-17 | Private project names and quoted user replies replaced with neutral descriptions. |

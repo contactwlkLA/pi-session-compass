@@ -1,6 +1,6 @@
 # pi-session-compass — Implementation handoff
 
-Revision: **0.1.0** · Date: **2026-10-17** · Status: **Accepted (user, 2026-10-17)**
+Revision: **0.1.1** · Date: **2026-10-17** · Status: **Accepted (user, 2026-10-17)**
 
 Parent: [plan.md](plan.md) §8 (S6.T4, S6.T5). Stage record: [stage.md](stage.md). Bugs: [bugs.md](bugs.md).
 
@@ -8,7 +8,7 @@ Parent: [plan.md](plan.md) §8 (S6.T4, S6.T5). Stage record: [stage.md](stage.md
 
 **Gate mode `off`** (src/gate-config.ts `defaultMode`; settings key `gateMode`). Shadow and enforce are shipped and documented in README "Jev gate" but not enabled by default.
 
-Unmet activation checks (outputs/s5/scale/scale-report.md, dashboard-v3 sample of 236 trios, user-checked labels):
+Unmet activation checks (outputs/s5/scale/scale-report.md, project C sample of 236 trios, user-checked labels):
 
 | Check | Required | Measured | Met |
 |---|---|---|---|
@@ -56,7 +56,7 @@ Local and gitignored (`fixtures/`, `outputs/`); keep the checkout's copies.
 | S1 fixture session | fixtures/sessions/b75a1246a2ff-…019f732d….jsonl | sha256 b75a1246a2ff…, 26 trios |
 | S1 start snapshot | fixtures/snapshots/s1-start | digest 51f057ec5cf3… |
 | S5 pilot corpus | fixtures/s5-pilot | 30 sessions, 339 trios, seed s5-pilot |
-| S5 scale corpus | fixtures/s5-scale | dashboard-v3, 699 trios (236 sampled, 463 untouched for a future held-out) |
+| S5 scale corpus | fixtures/s5-scale | project C, 699 trios (236 sampled, 463 untouched for a future held-out) |
 | S1 baseline | outputs/s1-t5/baseline/receipt.json | 150 requests, 56.9 min, 20 trios, capped (accepted) |
 | S2 compare | outputs/s2-t3/compare/receipt.json | 46 requests, 26.0 min, 20 trios |
 | S5 paired run | outputs/s5/paired-off/, outputs/s5/paired-enforce/ | 19 trios; cost −47%, time −38% |
@@ -77,3 +77,4 @@ The rest of plan S6.T1 (settings and status help text, debug-path description, i
 | Revision | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-17 | First version; accepted by the user at the S6 checkpoint. |
+| 0.1.1 | 2026-10-17 | Private project names and quoted user replies replaced with neutral descriptions. |

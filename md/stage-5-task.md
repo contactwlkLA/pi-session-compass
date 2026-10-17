@@ -1,6 +1,6 @@
 # Stage 5 — Evaluate the Jev gate
 
-Project: **pi-session-compass** · Revision: **0.6.0** · Status: **Approved (user, 2026-10-16)**
+Project: **pi-session-compass** · Revision: **0.6.1** · Status: **Approved (user, 2026-10-16)**
 
 Date: **2026-10-16**
 
@@ -8,11 +8,11 @@ Parent: [Development plan](plan.md), Stage 5. Gate design: [stage-4-task.md](sta
 
 **Goal (M5):** a reviewable decision, with held-out numbers, on whether the gate is worth enabling and under which policy. The ship default stays **off** unless the activation checks pass.
 
-**Pilot first (user, 2026-10-16).** S5 runs as a pilot on two folders: TxnHunter-3 and agy-sessions-3 (30 sessions, about 350 trios). It proves the method and gives preliminary numbers. If the pilot shows the gate is worth it and the process is not a drag, a scale-up rerun on the largest folder, TxnHunter-dashboard-v3 (32 sessions, 744 replies), tests the frozen pilot policy on sessions the tuning never saw (S5-06).
+**Pilot first (user, 2026-10-16).** S5 runs as a pilot on two folders: project A and project B (30 sessions, about 350 trios). It proves the method and gives preliminary numbers. If the pilot shows the gate is worth it and the process is not a drag, a scale-up rerun on the largest folder, project C (32 sessions, 744 replies), tests the frozen pilot policy on sessions the tuning never saw (S5-06).
 
 ## What we know (evidence, 2026-10-16)
 
-1. **The shipped policy rejects nothing.** In the probe (outputs/probe/, 26 trios, policy `ad7880acdc3b`), 25 trios scored `maybe_lesson` and 1 fell back (`oversized_state`). The `steering` answer is ≥ 0.15 on every trio, even on "sure" (0.18), "yeah clean up plz" (0.19), and "it's in ./src_m3/" (0.21). The routing rule needs all four answers ≤ 0.10, so steering alone blocks every rejection.
+1. **The shipped policy rejects nothing.** In the probe (outputs/probe/, 26 trios, policy `ad7880acdc3b`), 25 trios scored `maybe_lesson` and 1 fell back (`oversized_state`). The `steering` answer is ≥ 0.15 on every trio, even on a one-word approval (0.18), a short go-ahead to clean up (0.19), and a reply naming a source folder (0.21). The routing rule needs all four answers ≤ 0.10, so steering alone blocks every rejection.
 2. **The extractor can't be the reference label.** In the S1 baseline it kept rules from 16 of 20 trios, including short replies. Human labels decide what counts as a lesson; extractor output is the second comparison (plan S5.T2).
 3. **There is a corpus.** The live session store holds 180 session files and about 2,100 user replies across 23 project folders. That's enough for separate development and held-out sets.
 4. **Gate calls are cheap; extraction is the cost.** A Jev call takes about 100 ms and about 1,000 input tokens. An extraction call runs at high thinking (S1: 150 requests and 56.9 min for 20 trios with building).
@@ -29,7 +29,7 @@ Pi codes two harness tasks from CC specs. CC runs the live scoring and extractio
 | S5-03 — Score, extract, label (dev + held-out) | S5.T2, S5.T3 | Gate scores and extractor output for both sets; labels drafted and checked; split and labels frozen before tuning | CC + user |
 | S5-04 — Tune on dev, then test once on held-out | S5.T3, S5.T4 | Policy chosen on dev; one held-out evaluation; audit of rejects and misses; one paired off/enforce run for measured cost | CC |
 | S5-05 — Pilot report | S5.T5 | Decision report with numerators, denominators, bounds, cost, and limitations; go/no-go for the scale-up | CC |
-| S5-06 — Scale-up (if the pilot says go) | S5.T3–T5 | The frozen pilot policy scored on TxnHunter-dashboard-v3 (sampled for labeling); final activation report | CC + user |
+| S5-06 — Scale-up (if the pilot says go) | S5.T3–T5 | The frozen pilot policy scored on project C (sampled for labeling); final activation report | CC + user |
 
 ## Fixed design
 
@@ -45,11 +45,11 @@ Pi codes two harness tasks from CC specs. CC runs the live scoring and extractio
 
 ## Decisions (user, 2026-10-16)
 
-- **D1 — Corpus:** TxnHunter-3 and agy-sessions-3 for the pilot. compass-ext4 and .pi-agent stay out (they are about this tool). Sessions found later in a backup can join only before the split is frozen.
+- **D1 — Corpus:** project A and project B for the pilot. compass-ext4 and .pi-agent stay out (they are about this tool). Sessions found later in a backup can join only before the split is frozen.
 - **D2 — Labels:** CC drafts every label from a written rubric. The user checks every trio drafted `no_lesson`, every disagreement with the extractor, and a 10% random sample of the rest; the sheet records what the user changed.
 - **D3 — Size:** every trio in the two pilot folders. The pilot result is labeled preliminary if held-out has fewer than 60 `lesson` trios or few corrections.
 
-- **D4 — Labeling rule for task instructions and reminders: DECIDED, rule (b)** (user, 2026-10-17, after the reply-code evidence below; rubric in label-rubric.md). A task instruction is `no_lesson` unless it states a lasting preference; corrections, hold-backs, and mid-session hold-back reminders are `lesson`. Earlier: kept open for concrete evidence. Evidence so far (dev set only): steering follows the user's reply (rank correlation +0.42 with its length; agent text +0.22 before, +0.09 after); 36 dev trios score steering ≥ 0.5 with the other three ≤ 0.20, nearly all one-off next steps (option picks, task commands, questions, pasted shell commands). Candidates: (a) reviewer: a task instruction is `no_lesson` unless it states a lasting preference; (b) CC: also count corrections and repeated reminders about agent behavior ("wait for my go", "don't run ahead") as `lesson`. The user sees these reminders as frustration with models that run ahead, not as lessons, and doubts the portrait's usefulness unless the labeling changes. Related fact: the S1-start portrait already holds such rules ("Require explicit user approval … before executing consequential actions", "Respect requested scope … unsolicited implementation", "Distinguish exploration from execution"), yet the reminders recur. Reply codes (S5-02c, all 339 trios, set reply-codes-v1, outputs/s5/codes-all/): task_step 264, correction 105, approval 40, hold_back 23, chatter 9 (≥ 0.50; 110 trios carry two or more codes). 166 trios are task-step only, and the extractor found ≥ 1 rule in 117 of them, so rule (a) would drop those rules. 23 trios hold the agent back (20 with rules), spread over 11 of 27 sessions; rule (b) would keep them. Labels (S5-03 item 2) wait for D4; S5-02a/b and the extraction run do not depend on it.
+- **D4 — Labeling rule for task instructions and reminders: DECIDED, rule (b)** (user, 2026-10-17, after the reply-code evidence below; rubric in label-rubric.md). A task instruction is `no_lesson` unless it states a lasting preference; corrections, hold-backs, and mid-session hold-back reminders are `lesson`. Earlier: kept open for concrete evidence. Evidence so far (dev set only): steering follows the user's reply (rank correlation +0.42 with its length; agent text +0.22 before, +0.09 after); 36 dev trios score steering ≥ 0.5 with the other three ≤ 0.20, nearly all one-off next steps (option picks, task commands, questions, pasted shell commands). Candidates: (a) reviewer: a task instruction is `no_lesson` unless it states a lasting preference; (b) CC: also count corrections and repeated reminders about agent behavior (asking the agent to wait for a go-ahead or not to run ahead) as `lesson`. The user sees these reminders as frustration with models that run ahead, not as lessons, and doubts the portrait's usefulness unless the labeling changes. Related fact: the S1-start portrait already holds such rules ("Require explicit user approval … before executing consequential actions", "Respect requested scope … unsolicited implementation", "Distinguish exploration from execution"), yet the reminders recur. Reply codes (S5-02c, all 339 trios, set reply-codes-v1, outputs/s5/codes-all/): task_step 264, correction 105, approval 40, hold_back 23, chatter 9 (≥ 0.50; 110 trios carry two or more codes). 166 trios are task-step only, and the extractor found ≥ 1 rule in 117 of them, so rule (a) would drop those rules. 23 trios hold the agent back (20 with rules), spread over 11 of 27 sessions; rule (b) would keep them. Labels (S5-03 item 2) wait for D4; S5-02a/b and the extraction run do not depend on it.
 
 ## Tasks
 
@@ -85,7 +85,7 @@ The session-instrument skill's idea (count what kind of exchange each user reply
 
 - [x] **1.** Tune on dev (design 8). Any question rewording goes to the user for approval first.
 - [x] **2.** Freeze the chosen policy (hash), then score held-out once.
-- [x] **3.** Audit all held-out misses and all predicted rejections (up to 200, sampled uniformly if more). *Done 2026-10-17: policy without-steering-0.30 (correction, preference, confusion all ≤ 0.30; steering ignored), chosen on dev (88 of 207 rejected, 60 of 60 lesson kept, 0 correction misses) and frozen with the labels (outputs/s5/freeze.json). Held-out once: 59 of 132 rejected, 29 of 30 lesson kept (97%), 0 of 17 corrections missed; the one miss is a hold-back reminder ("no action, ans only", all four answers ≤ 0.22). All 58 rejected `no_lesson` trios were user-checked. Evidence outputs/s5/heldout-test/.*
+- [x] **3.** Audit all held-out misses and all predicted rejections (up to 200, sampled uniformly if more). *Done 2026-10-17: policy without-steering-0.30 (correction, preference, confusion all ≤ 0.30; steering ignored), chosen on dev (88 of 207 rejected, 60 of 60 lesson kept, 0 correction misses) and frozen with the labels (outputs/s5/freeze.json). Held-out once: 59 of 132 rejected, 29 of 30 lesson kept (97%), 0 of 17 corrections missed; the one miss is a hold-back reminder (a short reply asking for an answer without action; all four answers ≤ 0.22). All 58 rejected `no_lesson` trios were user-checked. Evidence outputs/s5/heldout-test/.*
 - [x] **3a.** S5-04a (Pi; spec in stage-5-specs.md; user chose it 2026-10-17): the shipped gate decides on correction, preference, and confusion at 0.30, so enforce runs the tuned policy.
 - [x] **4.** One paired run on the same held-out slice from the same start snapshot: `off` and `enforce`, for measured total cost (limits user-confirmed). *Done 2026-10-17 on held-out 01a0b72d (19 trios): off 44 Meta requests, 23.9 min, $0.035 at the models.json rates; enforce 22 Meta + 19 Jev requests, 14.7 min, $0.018 Meta plus $0.0007 Jev at the published $0.042 per million input tokens (total −47%; check 3 passes); portrait +15 vs +10 rules. Evidence outputs/s5/paired-report.md.*
 
@@ -96,7 +96,7 @@ The session-instrument skill's idea (count what kind of exchange each user reply
 
 ### S5-06 — Scale-up (CC + user; only on the user's go)
 
-- [x] **1.** Corpus freeze and census of TxnHunter-dashboard-v3; label a uniform sample sized to the activation checks (design 7). *Done 2026-10-17: fixtures/s5-scale (seed s5-scale, 32 sessions, 699 trios); the seed's dev split (11 sessions, 236 trios) labeled: 51 lesson (29 corrections), 185 no_lesson, below 60 (pooled with the pilot held-out: 81). User checked all 101 dropped trios and changed 3 to correction.*
+- [x] **1.** Corpus freeze and census of project C; label a uniform sample sized to the activation checks (design 7). *Done 2026-10-17: fixtures/s5-scale (seed s5-scale, 32 sessions, 699 trios); the seed's dev split (11 sessions, 236 trios) labeled: 51 lesson (29 corrections), 185 no_lesson, below 60 (pooled with the pilot held-out: 81). User checked all 101 dropped trios and changed 3 to correction.*
 - [x] **2.** Score with the frozen pilot policy (no tuning on this folder); run extraction on the sample; audit as S5-04 item 3. *Done 2026-10-17: 236 Jev + 236 Meta requests (limits 300 / 300000 ms and 300 / 2400000 ms, agent-suggested, user-confirmed). Policy f302de0ce97b rejects 101 of 236, keeps 48 of 51 lesson (94%), misses 3 of 29 corrections: all implicit corrections phrased as requests, scored as steering.*
 - [x] **3.** Final activation report; sync stage docs; checkpoint with the user before S6. *Done 2026-10-17 (outputs/s5/scale/scale-report.md): activation checks 1 and 2 fail on this folder. User: ship off and document shadow and enforce with these numbers, and add a gate log so shadow mode records evidence in daily use (S6).*
 
@@ -104,6 +104,6 @@ The session-instrument skill's idea (count what kind of exchange each user reply
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.4.0 | 2026-10-17 | S5-02c reply codes (session-instrument idea, offline) added (user). |
 | 0.5.0 | 2026-10-17 | S5-02c done; D4 decided (rule b); labels frozen; policy tuned and tested; S5-04a added. |
-| 0.6.0 | 2026-10-17 | S5-06 run: scale-up sample labeled and scored; frozen policy fails checks 1 and 2 on dashboard-v3. |
+| 0.6.0 | 2026-10-17 | S5-06 run: scale-up sample labeled and scored; frozen policy fails checks 1 and 2 on project C. |
+| 0.6.1 | 2026-10-17 | Private project names and quoted user replies replaced with neutral descriptions. |

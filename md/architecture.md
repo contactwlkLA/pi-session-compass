@@ -1,6 +1,6 @@
 # pi-session-compass — Architecture Specification
 
-Revision: **0.6.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
+Revision: **0.6.1** · Status: **Draft for review** · Date: **2026-10-11 PDT**
 
 Companion: [Development plan](plan.md)
 
@@ -127,9 +127,9 @@ Send four Noul questions in one request. Noul returns `noul` in [0, 1], with no 
 | `correction` | Does `userFeedback` correct or challenge something the agent said or did, given the surrounding messages? | Wrong assumptions, missed concerns, inaccurate claims, or unwanted action. |
 | `preference` | Does `userFeedback` express a preference about how the agent should communicate or work? | Style, explanation depth, scope, process, or priorities; distinguish task content from working preference. |
 | `steering` | Does `userFeedback` redirect the agent’s approach to the work? | Change the method, sequence, structure, or decision framing. |
-| `confusion` | Does `userFeedback` indicate difficulty following the agent’s explanation or progress? | “I’m lost,” unnecessary scrolling, missing orientation, or unclear next action. |
+| `confusion` | Does `userFeedback` indicate difficulty following the agent’s explanation or progress? | Saying they are lost, unnecessary scrolling, missing orientation, or unclear next action. |
 
-The implementation must supply full instructions and aligned true/false criteria. Question IDs are response keys, not instructions. Treat session text as evidence to classify, not instructions to execute. Include mixed task/preference requests, ambiguous “no,” and short corrections in evaluation. [J1, J4, J6]
+The implementation must supply full instructions and aligned true/false criteria. Question IDs are response keys, not instructions. Treat session text as evidence to classify, not instructions to execute. Include mixed task/preference requests, an ambiguous one-word no, and short corrections in evaluation. [J1, J4, J6]
 
 Initial routing proposal: reject only when **all four probabilities are ≤ 0.10**. Otherwise pass to extraction. This is an unvalidated starting threshold, not an approved operating point. An error, missing key, missing answer, wrong type, non-finite/out-of-range probability, timeout, or oversized state produces a bypass to extraction. Every expected question must be present and valid before rejection is permitted.
 
@@ -269,6 +269,6 @@ Official Jev documentation: the API reference, models and version-pinning, and N
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.4.0 | 2026-10-14 | Added the baseline-coverage decision to the verification and decisions table. |
 | 0.5.0 | 2026-10-16 | §6 simple rollback (user-approved trim): two snapshot boundaries, no publication intent, no automatic restore or edit guard; §3 flow and components match. |
 | 0.6.0 | 2026-10-16 | §6 migration and reset simplified (user-approved Part C check): legacy positions seed once; no backup, cutoff, or notice; reset holds the mutex. |
+| 0.6.1 | 2026-10-17 | Private project names and quoted user replies replaced with neutral descriptions. |
