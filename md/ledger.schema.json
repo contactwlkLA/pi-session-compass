@@ -78,6 +78,21 @@
             }
           },
 
+          "unplanned_stops": {
+            "type": "array",
+            "description": "HARNESS/REVIEWER, from the coder's session log: each time the coder's turn ended (stop, error, length, or aborted) before it wrote the expected audit or handoff file, so a person had to step in. Planned stops (after writing the audit or the handoff) and stops about requests outside the task are not counted. Empty array = none.",
+            "items": {
+              "type": "object",
+              "required": ["at", "kind", "resolved_by"],
+              "properties": {
+                "at": { "type": "string", "description": "ISO timestamp of the coder's turn end" },
+                "kind": { "enum": ["question", "content_filter", "output_limit", "aborted", "other"], "description": "question = the coder asked for guidance; content_filter = provider filter stop; output_limit = the turn hit the output length limit; aborted = the turn was cut off; other" },
+                "resolved_by": { "enum": ["user", "cc", "coder_resumed"], "description": "Who supplied what the coder needed to continue" },
+                "note": { "type": "string" }
+              }
+            }
+          },
+
           "notes": { "type": "string", "description": "Free text, e.g. session restarted for context size" }
         }
       }
@@ -98,7 +113,8 @@
         "pipeline_cost_usd": { "type": ["number", "null"], "description": "coder_cost_usd + review_cost_usd summed over all rounds" },
         "max_peak_context_tokens": { "type": ["integer", "null"], "description": "Largest peak_context_tokens over all rounds" },
         "weighted_findings": { "type": ["number", "null"], "description": "Sum of finding weights across all rounds, excluding inherited findings: blocker=8, major=4, minor=2, nit=1" },
-        "discipline_flags": { "type": ["integer", "null"], "description": "Total count of: out-of-scope files + unrequested_changes + constraint_violations + claim_mismatches + (1 per round where verification_run != 'all')" }
+        "discipline_flags": { "type": ["integer", "null"], "description": "Total count of: out-of-scope files + unrequested_changes + constraint_violations + claim_mismatches + (1 per round where verification_run != 'all')" },
+        "unplanned_stops_total": { "type": "integer", "minimum": 0, "description": "Sum of unplanned_stops over all rounds" }
       }
     },
 
