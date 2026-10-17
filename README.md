@@ -6,6 +6,7 @@ Builds a behavioral portrait from your session history — learns your correctio
 
 - **System-prompt injection** — learned rules are appended to the system prompt, so the agent anticipates your corrections before it responds
 - **Learns from real corrections** — extracts lessons from agent → user → agent interaction trios, filtering out approvals and extension-generated noise so only genuine feedback shapes the portrait
+- **Optional Jev gate** — scores each trio with the Jev classifier before extraction, so trios with no lesson can skip the extraction call (off by default; see [Jev gate](#jev-gate))
 - **LLM-curated ranking** — each candidate is ranked against your existing portrait (insert, merge, skip, or evict), keeping the most valuable rules on top
 - **Automatic background dreaming** — runs on a timer (default off) to continuously learn from new sessions; enable via `/portrait:settings`
 - **Maintenance** — automatically deduplicates, resolves contradictions, removes harmful rules, and promotes displaced rules back into freed slots as your portrait grows (also on demand via `/portrait:maintenance`)
@@ -51,6 +52,28 @@ Configure portrait with the `/portrait:settings` command (an interactive editor)
 
 The full setting reference (types, defaults, descriptions, tab layout) lives in [`docs/CONFIGURATION.md`](./docs/CONFIGURATION.md).
 
+## Jev gate
+
+The gate checks each interaction trio with TypeSafe's Jev classifier (`jev-1.13.0`) before extraction. It asks whether your reply corrects the agent, states a lasting preference, or shows confusion; when all three answers score 0.30 or lower, the trio counts as having no lesson. The gate is off by default.
+
+| `gateMode` | Jev requests | Extraction |
+|------------|--------------|------------|
+| `off` (default) | none | every trio |
+| `shadow` | one per trio | every trio; the gate's result is only logged |
+| `enforce` | one per trio | skipped for trios the gate rates as no lesson |
+
+Shadow and enforce need a TypeSafe API key in the `TYPESAFE_API_KEY` environment variable of the pi process. Each check sends the trio's text (agent response, your reply, agent response) to `https://api.typesafe.ai`. Without a key, or when Jev fails or takes longer than 5 seconds, the trio is extracted as if the gate were off; after three failed checks in a row, the gate stops checking until the next collection run.
+
+**Measured results.** On one user's sessions that the gate was not tuned on, it kept 77 of 81 trios that held a lesson and missed 3 of 46 corrections. The missed corrections were phrased as requests, such as "show me the command". In one paired run on 19 trios, enforce cut total cost (extraction model plus Jev) by 47% and wall time by 38%. A missed correction is a lost rule, so enforce is not recommended yet; use shadow to see how the gate decides on your own sessions.
+
+**Gate log.** In shadow and enforce, every check appends one JSON line to `~/.pi/portrait/gate-log.jsonl`: the time, session file, trio and record IDs, mode, policy hash, decision (`extract` or `skip`), result (`no_lesson`, `maybe_lesson`, or why the check fell back, such as `key_missing` or `timeout`), Jev's answers, request count, latency, and token usage. It holds no trio text and no key. Each line is about 300 bytes. The file is never rotated, so you can delete it at any time, and it is not committed to the portrait's git history. To count the trios that enforce would have skipped:
+
+```bash
+grep -c '"result":"no_lesson"' ~/.pi/portrait/gate-log.jsonl
+```
+
+**Turning the gate off.** Set `gateMode` to `off` in `/portrait:settings`. No Jev requests are made, nothing more is logged, and every trio is extracted. Snapshots and recovery work the same in every mode.
+
 ## Storage
 
 All data is stored in `~/.pi/portrait/`:
@@ -62,6 +85,14 @@ All data is stored in `~/.pi/portrait/`:
 - `portrait-state.json` — Pause state, last pipeline run, trio counts, maintenance counters
 - `.portrait-lock` — Cross-process lock file with heartbeat
 - `debug/` — Extractor, maintenance, and backfill debug dumps (see "Debug" section below)
+- `snapshots/` — Collection progress snapshots (see "Recovery" below)
+- `gate-log.jsonl` — Jev gate decisions in shadow and enforce (see "Jev gate")
+
+## Recovery
+
+Collection progress (scan positions and pending candidates) is saved as snapshots under `~/.pi/portrait/snapshots/`. After an interruption or a failed call, the next run resumes from the newest complete snapshot and redoes what followed it, so pending candidates are not lost. Portrait files are written atomically, so they are never half-written.
+
+To undo a bad portrait by hand, copy `portrait.md`, `evicted.md`, and `dropped.md` back from the `files/` folder of the newest snapshot (the one named in `snapshots/CURRENT`), or restore them from the portrait's git history, then run `/reload`. Nothing is restored automatically, so your own edits to the portrait are never overwritten.
 
 ## Debug
 

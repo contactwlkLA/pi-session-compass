@@ -36,9 +36,9 @@ Parent: [Development plan](plan.md), Stage 6. Evidence: outputs/s5/pilot-report.
 
 ### S6-02 — Product docs (CC; protected text, presented before writing)
 
-- [ ] **1.** README and docs/CONFIGURATION.md: the `gateMode` setting (off / shadow / enforce), `TYPESAFE_API_KEY`, the gate log and how to read it, turning the gate off.
-- [ ] **2.** Measured numbers, plainly: total cost −47% and time −38% with enforce (one paired run); lessons kept 77 of 81 and corrections missed 3 of 46 on sessions the policy was not tuned on; misses are implicit corrections phrased as requests. Enforce is not recommended yet.
-- [ ] **3.** Rollback: gate off keeps the recovery improvements; manual rollback from a snapshot after a failure. Product-doc style (no design references, no history framing).
+- [x] **1.** README and docs/CONFIGURATION.md: the `gateMode` setting (off / shadow / enforce), `TYPESAFE_API_KEY`, the gate log and how to read it, turning the gate off.
+- [x] **2.** Measured numbers, plainly: total cost −47% and time −38% with enforce (one paired run); lessons kept 77 of 81 and corrections missed 3 of 46 on sessions the policy was not tuned on; misses are implicit corrections phrased as requests. Enforce is not recommended yet.
+- [x] **3.** Rollback: gate off keeps the recovery improvements; manual rollback from a snapshot after a failure. Product-doc style (no design references, no history framing).
 
 ### S6-03 — Release checks and speed run (CC)
 
@@ -62,4 +62,4 @@ Parent: [Development plan](plan.md), Stage 6. Evidence: outputs/s5/pilot-report.
 | Revision | Date | Change |
 |---|---|---|
 | 0.2.0 | 2026-10-17 | Approved by the user; the log locates a trio by trio ID and record IDs (line numbers are not available at the gate). |
-| 0.3.0 | 2026-10-17 | Gate log adds `attempts` (user, after the S6-01 audit). |
+| 0.3.0 | 2026-10-17 | Gate log adds `attempts` (user, after the S6-01 audit); S6-01 and S6-02 done. |

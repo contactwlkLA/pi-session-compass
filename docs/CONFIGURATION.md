@@ -7,6 +7,7 @@ Configure portrait via the `/portrait:settings` command, which opens an interact
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `enabled` | boolean | `true` | Master switch for the portrait extension (background collection + injection) |
+| `gateMode` | string | `off` | Jev gate before extraction: `off` (no check), `shadow` (check and log, extract every trio), `enforce` (skip trios the gate rates as no lesson). Needs `TYPESAFE_API_KEY`; see [Jev gate](../README.md#jev-gate) |
 | `intervalMs` | duration | `Off` | Background collection interval. Off = manual-only (collect via `/portrait:collect`) |
 | `startupDelayMs` | duration | `2s` | One-time delay after the app starts before the first background collection |
 | `ruleLimit` | number | `200` | Maximum number of portrait rules kept (highest-value first; lowest-value evicted when exceeded) |
@@ -44,5 +45,6 @@ Configure portrait via the `/portrait:settings` command, which opens an interact
 - **model** — a `provider/model-id` string, or `null` to use the current session model.
 - **boolean** — `true` / `false`.
 - **thinking-level** — one of pi's reasoning levels (off, minimal, low, medium, high, xhigh).
+- **string** — one of the listed presets (e.g. `gateMode`: `off`, `shadow`, `enforce`).
 
 See the [`/portrait:settings`](../README.md#commands) command to edit these interactively.
