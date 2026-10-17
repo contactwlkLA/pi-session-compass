@@ -1,6 +1,6 @@
 # Stage 5 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.5.0** · Status: **Approved (user, 2026-10-17)**
+Project: **pi-session-compass** · Revision: **0.6.0** · Status: **Approved (user, 2026-10-17)**
 
 Date: **2026-10-16**
 
@@ -193,6 +193,14 @@ npm run test:compass
 npm test
 ```
 
+**Audit answers (CC, 2026-10-17; part of this spec; numbers refer to outputs/s5/handoff/S5-02b-audit.md):**
+
+1. **Question 1: option (a), one new string P40** (`compass ${tool}: --set must be dev or heldout`, with `${tool}` `labels` or `evaluate`), exit 2. `labels` and `evaluate policy` accept only `dev` and `heldout`; `sweep` keeps P28.
+2. **Question 2: your split.** P26 belongs to `labels check` only. Every item-5 agreement failure in `labels export`, `evaluate policy`, and `evaluate sweep` prints P32 once per offending file, exit 2.
+3. **Question 3: as you propose.** A policy's ids come from the gate's four; a threshold for every listed id, in [0, 1]; nothing unlisted; otherwise P33, exit 2.
+4. **Questions 4–9: your defaults.** `${n}` counts all trios of the set; `${pct}` is the rounded integer percent; `${bound}` is `3 / ${K}` with no misses, else `${m} / ${K}`; every command validates the files it reads; only a `success` row with no notes counts as 0 rules; `evaluate` defaults its output to `outputs/s5/<command>-<set>-<timestamp>`; a missing or unparseable input file prints P32.
+5. **Risks 1–7 and Noise 1–12: as you plan.** Reuse `loadSelected` (score's text on a tampered corpus is accepted, as in extract); the P30 table gets a separator row; four-backtick fences; exit 2 for every refusal.
+
 ### Protected text P14–P33 (approved by the user, 2026-10-16)
 
 | ID | Where | Text |
@@ -217,6 +225,7 @@ npm test
 | P31 | labels: bad selection | `compass labels: --select must be all or review` |
 | P32 | labels/evaluate: input mismatch | `compass ${tool}: ${file} does not cover set ${set} of ${corpus}` |
 | P33 | evaluate: bad policy | `compass evaluate: ${file} is not a valid policy` |
+| P40 | labels/evaluate: bad set *(approved by the user, 2026-10-17)* | `compass ${tool}: --set must be dev or heldout` |
 
 ## S5-02c — Reply codes: a second Jev question set, tallied
 
@@ -295,6 +304,6 @@ S5-02a review: `runPipeline` unchanged; one `export` in src; usage attributed pe
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.3.0 | 2026-10-16 | S5-02a (extraction) and S5-02b (label sheet, scorer) specs; P14–P33 approved by the user. |
 | 0.4.0 | 2026-10-16 | S5-02a audit answers (reuse P6/P7/P12, access error, usage source, diagnostics sink). |
 | 0.5.0 | 2026-10-17 | S5-02c reply codes spec; R1–R5 and P34–P39 approved by the user. |
+| 0.6.0 | 2026-10-17 | S5-02b audit answers; P40 approved by the user. |
