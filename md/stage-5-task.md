@@ -1,6 +1,6 @@
 # Stage 5 — Evaluate the Jev gate
 
-Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Approved (user, 2026-10-16)**
+Project: **pi-session-compass** · Revision: **0.4.0** · Status: **Approved (user, 2026-10-16)**
 
 Date: **2026-10-16**
 
@@ -25,6 +25,7 @@ Pi codes two harness tasks from CC specs. CC runs the live scoring and extractio
 |---|---|---|---|
 | S5-01 — Corpus and gate scoring | S5.T1, S5.T2 (freeze) | Frozen corpus copy, census, session-level dev/held-out split; gate-only scoring of a set (concurrent, cached by trio and policy hash) | Pi |
 | S5-02 — Extraction cache, label sheet, scorer (coded as S5-02a extraction and S5-02b labels + scorer) | S5.T2, S5.T3 (tooling) | Extraction-only run per trio (concurrent, cached by trio and extractor revision, no building); label sheet export/import; offline policy scorer and threshold sweep | Pi |
+| S5-02c — Reply codes (session-instrument idea, offline) | D4 evidence | `score.ts --questions <file>` sends a separate Jev question set (not the gate's); `codes.md` tallies codes per folder and session with top examples | Pi |
 | S5-03 — Score, extract, label (dev + held-out) | S5.T2, S5.T3 | Gate scores and extractor output for both sets; labels drafted and checked; split and labels frozen before tuning | CC + user |
 | S5-04 — Tune on dev, then test once on held-out | S5.T3, S5.T4 | Policy chosen on dev; one held-out evaluation; audit of rejects and misses; one paired off/enforce run for measured cost | CC |
 | S5-05 — Pilot report | S5.T5 | Decision report with numerators, denominators, bounds, cost, and limitations; go/no-go for the scale-up | CC |
@@ -66,6 +67,15 @@ Pi codes two harness tasks from CC specs. CC runs the live scoring and extractio
 - [ ] **3.** Offline scorer: for a policy (thresholds, routing rule), report rejections, kept `lesson` trios, correction misses, and projected extraction savings; a threshold sweep that refuses to run on held-out labels.
 - [ ] **4.** Tests for each, with mocked requests.
 
+### S5-02c — Reply codes (Pi; spec in stage-5-specs.md) *(user, 2026-10-17: a minor tweak, go ahead)*
+
+The session-instrument skill's idea (count what kind of exchange each user reply is) measured offline from the session logs, not self-reported by the live agent. Harness only; the gate, its policy hash, and the plugin do not change.
+
+- [ ] **1.** `score.ts --questions <file>`: score a set with a question set from a file; its own cache and hash; no gate verdicts.
+- [ ] **2.** `codes.md`: per folder and per session, how many replies answer yes (≥ 0.50) to each code, plus the top replies per code.
+- [ ] **3.** Tests (mocked).
+- [ ] **4.** CC: score the pilot corpus with the reply-code set (user-confirmed limits); report the tally as D4 evidence.
+
 ### S5-03 — Score, extract, label (CC + user)
 
 - [ ] **1.** Live gate scoring and extraction on dev and held-out (run type `evaluate`; limits suggested at launch, user-confirmed).
@@ -93,6 +103,6 @@ Pi codes two harness tasks from CC specs. CC runs the live scoring and extractio
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.2.0 | 2026-10-16 | Pilot on TxnHunter-3 + agy-sessions-3; D1–D3 decided; S5-06 scale-up on TxnHunter-dashboard-v3 after a go. |
 | 0.2.1 | 2026-10-16 | S5-02 coded in two parts (02a, 02b). |
 | 0.3.0 | 2026-10-17 | D4 (labeling rule for task instructions and reminders) recorded as open; labels wait for it. |
+| 0.4.0 | 2026-10-17 | S5-02c reply codes (session-instrument idea, offline) added (user). |

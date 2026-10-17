@@ -1,6 +1,6 @@
 # Stage 5 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.4.0** · Status: **Approved (user, 2026-10-16)**
+Project: **pi-session-compass** · Revision: **0.5.0** · Status: **S5-01, S5-02a/b approved; S5-02c draft (R1–R5, P34–P39 awaiting approval)**
 
 Date: **2026-10-16**
 
@@ -218,11 +218,76 @@ npm test
 | P32 | labels/evaluate: input mismatch | `compass ${tool}: ${file} does not cover set ${set} of ${corpus}` |
 | P33 | evaluate: bad policy | `compass evaluate: ${file} is not a valid policy` |
 
+## S5-02c — Reply codes: a second Jev question set, tallied
+
+`score.ts` learns to send a question set read from a file instead of the gate's four questions, and to tally the answers per folder and session. The gate, `GATE_CONFIG`, its policy hash, and the plugin do not change. Every test mocks the network.
+
+**Read:** scripts/compass/score.ts and scripts/compass/corpus-run.ts (whole); src/jev.ts (`JevPolicy`, `JevQuestion`, `callJev`'s answer validation, which iterates the policy's question ids); scripts/compass/strings.ts (P1–P18). Test template: tests/compass/score.test.ts.
+
+**Question set file:** `{ "name": string, "questions": { <id>: { "type": "noul", "instructions": string, "criteria": { "true": string, "false": string } } } }`, 1 to 8 questions, ids matching `^[a-z_]{1,32}$`. Anything else gives P34, exit 2, before any request. The approved set is checked in as `scripts/compass/questions/reply-codes-v1.json` (texts R1–R5 below, each `instructions` = the gate's prefix `In this exchange between a user and an AI coding agent, ` + the question).
+
+**Where and how (CC's plan):**
+
+1. **score.ts `--questions <file>` (optional).** Without it, nothing changes. With it:
+   - The policy sent is `JEV_POLICY` with `questions` replaced by the file's (a harness-side object; src/ unchanged). Its hash is the first 12 hex of `sha256Text(JSON.stringify({ model, name, questions }))`.
+   - Cache: `<corpus>/cache/questions-<hash>.jsonl`, same rules as the gate cache (only scored results and `oversized_state`).
+   - Rows: `verdict` is `scored`, `fallback`, or `not_run` (no gate routing); `answers` keyed by the set's ids.
+   - The run block prints P35 in place of P8's `Jev model:` line. `scores-table.md` is not written (its columns are the gate's); `codes.md` is written instead (item 2). `summary.json` adds `questionSet: { name, hash, file }`.
+   - Stops, counting, concurrency, exit codes, P9–P13: unchanged.
+2. **`codes.md`** (written by score.ts with `--questions`): P36; then P37's table with one row per session (`folder` = the source folder name without its number prefix, `session` = file name, `trios` = scored rows) and one cell per question id: the count of scored rows whose answer is ≥ 0.50; then a P38 row with the totals per folder and one for all rows. Then for each question id, P39's heading and up to 10 rows with the highest answers ≥ 0.50, as P39 lines (reply snippet: whitespace flattened, 90 characters, `…`, as in scores-table).
+3. **strings.ts:** P34–P39 exactly as approved. **New file** `scripts/compass/questions/reply-codes-v1.json` with R1–R5 exactly as approved.
+
+**Acceptance criteria:**
+
+1. Without `--questions`, score's output is byte-identical to today (existing tests pass unchanged).
+2. With `--questions`, the request body carries exactly the file's questions; the cache file name uses the set's hash, never the gate's.
+3. An invalid set file refuses before any request (P34).
+4. `codes.md` counts match a hand-computed fixture.
+
+**Tests:** extend tests/compass/score.test.ts (new `describe`), mocked fetch; criteria 1–4.
+
+**Allowed scope:** scripts/compass/score.ts, scripts/compass/corpus-run.ts (only if a shared helper needs a parameter), scripts/compass/strings.ts, scripts/compass/questions/reply-codes-v1.json (new), tests/compass/score.test.ts (new `describe` only), knip.json (only if needed).
+
+**Constraints:** P34–P39 and R1–R5 exactly as approved. No change to src/ or to score's behavior without `--questions`.
+
+**Verification:**
+
+```
+npx vitest run --config vitest.compass.config.ts tests/compass/score.test.ts
+npm run test:compass
+npm test
+```
+
+### Protected text R1–R5 and P34–P39 (draft, awaiting user approval)
+
+**R — reply-code questions** (`reply-codes-v1`; each `instructions` is the gate's prefix + the question):
+
+| ID | Question (after the prefix) | `criteria.true` | `criteria.false` |
+|---|---|---|---|
+| R1 `approval` | is the user's reply only approving, confirming, or choosing among options the agent offered? | The user says go, yes, or ok, or picks an option the agent offered, and adds nothing else. | The user adds an instruction, a correction, a question, or a preference. |
+| R2 `correction` | does the user's reply correct or push back on something the agent said or did? | The user says the agent got something wrong (code, a claim, an assumption), missed something, or did something the user did not want. | The user accepts the work, moves on, or asks something new without saying the agent got anything wrong. |
+| R3 `hold_back` | does the user's reply hold the agent back because it acted, or was about to act, before the user agreed? | The user tells the agent to stop, wait, not act yet, or undo something it did without being asked. | The user does not hold the agent back. |
+| R4 `task_step` | does the user's reply give the agent a new task or next step? | The user asks for something to be done next: a command to run, a file to read or write, an analysis, or a question to answer. | The reply only approves, corrects, holds the agent back, or chats. |
+| R5 `chatter` | is the user's reply off-task? | Small talk, thanks, venting, or remarks unrelated to the work. | The reply is about the task. |
+
+R2 is the gate's approved `correction` question, unchanged.
+
+**P — harness strings:**
+
+| ID | Where | Text |
+|---|---|---|
+| P34 | score: bad question set | `compass score: ${file} is not a valid question set` |
+| P35 | score: model line with a question set | `Jev model: ${model} · questions ${name} (${hash}) · ${concurrency} at once` |
+| P36 | codes.md title | `# Reply codes — ${name}, set ${set}, ${n} scored trios (an answer ≥ 0.50 counts as yes)` |
+| P37 | codes.md table header | `\| folder \| session \| trios \| ${id} \| … \|` (one column per question id, in file order) |
+| P38 | codes.md total rows | session cell `all` for a folder total; folder and session cells `all` for the grand total |
+| P39 | codes.md examples | heading `## ${id}: top replies`; lines `- ${answer} · ${session} trio ${index} · ${reply}` |
+
 ## CC review and gate (not for the coder)
 
 Review per planner-prompt.md Step 2; ledger entry in md/ledger.jsonl. Check: no request before the checks pass; the counter is the only path to a request; cache rules (only scored and `oversized_state`); split is by session and seeded; rows in corpus order; P1–P13 byte-exact; no key in any artifact. Then CC runs the freeze on D1's two folders (offline) and reports the census before any live scoring.
 
-Planner difficulty: S5-01 medium; S5-02a medium-high (model-boot move, concurrency attribution); S5-02b medium.
+Planner difficulty: S5-01 medium; S5-02a medium-high (model-boot move, concurrency attribution); S5-02b medium; S5-02c easy.
 
 S5-02a review: `runPipeline` unchanged; one `export` in src; usage attributed per trio under concurrency. S5-02b review: review selection, counts by hand on the fixture, sweep refuses held-out.
 
@@ -230,6 +295,6 @@ S5-02a review: `runPipeline` unchanged; one `export` in src; usage attributed pe
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.2.0 | 2026-10-16 | S5-01 audit answers (repeated `--source`, table column, numbered source folders, exit codes, streams, summary fields). |
 | 0.3.0 | 2026-10-16 | S5-02a (extraction) and S5-02b (label sheet, scorer) specs; P14–P33 approved by the user. |
 | 0.4.0 | 2026-10-16 | S5-02a audit answers (reuse P6/P7/P12, access error, usage source, diagnostics sink). |
+| 0.5.0 | 2026-10-17 | S5-02c reply codes spec; R1–R5 and P34–P39 for approval. |
