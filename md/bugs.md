@@ -1,6 +1,6 @@
 # pi-session-compass — Bug journal
 
-Revision: **0.10.1** · Updated: **2026-10-17**
+Revision: **0.11.0** · Updated: **2026-10-17**
 
 A live record of every bug found while building and running the harness: harness, pipeline, test, or environment. Add an entry when a bug is found; update its status, fix commit, and evidence when it changes. Never delete an entry; a closed bug stays as history. Pipeline behaviors that a stage is meant to change are listed separately under Pipeline findings.
 
@@ -31,6 +31,8 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 | B19 | 2026-10-16 | tests | Two full runs during S3-B1-04 failed with missing dirs under `outputs/test-tmp/` and a file vanishing in the live `~/.pi/portrait/.git` mid-copy; 20 quiet runs passed | Shared `outputs/test-tmp` across concurrent runs, and a harness test snapshots the live `~/.pi/portrait` (touched by the live portrait timer) | FIXED (S3-C-01: per-run `mkdtemp` dirs, fake portrait in tests, ENOENT-tolerant scan; concurrent run of both suites green) | outputs/s3-b/handoff/S3-B1-04-r1.md Uncertain 2 |
 | B20 | 2026-10-16 | tests | The instance-lock reload test in tests/reload-lifecycle.test.ts passes without ever holding the lock | Its `fakeCtx` has no `mode`, so `session_start` returns at the `mode !== "tui"` guard before `acquireLock()` | OPEN (set `mode: "tui"` in a later test-hygiene task) | outputs/s3-c/handoff/S3-C-01-r1.md Uncertain 1 |
 | B21 | 2026-10-17 | harness | `evaluate policy` prints the correction-miss bound over all `lesson` trios: held-out shows `3 / 30` when 17 trios carry `correction: true`, so the rule-of-three bound for corrections reads 10% instead of 18% | Planner spec (stage-5-specs.md S5-02b audit answer 4: `${bound}` = `3 / ${K}`, K = lesson trios); the code follows the spec (scripts/compass/evaluate.ts missBound) | OPEN; the pilot report states the bound by hand as 3 / 17 | outputs/s5/heldout-test/evaluate.json; seen again 2026-10-17 in the scale-up evaluation (outputs/s5/scale/evaluate/: prints `3 / 51`, 29 corrections) |
+| B22 | 2026-10-17 | docs | README (0b9901b) and stage-6-task.md design 5 state about 300 bytes per gate-log line; the S6-03 speed run measures about 620 (16 lines, 9,953 bytes) | Planner estimate made before the entry held Jev's four answers, usage, and a 64-hex trio ID | FIXED (user-approved text "about 600 bytes") | outputs/s6/speed/portrait/gate-log.jsonl |
+| B23 | 2026-10-17 | pipeline | In the S6-03 speed run one building attempt made two requests: the first ended `toolUse` after 77 s with usage 0 / 0, the second returned the result (traces seq 46–47) | Unknown; likely a rejected return call followed by a valid one (allowed), with the provider omitting usage; debug dumps were off | OPEN (rerun with `debugDumpLimit` > 0 if it recurs) | outputs/s6/speed/traces.jsonl; outputs/s6/speed-report.md |
 
 ## Pipeline findings (src/, measured in S1; targets of later stages)
 
@@ -62,6 +64,6 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.9.0 | 2026-10-16 | B18 and B19 fixed (S3-C-01); B20 (vacuous instance-lock reload test) added. |
 | 0.10.0 | 2026-10-17 | B21 (correction-miss bound uses the lesson count) added. |
 | 0.10.1 | 2026-10-17 | Machine path removed from E1; B21 seen again in the scale-up evaluation. |
+| 0.11.0 | 2026-10-17 | B22 (gate-log line size in the docs) added and fixed; B23 (extra build request in the speed run) added. |

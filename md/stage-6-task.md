@@ -23,7 +23,7 @@ Parent: [Development plan](plan.md), Stage 6. Evidence: outputs/s5/pilot-report.
 2. **Fields:** `ts` (ISO time), `session` (source session file path), `sessionId`, `trioId` and `entryIds` (the trio's stable ID and its three record IDs, which locate it in the session file), `mode`, `policyHash`, `decision` (`extract` or `skip`), `result` (`no_lesson`, `maybe_lesson`, or the fallback reason), `answers` (or null), `model`, `attempts` (Jev requests the check used), `latencyMs`, `usage`. No trio text and no key.
 3. **Failure-safe:** a failed log write never changes the scan, the decision, or the extraction; it is skipped silently (no user message, so no new protected text).
 4. **Not committed:** the portrait repo stages named files only, so the log stays untracked; also add `gate-log.jsonl` to the `.gitignore` the plugin writes for a new portrait repo.
-5. **No rotation:** about 300 bytes per trio; documented, not managed.
+5. **No rotation:** about 600 bytes per trio (measured in the S6-03 speed run); documented, not managed.
 6. **Speed run:** run type `compare`, the S1 fixture and the S1 start snapshot, final code with the gate in `enforce`; compared with the S1 baseline (150 requests, 56.9 min, capped) and the S2 compare run (46 requests, 26.0 min). Limits suggested at launch, user-confirmed. Needs `TYPESAFE_API_KEY`.
 
 ## Tasks
@@ -42,8 +42,8 @@ Parent: [Development plan](plan.md), Stage 6. Evidence: outputs/s5/pilot-report.
 
 ### S6-03 — Release checks and speed run (CC)
 
-- [ ] **1.** Exit checks 1–8 (plan.md §8) against the release candidate, mapped to test files and earlier evidence; both full suites, single-worker and concurrent.
-- [ ] **2.** Speed run per design 6; report requests, time, tokens, and rules against the S1 baseline and S2 compare.
+- [x] **1.** Exit checks 1–8 (plan.md §8) against the release candidate, mapped to test files and earlier evidence; both full suites, single-worker and concurrent.
+- [x] **2.** Speed run per design 6; report requests, time, tokens, and rules against the S1 baseline and S2 compare.
 
 ### S6-04 — Delivered mode and handoff (CC)
 
@@ -62,4 +62,4 @@ Parent: [Development plan](plan.md), Stage 6. Evidence: outputs/s5/pilot-report.
 | Revision | Date | Change |
 |---|---|---|
 | 0.2.0 | 2026-10-17 | Approved by the user; the log locates a trio by trio ID and record IDs (line numbers are not available at the gate). |
-| 0.3.0 | 2026-10-17 | Gate log adds `attempts` (user, after the S6-01 audit); S6-01 and S6-02 done. |
+| 0.3.0 | 2026-10-17 | Gate log adds `attempts` (user, after the S6-01 audit); S6-01, S6-02, S6-03 done; gate-log line about 600 bytes. |
