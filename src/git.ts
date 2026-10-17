@@ -68,7 +68,7 @@ export function initGit(portraitDir: string): void {
       // Create .gitignore
       fs.writeFileSync(
         path.join(portraitDir, ".gitignore"),
-        ".portrait-lock\nprocessed-sessions.json\nportrait-state.json\ndebug/\nsnapshots/\n",
+        ".portrait-lock\nprocessed-sessions.json\nportrait-state.json\ndebug/\nsnapshots/\ngate-log.jsonl\n",
         "utf-8",
       );
       // Create evicted.md and dropped.md with headers so git add always succeeds

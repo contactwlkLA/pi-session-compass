@@ -14,6 +14,7 @@ import { reportError } from "./error.js";
 import { extractContent } from "./filtering.js";
 import { setCachedPipelineState } from "./footer.js";
 import { checkTrio } from "./gate.js";
+import { appendGateLog, type GateLogEntry } from "./gate-log.js";
 import { emitTrioExamined } from "./instrument.js";
 import { type CompleteRecord, readCompleteRecords } from "./jsonl-reader.js";
 import { buildSingleUserMessage, callPortraitLlm, PAUSED } from "./llm-call.js";
@@ -551,6 +552,27 @@ async function streamAndExtract(opts: StreamAndExtractOptions): Promise<StreamAn
   ): Promise<TrioStep> {
     const settings = getPortraitSettings();
     const gate = await checkTrio(trio, settings.gateMode, path.resolve(sessionFile));
+    const trioId = trioIdentity(sessionId, records);
+    if (gate.event !== null) {
+      const event = gate.event;
+      const logEntry: GateLogEntry = {
+        ts: new Date().toISOString(),
+        session: event.sourcePath,
+        sessionId: sessionId ?? null,
+        trioId,
+        entryIds: records.map((record) => record.id),
+        mode: event.mode,
+        policyHash: event.policyHash,
+        decision: event.routed,
+        result: event.decision === "fallback" ? (event.fallbackReason ?? "") : event.decision,
+        answers: event.answers,
+        model: event.model,
+        attempts: event.attempts,
+        latencyMs: event.latencyMs,
+        usage: event.usage,
+      };
+      appendGateLog(portraitDir, logEntry);
+    }
     if (gate.decision === "skip") {
       // The gate rejected the trio: the scan moves past it exactly as after an
       // extraction that found nothing — position saved, no candidates, no record
@@ -570,7 +592,7 @@ async function streamAndExtract(opts: StreamAndExtractOptions): Promise<StreamAn
       return "extraction_failed";
     }
     const identity: TrioIdentity = {
-      trioId: trioIdentity(sessionId, records),
+      trioId,
       sourcePath: path.resolve(sessionFile),
       cwd: header.cwd,
       sessionId: sessionId ?? null,

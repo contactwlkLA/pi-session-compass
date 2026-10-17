@@ -1,6 +1,6 @@
 # Stage 6 — Settings, acceptance, and handoff
 
-Project: **pi-session-compass** · Revision: **0.2.0** · Status: **Approved (user, 2026-10-17)**
+Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Approved (user, 2026-10-17)**
 
 Date: **2026-10-17**
 
@@ -20,7 +20,7 @@ Parent: [Development plan](plan.md), Stage 6. Evidence: outputs/s5/pilot-report.
 ## Fixed design
 
 1. **Gate log file:** `<portrait dir>/gate-log.jsonl` (the portrait dir is `getPortraitDir()`, `~/.pi/portrait` by default). One JSON object per line, appended for every gate check in `shadow` or `enforce`; nothing in `off`.
-2. **Fields:** `ts` (ISO time), `session` (source session file path), `sessionId`, `trioId` and `entryIds` (the trio's stable ID and its three record IDs, which locate it in the session file), `mode`, `policyHash`, `decision` (`extract` or `skip`), `result` (`no_lesson`, `maybe_lesson`, or the fallback reason), `answers` (or null), `model`, `latencyMs`, `usage`. No trio text and no key.
+2. **Fields:** `ts` (ISO time), `session` (source session file path), `sessionId`, `trioId` and `entryIds` (the trio's stable ID and its three record IDs, which locate it in the session file), `mode`, `policyHash`, `decision` (`extract` or `skip`), `result` (`no_lesson`, `maybe_lesson`, or the fallback reason), `answers` (or null), `model`, `attempts` (Jev requests the check used), `latencyMs`, `usage`. No trio text and no key.
 3. **Failure-safe:** a failed log write never changes the scan, the decision, or the extraction; it is skipped silently (no user message, so no new protected text).
 4. **Not committed:** the portrait repo stages named files only, so the log stays untracked; also add `gate-log.jsonl` to the `.gitignore` the plugin writes for a new portrait repo.
 5. **No rotation:** about 300 bytes per trio; documented, not managed.
@@ -30,9 +30,9 @@ Parent: [Development plan](plan.md), Stage 6. Evidence: outputs/s5/pilot-report.
 
 ### S6-01 — Gate log (Pi)
 
-- [ ] **1.** Spec: [stage-6-specs.md](stage-6-specs.md) S6-01. Append the log line in the gate path (src/gate.ts or src/collector.ts, where the gate result is known), per design 1–3.
-- [ ] **2.** Add `gate-log.jsonl` to the `.gitignore` template in src/git.ts.
-- [ ] **3.** Tests in a temporary portrait dir: shadow and enforce each append one line per trio with the fields of design 2; off writes nothing; fallbacks are logged with their reason; a log write that throws leaves the decision and extraction unchanged; no key or trio text in the file.
+- [x] **1.** Spec: [stage-6-specs.md](stage-6-specs.md) S6-01. Append the log line in the gate path (src/gate.ts or src/collector.ts, where the gate result is known), per design 1–3.
+- [x] **2.** Add `gate-log.jsonl` to the `.gitignore` template in src/git.ts.
+- [x] **3.** Tests in a temporary portrait dir: shadow and enforce each append one line per trio with the fields of design 2; off writes nothing; fallbacks are logged with their reason; a log write that throws leaves the decision and extraction unchanged; no key or trio text in the file.
 
 ### S6-02 — Product docs (CC; protected text, presented before writing)
 
@@ -61,5 +61,5 @@ Parent: [Development plan](plan.md), Stage 6. Evidence: outputs/s5/pilot-report.
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.1.0 | 2026-10-17 | Draft: gate log, product docs, release checks with one speed run, delivered mode off. |
 | 0.2.0 | 2026-10-17 | Approved by the user; the log locates a trio by trio ID and record IDs (line numbers are not available at the gate). |
+| 0.3.0 | 2026-10-17 | Gate log adds `attempts` (user, after the S6-01 audit). |

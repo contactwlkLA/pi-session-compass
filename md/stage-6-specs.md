@@ -1,6 +1,6 @@
 # Stage 6 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.1.0** · Status: **Ready (stage-6-task.md approved by the user, 2026-10-17)**
+Project: **pi-session-compass** · Revision: **0.2.0** · Status: **Ready (stage-6-task.md approved by the user, 2026-10-17)**
 
 Date: **2026-10-17**
 
@@ -46,6 +46,13 @@ Today shadow mode calls Jev on every trio but keeps nothing outside the test har
 7. The `.gitignore` text written by `initGit` contains a `gate-log.jsonl` line (test it if an existing test covers `initGit`; otherwise say so under `Uncertain` and CC checks it by reading).
 8. No new or changed user-facing string; existing tests pass unchanged except ones listed under `Done` as adapted.
 
+**Audit answers (CC, 2026-10-17; part of this spec; numbers refer to outputs/s6/handoff/S6-01-audit.md):**
+
+1. **Question 1: keep `attempts`** (user, 2026-10-17); stage-6-task.md design 2 now lists it.
+2. **Question 2: yes.** Assert the `.gitignore` line in tests/gate-log.test.ts by calling `initGit` on a temp dir with the `setGitExec` seam stubbed.
+3. **Question 3: yes.** The collector builds the whole entry, `ts` included; `appendGateLog` only serializes and appends.
+4. **Risks and Noise: as you plan.** `session` is `event.sourcePath`; `sessionId` is `sessionId ?? null`; type `result` as `string`; one comment line in gate-log.ts mapping `decision` ← `event.routed` and `result` ← `event.decision` or `event.fallbackReason`; keep `resetGateRun()` in the copied setup; list any adapted tests/compass test under `Done`.
+
 **Allowed scope:** src/gate-log.ts (new), src/collector.ts, src/git.ts, tests/gate-log.test.ts (new; copy the setup, mocks, and session writers from tests/gate.test.ts), tests/gate.test.ts (adapt only if needed), tests/compass/*.test.ts (adapt only if one breaks because the run's portrait dir now holds a gate log; list each).
 
 **Constraints:** no change to gate decisions, the Jev request, modes, settings, run-scoped state, the instrument hooks, or extraction; no log rotation, no new setting; synchronous append (no new async step in the scan).
@@ -69,3 +76,4 @@ Planner difficulty: S6-01 easy.
 | Revision | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-17 | S6-01 gate log spec. |
+| 0.2.0 | 2026-10-17 | S6-01 audit answers. |
