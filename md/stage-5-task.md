@@ -1,6 +1,6 @@
 # Stage 5 — Evaluate the Jev gate
 
-Project: **pi-session-compass** · Revision: **0.5.0** · Status: **Approved (user, 2026-10-16)**
+Project: **pi-session-compass** · Revision: **0.6.0** · Status: **Approved (user, 2026-10-16)**
 
 Date: **2026-10-16**
 
@@ -92,18 +92,18 @@ The session-instrument skill's idea (count what kind of exchange each user reply
 ### S5-05 — Pilot report (CC)
 
 - [x] **1.** Pilot report in outputs/s5/: checks with numerators and denominators, the rule-of-three bound, measured cost, labeling and run cost (kept separate from operating cost), time spent, and corpus limitations. *Done 2026-10-17: outputs/s5/pilot-report.md (all three checks pass on held-out; preliminary under D3; CC recommends stopping here and going to S6).*
-- [ ] **2.** Sync stage docs; checkpoint with the user: scale up (S5-06) or stop.
+- [x] **2.** Sync stage docs; checkpoint with the user: scale up (S5-06) or stop. *Done 2026-10-17: the user chose to scale up now rather than return to it later.*
 
 ### S5-06 — Scale-up (CC + user; only on the user's go)
 
-- [ ] **1.** Corpus freeze and census of TxnHunter-dashboard-v3; label a uniform sample sized to the activation checks (design 7).
-- [ ] **2.** Score with the frozen pilot policy (no tuning on this folder); run extraction on the sample; audit as S5-04 item 3.
-- [ ] **3.** Final activation report; sync stage docs; checkpoint with the user before S6.
+- [x] **1.** Corpus freeze and census of TxnHunter-dashboard-v3; label a uniform sample sized to the activation checks (design 7). *Done 2026-10-17: fixtures/s5-scale (seed s5-scale, 32 sessions, 699 trios); the seed's dev split (11 sessions, 236 trios) labeled: 51 lesson (29 corrections), 185 no_lesson, below 60 (pooled with the pilot held-out: 81). User checked all 101 dropped trios and changed 3 to correction.*
+- [x] **2.** Score with the frozen pilot policy (no tuning on this folder); run extraction on the sample; audit as S5-04 item 3. *Done 2026-10-17: 236 Jev + 236 Meta requests (limits 300 / 300000 ms and 300 / 2400000 ms, agent-suggested, user-confirmed). Policy f302de0ce97b rejects 101 of 236, keeps 48 of 51 lesson (94%), misses 3 of 29 corrections: all implicit corrections phrased as requests, scored as steering.*
+- [ ] **3.** Final activation report; sync stage docs; checkpoint with the user before S6. *Report done 2026-10-17 (outputs/s5/scale/scale-report.md): activation checks 1 and 2 fail on this folder; ship default stays off. Checkpoint pending.*
 
 ## Revision history
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.3.0 | 2026-10-17 | D4 (labeling rule for task instructions and reminders) recorded as open; labels wait for it. |
 | 0.4.0 | 2026-10-17 | S5-02c reply codes (session-instrument idea, offline) added (user). |
 | 0.5.0 | 2026-10-17 | S5-02c done; D4 decided (rule b); labels frozen; policy tuned and tested; S5-04a added. |
+| 0.6.0 | 2026-10-17 | S5-06 run: scale-up sample labeled and scored; frozen policy fails checks 1 and 2 on dashboard-v3. |

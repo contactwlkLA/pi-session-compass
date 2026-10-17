@@ -1,6 +1,6 @@
 # Stage 1 — Establish the baseline
 
-Project: **pi-session-compass** · Revision: **0.4.1** · Status: **Complete (M1, baseline covers trios 1–20 by user decision)**
+Project: **pi-session-compass** · Revision: **0.4.2** · Status: **Complete (M1, baseline covers trios 1–20 by user decision)**
 
 Date: **2026-10-14**
 
@@ -22,10 +22,10 @@ Initial review uses one unbranched conversation path. Branch support is deferred
 - [x] **6.** Run applicable existing build/tests; record missing dependencies and pre-existing failures. Verification runs both `npm test` (upstream suite; `vitest.config.ts` excludes `tests/compass/**`) and `npm run test:compass` (harness suite, `vitest.compass.config.ts`, isolated). *(evidence: T1.6 baseline record below; `npm test` 15 files / 376 tests, `npm run test:compass` 3 files / 45 tests)*
 
   T1.6 baseline record:
-  - Baseline environment: native WSL filesystem (~/compass-ext4). npm test: 15 files, 376 tests. npm run test:compass: 3 files, 45 tests.
+  - Baseline environment: native WSL filesystem. npm test: 15 files, 376 tests. npm run test:compass: 3 files, 45 tests.
   - Known intermittent: tests/llm-call.test.ts > attemptWithRetries backoff, the two tests "pauses with exponential backoff between attempts when the tool is not called" and "pushes an error-context nudge after a tool-not-called failure". Signature: each hits the 30 s test timeout, about 63 s total wall time. Observed on the unmodified fork base in 1 of 10 runs, and on the S1 tree without tests/compass in 2 of 10. Rule: rerun once. Fixed 2026-10-14: the agentLoop mock is shared from tests/setup.ts instead of mocked per file; the same failure (these two plus the two T3.2 validationRound tests in that file) occurred in 5 of 20 default-order runs before the fix and 0 of 20 after.
   - Unexplained intermittent (not a known flake): 2026-10-14, one full `npm test` run failed 14 tests in tests/pipeline.test.ts (runPipelineLoop, e.g. "expected +0 to be 1" for totalSequences); the immediate full rerun passed, the file passes alone, and 20 default-order `npx vitest run` runs had 0 failures. Treat a recurrence as a real failure and investigate.
-  - On /mnt/i the suite also failed extension-idempotency (suite), cache-refresh and reload-lifecycle; these disappeared on the native filesystem and are not part of the baseline.
+  - On a Windows-mounted drive the suite also failed extension-idempotency (suite), cache-refresh and reload-lifecycle; these disappeared on the native filesystem and are not part of the baseline.
 
 ## T2 — Create the file-selecting, isolated fixture harness
 
@@ -81,6 +81,6 @@ Discover package/runtime details from the Pi checkout before asking for uploads.
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.4.2 | 2026-10-17 | Machine path removed from the T1.6 record. |
 | 0.4.1 | 2026-10-14 | T5.6 evidence states why the capped baseline stands. |
 | 0.4.0 | 2026-10-14 | T5 and M1 checked. By user decision the capped baseline (20 of 26 trios) is the S1 baseline. T1.6 record: an unexplained pipeline.test.ts intermittent failure. |
-| 0.3.2 | 2026-10-14 | T4.1–T4.6 checked with evidence (smoke PASS). |

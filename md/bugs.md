@@ -1,6 +1,6 @@
 # pi-session-compass — Bug journal
 
-Revision: **0.10.0** · Updated: **2026-10-17**
+Revision: **0.10.1** · Updated: **2026-10-17**
 
 A live record of every bug found while building and running the harness: harness, pipeline, test, or environment. Add an entry when a bug is found; update its status, fix commit, and evidence when it changes. Never delete an entry; a closed bug stays as history. Pipeline behaviors that a stage is meant to change are listed separately under Pipeline findings.
 
@@ -30,7 +30,7 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 | B18 | 2026-10-15 | pipeline | The portrait git repo shows `snapshots/` as untracked | `initGit` writes a `.gitignore` without `snapshots/` (src/git.ts); `commitPortrait` stages only portrait/evicted/dropped, so it is never committed | FIXED (S3-C-01: `initGit` writes `snapshots/` to `.gitignore` for new repos; existing repos unchanged, add the line by hand if wanted) | outputs/s3-b/handoff/S3-B1-02b-r1.md |
 | B19 | 2026-10-16 | tests | Two full runs during S3-B1-04 failed with missing dirs under `outputs/test-tmp/` and a file vanishing in the live `~/.pi/portrait/.git` mid-copy; 20 quiet runs passed | Shared `outputs/test-tmp` across concurrent runs, and a harness test snapshots the live `~/.pi/portrait` (touched by the live portrait timer) | FIXED (S3-C-01: per-run `mkdtemp` dirs, fake portrait in tests, ENOENT-tolerant scan; concurrent run of both suites green) | outputs/s3-b/handoff/S3-B1-04-r1.md Uncertain 2 |
 | B20 | 2026-10-16 | tests | The instance-lock reload test in tests/reload-lifecycle.test.ts passes without ever holding the lock | Its `fakeCtx` has no `mode`, so `session_start` returns at the `mode !== "tui"` guard before `acquireLock()` | OPEN (set `mode: "tui"` in a later test-hygiene task) | outputs/s3-c/handoff/S3-C-01-r1.md Uncertain 1 |
-| B21 | 2026-10-17 | harness | `evaluate policy` prints the correction-miss bound over all `lesson` trios: held-out shows `3 / 30` when 17 trios carry `correction: true`, so the rule-of-three bound for corrections reads 10% instead of 18% | Planner spec (stage-5-specs.md S5-02b audit answer 4: `${bound}` = `3 / ${K}`, K = lesson trios); the code follows the spec (scripts/compass/evaluate.ts missBound) | OPEN; the pilot report states the bound by hand as 3 / 17 | outputs/s5/heldout-test/evaluate.json |
+| B21 | 2026-10-17 | harness | `evaluate policy` prints the correction-miss bound over all `lesson` trios: held-out shows `3 / 30` when 17 trios carry `correction: true`, so the rule-of-three bound for corrections reads 10% instead of 18% | Planner spec (stage-5-specs.md S5-02b audit answer 4: `${bound}` = `3 / ${K}`, K = lesson trios); the code follows the spec (scripts/compass/evaluate.ts missBound) | OPEN; the pilot report states the bound by hand as 3 / 17 | outputs/s5/heldout-test/evaluate.json; seen again 2026-10-17 in the scale-up evaluation (outputs/s5/scale/evaluate/: prints `3 / 51`, 29 corrections) |
 
 ## Pipeline findings (src/, measured in S1; targets of later stages)
 
@@ -52,7 +52,7 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 
 | ID | Found | Observation | Status |
 |---|---|---|---|
-| E1 | 2026-10-12 | On /mnt/i the suite also failed extension-idempotency, cache-refresh and reload-lifecycle | Moved to the native filesystem (~/compass-ext4) |
+| E1 | 2026-10-12 | On a Windows-mounted drive the suite also failed extension-idempotency, cache-refresh and reload-lifecycle | Moved to the native Linux filesystem |
 | E2 | 2026-10-14 | The user's own Pi session writes ~/.pi/portrait/instance.lock.sqlite-journal during runs | Exclude lock files when comparing live-portrait hashes |
 | E3 | 2026-10-14 | Pi CLI 1.2.0 is available; 1.1.0 is installed and recorded | Upgraded by the user to 1.2.0 on 2026-10-14 (S3 Part A); the harness uses the project's node_modules packages, not the CLI |
 | E4 | 2026-10-14 | Two global Pi CLIs exist, one under nvm (Node 24) and one under fnm (Node 22); which one runs depends on PATH order, so an update to one left the other at 0.84.4 | Both at 1.2.0 after the user's update; check `type -a pi` after each update |
@@ -62,6 +62,6 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.8.0 | 2026-10-16 | E5 fixed by the user (mimo context settings); B18 (snapshots/ untracked in the portrait repo) and B19 (shared test temp dirs, live portrait read in tests) added. |
 | 0.9.0 | 2026-10-16 | B18 and B19 fixed (S3-C-01); B20 (vacuous instance-lock reload test) added. |
 | 0.10.0 | 2026-10-17 | B21 (correction-miss bound uses the lesson count) added. |
+| 0.10.1 | 2026-10-17 | Machine path removed from E1; B21 seen again in the scale-up evaluation. |

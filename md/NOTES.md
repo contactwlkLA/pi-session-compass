@@ -1,8 +1,8 @@
 # Coder comparison: discussion notes (2026-10-15)
 
-Revision: **0.5.0** · Updated: **2026-10-15**
+Revision: **0.5.1** · Updated: **2026-10-17**
 
-Short reminder of what was decided before starting Stage 3 work in `/home/wai/compass-ext4`.
+Short reminder of what was decided before starting Stage 3 work in this repository.
 
 ## Setup
 - Pair-programming mode. Claude Code (Opus 5.5) plans, writes task specs, reviews, keeps the ledger, verifies, and commits; it writes no implementation. Pi codes; the human relays.
@@ -49,6 +49,6 @@ The comparison is a side quest. Where it conflicts with the project rules (AGENT
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.3.0 | 2026-10-15 | Thinking levels are per-model labels; Haiku moves to xhigh from its next session. |
 | 0.4.0 | 2026-10-15 | MiMo coder is 2.6 pro, not flash. |
 | 0.5.0 | 2026-10-15 | Stay on MiMo pro (no alternation); MiMo has one effort level; 100K is recorded, not a limit. |
+| 0.5.1 | 2026-10-17 | Absolute path removed. |
