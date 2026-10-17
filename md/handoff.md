@@ -1,6 +1,6 @@
 # pi-session-compass — Implementation handoff
 
-Revision: **0.1.1** · Date: **2026-10-17** · Status: **Accepted (user, 2026-10-17)**
+Revision: **0.1.2** · Date: **2026-10-17** · Status: **Accepted (user, 2026-10-17)**
 
 Parent: [plan.md](plan.md) §8 (S6.T4, S6.T5). Stage record: [stage.md](stage.md). Bugs: [bugs.md](bugs.md).
 
@@ -39,7 +39,7 @@ The pilot held-out passed every check (0 of 17 corrections missed, 29 of 30 less
 
 ## Tests
 
-`npm test` 26 files, 560/560 (lint, typecheck, knip, dupes included); `npm run test:compass` 14 files, 216/216; both pass concurrent and single-worker (outputs/s6/exit-checks.md). Exit checks 1–8 pass. Open: B20 (one reload test passes without holding the lock), B21 (evaluator miss-bound denominator), B23 (one extra build request in the speed run, cause unconfirmed).
+`npm test` 26 files, 560/560 (lint, typecheck, knip, dupes included); `npm run test:compass` 14 files, 216/216; both pass concurrent and single-worker (outputs/s6/exit-checks.md). Exit checks 1–8 pass. Open in bugs.md: B11, B13, B14, B15, B16, B20, B21, B23 (OPEN); P2 and P4 (recorded, not fixed); P11 (WATCH).
 
 ## Frozen policy and settings
 
@@ -78,3 +78,4 @@ The rest of plan S6.T1 (settings and status help text, debug-path description, i
 |---|---|---|
 | 0.1.0 | 2026-10-17 | First version; accepted by the user at the S6 checkpoint. |
 | 0.1.1 | 2026-10-17 | Private project names and quoted user replies replaced with neutral descriptions. |
+| 0.1.2 | 2026-10-17 | Open-bug list completed from bugs.md. |
