@@ -1,6 +1,6 @@
 # pi-session-compass — Implementation handoff
 
-Revision: **0.1.0** · Date: **2026-10-17** · Status: **Draft for the S6 checkpoint**
+Revision: **0.1.0** · Date: **2026-10-17** · Status: **Accepted (user, 2026-10-17)**
 
 Parent: [plan.md](plan.md) §8 (S6.T4, S6.T5). Stage record: [stage.md](stage.md). Bugs: [bugs.md](bugs.md).
 
@@ -76,4 +76,4 @@ The rest of plan S6.T1 (settings and status help text, debug-path description, i
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.1.0 | 2026-10-17 | First draft for the S6 checkpoint. |
+| 0.1.0 | 2026-10-17 | First version; accepted by the user at the S6 checkpoint. |
