@@ -62,10 +62,10 @@ Pi codes two harness tasks from CC specs. CC runs the live scoring and extractio
 
 ### S5-02 — Extraction cache, label sheet, scorer (Pi; spec to follow)
 
-- [ ] **1.** Extraction-only run per trio (no building), 4 concurrent, extraction cache, counted and limited.
-- [ ] **2.** Label sheet export (trio text, scores, extractor rules, blank label columns) and import back to jsonl.
-- [ ] **3.** Offline scorer: for a policy (thresholds, routing rule), report rejections, kept `lesson` trios, correction misses, and projected extraction savings; a threshold sweep that refuses to run on held-out labels.
-- [ ] **4.** Tests for each, with mocked requests.
+- [x] **1.** Extraction-only run per trio (no building), 4 concurrent, extraction cache, counted and limited.
+- [x] **2.** Label sheet export (trio text, scores, extractor rules, blank label columns) and import back to jsonl.
+- [x] **3.** Offline scorer: for a policy (thresholds, routing rule), report rejections, kept `lesson` trios, correction misses, and projected extraction savings; a threshold sweep that refuses to run on held-out labels.
+- [x] **4.** Tests for each, with mocked requests.
 
 ### S5-02c — Reply codes (Pi; spec in stage-5-specs.md) *(user, 2026-10-17: a minor tweak, go ahead)*
 

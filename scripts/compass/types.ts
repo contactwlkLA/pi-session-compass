@@ -106,6 +106,41 @@ export interface CounterSnapshot {
 /** One corpus partition: the development set or the held-out set. */
 export type CorpusSet = "dev" | "heldout";
 
+/** One trio line of a labels file. */
+export interface LabelRow {
+  key: string;
+  label: "lesson" | "no_lesson";
+  correction: boolean;
+  source: "cc-draft" | "cc-draft-user-checked" | "user";
+  note: string;
+}
+
+/** One line of a score run's scores.jsonl, as the label sheet and the evaluator read it. */
+export interface ScoreResultRow {
+  key: string;
+  verdict: "no_lesson" | "maybe_lesson" | "fallback" | "not_run";
+  answers: Record<string, number> | null;
+  reason: string | null;
+  usage: { inputTokens: number; outputTokens: number } | null;
+  attempts: number;
+}
+
+/** One line of an extract run's extract.jsonl, as the label sheet and the evaluator read it. */
+export interface ExtractResultRow {
+  key: string;
+  outcome: "success" | "failed" | "not_run";
+  notes: string[];
+  attempts: number;
+  usage: { input: number; output: number } | null;
+}
+
+/** A candidate gate policy file. */
+export interface PolicyFile {
+  name: string;
+  questions: string[];
+  thresholds: Record<string, number>;
+}
+
 /** One trio line of a frozen corpus's trios.jsonl. */
 export interface CorpusTrio {
   key: string;

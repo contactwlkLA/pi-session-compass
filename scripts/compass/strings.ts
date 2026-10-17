@@ -147,6 +147,64 @@ export const strings = {
   extractDone: (ok: number, cached: number, failed: number, notRun: number, requests: number, stop: string) =>
     `Extracted ${ok} · cached ${cached} · failed ${failed} · not run ${notRun} · requests ${requests} · stop: ${stop}`,
 
+  // ── Labels and evaluation ──
+  labelsMissingFlag: (tool: string, flag: string) => `compass ${tool}: ${flag} is required`,
+  labelsBadSet: (tool: string) => `compass ${tool}: --set must be dev or heldout`,
+  labelsBadSelection: "compass labels: --select must be all or review",
+  labelsReviewNeedsLabels: "compass labels: --select review needs --labels",
+  labelsInputMismatch: (tool: string, file: string, set: string, corpus: string) =>
+    `compass ${tool}: ${file} does not cover set ${set} of ${corpus}`,
+  labelsProblem: (key: string, problem: string) => `compass labels: ${key} ${problem}`,
+  labelsProblemMissing: "is missing",
+  labelsProblemDuplicate: "appears more than once",
+  labelsProblemNotInSet: (set: string) => `is not in set ${set}`,
+  labelsProblemInvalidField: (field: string) => `has an invalid field: ${field}`,
+  labelsSummary: (set: string, trios: number, lesson: number, noLesson: number, corrections: number, sha: string) =>
+    `Labels ${set}: ${trios} trios · lesson ${lesson} · no_lesson ${noLesson} · corrections ${corrections} · sha256 ${sha}`,
+  sheetTitle: (set: string, trios: number, selection: string) =>
+    `# Label sheet — ${set}, ${trios} trios (${selection})`,
+  sheetEntryHeader: (file: string, index: number, key: string) => `## ${file} · trio ${index} · ${key}`,
+  sheetJev: (correction: number, preference: number, steering: number, confusion: number) =>
+    `Jev: correction ${correction.toFixed(2)}, preference ${preference.toFixed(2)}, ` +
+    `steering ${steering.toFixed(2)}, confusion ${confusion.toFixed(2)}`,
+  sheetJevFallback: (reason: string) => `Jev: fallback (${reason})`,
+  sheetJevNotScored: "Jev: not scored",
+  sheetExtractor: (rules: number) => `Extractor: ${rules} rules`,
+  sheetRuleLine: (rule: string) => `  - ${rule}`,
+  sheetExtractorFailed: "Extractor: failed",
+  sheetExtractorNotRun: "Extractor: not run",
+  sheetLabel: (label: string, correction: boolean, source: string, note: string) =>
+    `Label: ${label} · correction ${correction ? "yes" : "no"} · ${source}${note === "" ? "" : ` · ${note}`}`,
+  sheetLabelNone: "Label: (none)",
+  sheetAgentBefore: "Agent before (last 800 characters):",
+  sheetUserReply: "User reply:",
+  sheetAgentAfter: "Agent after (first 800 characters):",
+  evaluateSweepDevOnly: "compass evaluate: the threshold sweep runs on dev only",
+  evaluateBadPolicy: (file: string) => `compass evaluate: ${file} is not a valid policy`,
+  evaluatePolicyReport: (
+    name: string,
+    set: string,
+    rejected: number,
+    trios: number,
+    lessonKept: number,
+    lessonTrios: number,
+    percent: number,
+    misses: number,
+    bound: string,
+    savedRequests: number,
+    savedInput: number,
+    savedOutput: number,
+    gateInput: number,
+    gateOutput: number,
+  ) =>
+    `Policy ${name} on ${set}: rejected ${rejected} of ${trios} · lesson kept ${lessonKept} of ${lessonTrios} ` +
+    `(${percent}%) · correction misses ${misses} · miss bound ${bound} · ` +
+    `extraction saved ${savedRequests} requests, ${savedInput} in / ${savedOutput} out tokens · ` +
+    `gate cost ${gateInput} in / ${gateOutput} out tokens`,
+  sweepTableHeader: "| rule | threshold | rejected | lesson kept | correction misses |",
+  ruleAllFour: "all four",
+  ruleWithoutSteering: "without steering",
+
   // ── Sheets ──
   resultsSheetTitle: (runType: string) => `compass ${runType} results — samples, not a measurement`,
   runningTableTitle: (runType: string) => `compass ${runType} — running table`,
