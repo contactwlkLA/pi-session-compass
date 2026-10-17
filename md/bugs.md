@@ -1,6 +1,6 @@
 # pi-session-compass — Bug journal
 
-Revision: **0.9.0** · Updated: **2026-10-16**
+Revision: **0.10.0** · Updated: **2026-10-17**
 
 A live record of every bug found while building and running the harness: harness, pipeline, test, or environment. Add an entry when a bug is found; update its status, fix commit, and evidence when it changes. Never delete an entry; a closed bug stays as history. Pipeline behaviors that a stage is meant to change are listed separately under Pipeline findings.
 
@@ -30,6 +30,7 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 | B18 | 2026-10-15 | pipeline | The portrait git repo shows `snapshots/` as untracked | `initGit` writes a `.gitignore` without `snapshots/` (src/git.ts); `commitPortrait` stages only portrait/evicted/dropped, so it is never committed | FIXED (S3-C-01: `initGit` writes `snapshots/` to `.gitignore` for new repos; existing repos unchanged, add the line by hand if wanted) | outputs/s3-b/handoff/S3-B1-02b-r1.md |
 | B19 | 2026-10-16 | tests | Two full runs during S3-B1-04 failed with missing dirs under `outputs/test-tmp/` and a file vanishing in the live `~/.pi/portrait/.git` mid-copy; 20 quiet runs passed | Shared `outputs/test-tmp` across concurrent runs, and a harness test snapshots the live `~/.pi/portrait` (touched by the live portrait timer) | FIXED (S3-C-01: per-run `mkdtemp` dirs, fake portrait in tests, ENOENT-tolerant scan; concurrent run of both suites green) | outputs/s3-b/handoff/S3-B1-04-r1.md Uncertain 2 |
 | B20 | 2026-10-16 | tests | The instance-lock reload test in tests/reload-lifecycle.test.ts passes without ever holding the lock | Its `fakeCtx` has no `mode`, so `session_start` returns at the `mode !== "tui"` guard before `acquireLock()` | OPEN (set `mode: "tui"` in a later test-hygiene task) | outputs/s3-c/handoff/S3-C-01-r1.md Uncertain 1 |
+| B21 | 2026-10-17 | harness | `evaluate policy` prints the correction-miss bound over all `lesson` trios: held-out shows `3 / 30` when 17 trios carry `correction: true`, so the rule-of-three bound for corrections reads 10% instead of 18% | Planner spec (stage-5-specs.md S5-02b audit answer 4: `${bound}` = `3 / ${K}`, K = lesson trios); the code follows the spec (scripts/compass/evaluate.ts missBound) | OPEN; the pilot report states the bound by hand as 3 / 17 | outputs/s5/heldout-test/evaluate.json |
 
 ## Pipeline findings (src/, measured in S1; targets of later stages)
 
@@ -61,6 +62,6 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.7.0 | 2026-10-15 | P10 fixed (S3-B1-01); P11 (restart after a leading user record) added as WATCH. |
 | 0.8.0 | 2026-10-16 | E5 fixed by the user (mimo context settings); B18 (snapshots/ untracked in the portrait repo) and B19 (shared test temp dirs, live portrait read in tests) added. |
 | 0.9.0 | 2026-10-16 | B18 and B19 fixed (S3-C-01); B20 (vacuous instance-lock reload test) added. |
+| 0.10.0 | 2026-10-17 | B21 (correction-miss bound uses the lesson count) added. |
