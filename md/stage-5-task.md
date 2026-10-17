@@ -98,7 +98,7 @@ The session-instrument skill's idea (count what kind of exchange each user reply
 
 - [x] **1.** Corpus freeze and census of TxnHunter-dashboard-v3; label a uniform sample sized to the activation checks (design 7). *Done 2026-10-17: fixtures/s5-scale (seed s5-scale, 32 sessions, 699 trios); the seed's dev split (11 sessions, 236 trios) labeled: 51 lesson (29 corrections), 185 no_lesson, below 60 (pooled with the pilot held-out: 81). User checked all 101 dropped trios and changed 3 to correction.*
 - [x] **2.** Score with the frozen pilot policy (no tuning on this folder); run extraction on the sample; audit as S5-04 item 3. *Done 2026-10-17: 236 Jev + 236 Meta requests (limits 300 / 300000 ms and 300 / 2400000 ms, agent-suggested, user-confirmed). Policy f302de0ce97b rejects 101 of 236, keeps 48 of 51 lesson (94%), misses 3 of 29 corrections: all implicit corrections phrased as requests, scored as steering.*
-- [ ] **3.** Final activation report; sync stage docs; checkpoint with the user before S6. *Report done 2026-10-17 (outputs/s5/scale/scale-report.md): activation checks 1 and 2 fail on this folder; ship default stays off. Checkpoint pending.*
+- [x] **3.** Final activation report; sync stage docs; checkpoint with the user before S6. *Done 2026-10-17 (outputs/s5/scale/scale-report.md): activation checks 1 and 2 fail on this folder. User: ship off and document shadow and enforce with these numbers, and add a gate log so shadow mode records evidence in daily use (S6).*
 
 ## Revision history
 
