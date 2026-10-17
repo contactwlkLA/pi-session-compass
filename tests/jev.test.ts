@@ -133,7 +133,9 @@ const NEVER_SLEEP = async (): Promise<void> => undefined;
 describe("policy", () => {
   it("pins the model and freezes the policy it hashes", () => {
     expect(JEV_POLICY.model).toBe("jev-1.13.0");
-    expect(JEV_POLICY.threshold).toBe(0.1);
+    expect(JEV_POLICY.threshold).toBe(0.3);
+    expect(JEV_POLICY.routeQuestions).toEqual(["correction", "preference", "confusion"]);
+    expect(Object.isFrozen(JEV_POLICY.routeQuestions)).toBe(true);
     expect(JEV_POLICY.stateCapBytes).toBe(32 * 1024);
     expect(JEV_POLICY.deadlineMs).toBe(5000);
     expect(JEV_POLICY.endpoint).toBe("https://api.typesafe.ai/v1/systemone");
@@ -143,7 +145,7 @@ describe("policy", () => {
     expect(() => {
       JEV_POLICY.threshold = 0.5;
     }).toThrow();
-    expect(JEV_POLICY.threshold).toBe(0.1);
+    expect(JEV_POLICY.threshold).toBe(0.3);
   });
 
   it("holds the approved questions byte-exact", () => {
@@ -162,10 +164,13 @@ describe("policy", () => {
     expect(() => {
       GATE_CONFIG.threshold = 0.5;
     }).toThrow();
-    expect(GATE_CONFIG.threshold).toBe(0.1);
+    expect(GATE_CONFIG.threshold).toBe(0.3);
+    expect(GATE_CONFIG.routeQuestions).toEqual(["correction", "preference", "confusion"]);
+    expect(Object.isFrozen(GATE_CONFIG.routeQuestions)).toBe(true);
 
     expect(JEV_POLICY.model).toBe(GATE_CONFIG.model);
     expect(JEV_POLICY.threshold).toBe(GATE_CONFIG.threshold);
+    expect(JEV_POLICY.routeQuestions).toBe(GATE_CONFIG.routeQuestions);
     expect(JEV_POLICY.stateCapBytes).toBe(GATE_CONFIG.stateCapBytes);
     expect(JEV_POLICY.deadlineMs).toBe(GATE_CONFIG.deadlineMs);
     expect(JEV_POLICY.defaultRetryWaitMs).toBe(GATE_CONFIG.defaultRetryWaitMs);
@@ -174,15 +179,16 @@ describe("policy", () => {
   });
 
   it("keeps the shipped policy hash", () => {
-    expect(JEV_POLICY_HASH).toBe("ad7880acdc3b");
+    expect(JEV_POLICY_HASH).toBe("f302de0ce97b");
   });
 
-  it("hashes the model, threshold, state cap, and questions over 12 hex digits", () => {
+  it("hashes the model, threshold, routing ids, state cap, and questions over 12 hex digits", () => {
     const expected = createHash("sha256")
       .update(
         JSON.stringify({
           model: "jev-1.13.0",
-          threshold: 0.1,
+          threshold: 0.3,
+          routeQuestions: ["correction", "preference", "confusion"],
           stateCapBytes: 32768,
           questions: APPROVED_QUESTIONS,
         }),
@@ -538,16 +544,42 @@ describe("routeGate", () => {
     latencyMs: 1,
   });
 
-  it("calls every answer at or below the threshold no_lesson", () => {
-    const atThreshold = scored({ correction: 0.1, preference: 0.1, steering: 0.1, confusion: 0.1 });
-    expect(routeGate(atThreshold, JEV_POLICY)).toBe("no_lesson");
-    const under = scored({ correction: 0.05, preference: 0, steering: 0.09, confusion: 0.01 });
-    expect(routeGate(under, JEV_POLICY)).toBe("no_lesson");
+  /** The deciding answers per case: correction, preference, steering, confusion. */
+  const cases: Array<{ name: string; answers: Record<QuestionId, number>; decision: "no_lesson" | "maybe_lesson" }> = [
+    {
+      name: "steering at 0.90 with the three routing answers below the threshold",
+      answers: { correction: 0.05, preference: 0.1, steering: 0.9, confusion: 0.02 },
+      decision: "no_lesson",
+    },
+    {
+      name: "the three routing answers at exactly the threshold, steering at 0.90",
+      answers: { correction: 0.3, preference: 0.3, steering: 0.9, confusion: 0.3 },
+      decision: "no_lesson",
+    },
+    {
+      name: "correction at 0.31",
+      answers: { correction: 0.31, preference: 0, steering: 0, confusion: 0 },
+      decision: "maybe_lesson",
+    },
+    {
+      name: "preference at 0.31",
+      answers: { correction: 0, preference: 0.31, steering: 0, confusion: 0 },
+      decision: "maybe_lesson",
+    },
+    {
+      name: "confusion at 0.31",
+      answers: { correction: 0, preference: 0, steering: 0, confusion: 0.31 },
+      decision: "maybe_lesson",
+    },
+  ];
+
+  it.each(cases)("$name", ({ answers, decision }) => {
+    expect(routeGate(scored(answers), JEV_POLICY)).toBe(decision);
   });
 
-  it("calls one answer above the threshold maybe_lesson", () => {
-    const over = scored({ correction: 0.1000001, preference: 0, steering: 0, confusion: 0 });
-    expect(routeGate(over, JEV_POLICY)).toBe("maybe_lesson");
+  it("calls a scored result missing a routing answer maybe_lesson", () => {
+    const missing = { correction: 0.1, preference: 0.1, steering: 0.1 } as Record<QuestionId, number>;
+    expect(routeGate(scored(missing), JEV_POLICY)).toBe("maybe_lesson");
   });
 
   it("routes a fallback to extraction", () => {

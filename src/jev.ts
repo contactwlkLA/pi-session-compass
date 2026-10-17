@@ -31,6 +31,7 @@ export interface JevQuestion {
 export interface JevPolicy {
   model: string;
   threshold: number;
+  routeQuestions: readonly QuestionId[];
   stateCapBytes: number;
   deadlineMs: number;
   defaultRetryWaitMs: number;
@@ -83,6 +84,7 @@ export type JevResult = JevScored | JevFallback;
 export const JEV_POLICY: JevPolicy = {
   model: GATE_CONFIG.model,
   threshold: GATE_CONFIG.threshold,
+  routeQuestions: GATE_CONFIG.routeQuestions,
   stateCapBytes: GATE_CONFIG.stateCapBytes,
   deadlineMs: GATE_CONFIG.deadlineMs,
   defaultRetryWaitMs: GATE_CONFIG.defaultRetryWaitMs,
@@ -98,6 +100,7 @@ export const JEV_POLICY_HASH = createHash("sha256")
     JSON.stringify({
       model: JEV_POLICY.model,
       threshold: JEV_POLICY.threshold,
+      routeQuestions: JEV_POLICY.routeQuestions,
       stateCapBytes: JEV_POLICY.stateCapBytes,
       questions: JEV_POLICY.questions,
     }),
@@ -272,10 +275,13 @@ export async function callJev(
   }
 }
 
-/** `no_lesson` only when a scored result's every answer is at or below the threshold. */
+/** `no_lesson` only when every answer the policy routes on is at or below the threshold. */
 export function routeGate(result: JevResult, policy: JevPolicy): "no_lesson" | "maybe_lesson" {
-  if (result.kind === "scored" && Object.values(result.answers).every((value) => value <= policy.threshold)) {
-    return "no_lesson";
-  }
-  return "maybe_lesson";
+  if (result.kind !== "scored") return "maybe_lesson";
+  const answers: Record<QuestionId, number | undefined> = result.answers;
+  const routes = policy.routeQuestions.every((id) => {
+    const answer = answers[id];
+    return answer !== undefined && answer <= policy.threshold;
+  });
+  return routes ? "no_lesson" : "maybe_lesson";
 }

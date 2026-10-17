@@ -86,7 +86,7 @@ The session-instrument skill's idea (count what kind of exchange each user reply
 - [x] **1.** Tune on dev (design 8). Any question rewording goes to the user for approval first.
 - [x] **2.** Freeze the chosen policy (hash), then score held-out once.
 - [x] **3.** Audit all held-out misses and all predicted rejections (up to 200, sampled uniformly if more). *Done 2026-10-17: policy without-steering-0.30 (correction, preference, confusion all ≤ 0.30; steering ignored), chosen on dev (88 of 207 rejected, 60 of 60 lesson kept, 0 correction misses) and frozen with the labels (outputs/s5/freeze.json). Held-out once: 59 of 132 rejected, 29 of 30 lesson kept (97%), 0 of 17 corrections missed; the one miss is a hold-back reminder ("no action, ans only", all four answers ≤ 0.22). All 58 rejected `no_lesson` trios were user-checked. Evidence outputs/s5/heldout-test/.*
-- [ ] **3a.** S5-04a (Pi; spec in stage-5-specs.md; user chose it 2026-10-17): the shipped gate decides on correction, preference, and confusion at 0.30, so enforce runs the tuned policy.
+- [x] **3a.** S5-04a (Pi; spec in stage-5-specs.md; user chose it 2026-10-17): the shipped gate decides on correction, preference, and confusion at 0.30, so enforce runs the tuned policy.
 - [ ] **4.** One paired run on the same held-out slice from the same start snapshot: `off` and `enforce`, for measured total cost (limits user-confirmed).
 
 ### S5-05 — Pilot report (CC)

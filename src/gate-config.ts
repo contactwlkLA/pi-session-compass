@@ -24,8 +24,11 @@ interface GateConfig {
   model: string;
   /** Where every gate request is sent. */
   endpoint: string;
-  /** All four answers at or below it mean the trio carries no lesson. */
+  /** Each answer in routeQuestions at or below it means the trio carries no lesson. */
   threshold: number;
+  /** The answers that decide a skip: a scored trio carries no lesson when each of them
+   * is at or below the threshold; the other questions are still asked and recorded. */
+  routeQuestions: readonly QuestionId[];
   /** A bigger UTF-8 JSON state falls back without a request. */
   stateCapBytes: number;
   /** Total time one gate call may take, every attempt and wait included. */
@@ -43,7 +46,8 @@ export const GATE_CONFIG: GateConfig = {
   modes: ["off", "shadow", "enforce"],
   model: "jev-1.13.0",
   endpoint: "https://api.typesafe.ai/v1/systemone",
-  threshold: 0.1,
+  threshold: 0.3,
+  routeQuestions: ["correction", "preference", "confusion"],
   stateCapBytes: 32 * 1024,
   deadlineMs: 5000,
   defaultRetryWaitMs: 500,

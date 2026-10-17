@@ -28,6 +28,7 @@ const TEST_TMP = fs.mkdtempSync(path.join(TEST_TMP_ROOT, "gate-harness-"));
 
 const LIMITS: Limits = { runType: "smoke", maxModelRequests: 5, maxRunMs: 900_000, source: "compass-table" };
 const HASH = "ad7880acdc3b";
+const LIVE_HASH = "f302de0ce97b";
 const MODEL = "jev-1.13.0";
 const SESSION = "/tmp/sessions/seed.jsonl";
 const CENSUS: CensusResult = { file: "seed.jsonl", sha256: "x", totalTrios: 26, nonEmptyLines: 100, trios: [] };
@@ -608,12 +609,12 @@ describe("--gate-mode", () => {
     const { code, printed } = await runToConfirmation(args);
 
     expect(code).toBe(2);
-    expect(printed).toContain(strings.confirmGate("shadow", HASH));
+    expect(printed).toContain(strings.confirmGate("shadow", LIVE_HASH));
     expect(printed).not.toContain(strings.confirmGateOff);
     const manifest = JSON.parse(fs.readFileSync(path.join(outputDir, "manifest.json"), "utf-8")) as {
       gate: GateRunConfig;
     };
-    expect(manifest.gate).toEqual({ mode: "shadow", source: "flag", policyHash: HASH, model: MODEL });
+    expect(manifest.gate).toEqual({ mode: "shadow", source: "flag", policyHash: LIVE_HASH, model: MODEL });
   });
 
   it("falls back to the settings snapshot's mode and records it as the source", async () => {
@@ -629,11 +630,11 @@ describe("--gate-mode", () => {
     const raw = snapshot.portraitSettings.gateMode;
     const modes = ["off", "shadow", "enforce"];
     const mode = typeof raw === "string" && modes.includes(raw) ? raw : "off";
-    expect(printed).toContain(mode === "off" ? strings.confirmGateOff : strings.confirmGate(mode, HASH));
+    expect(printed).toContain(mode === "off" ? strings.confirmGateOff : strings.confirmGate(mode, LIVE_HASH));
     const manifest = JSON.parse(fs.readFileSync(path.join(outputDir, "manifest.json"), "utf-8")) as {
       gate: GateRunConfig;
     };
-    expect(manifest.gate).toEqual({ mode, source: "settings", policyHash: HASH, model: MODEL });
+    expect(manifest.gate).toEqual({ mode, source: "settings", policyHash: LIVE_HASH, model: MODEL });
   });
 
   it("records the resolved gate at prepare time, flag or settings", async () => {
@@ -663,9 +664,9 @@ describe("--gate-mode", () => {
       startSnapshotDir: snap,
     });
 
-    expect(withFlag.gate).toEqual({ mode: "enforce", source: "flag", policyHash: HASH, model: MODEL });
+    expect(withFlag.gate).toEqual({ mode: "enforce", source: "flag", policyHash: LIVE_HASH, model: MODEL });
     expect(withoutFlag.gate.source).toBe("settings");
-    expect(withoutFlag.gate.policyHash).toBe(HASH);
+    expect(withoutFlag.gate.policyHash).toBe(LIVE_HASH);
     expect(withoutFlag.gate.model).toBe(MODEL);
     const flagManifest = JSON.parse(fs.readFileSync(path.join(flagDir, "manifest.json"), "utf-8")) as {
       gate: GateRunConfig;

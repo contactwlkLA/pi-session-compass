@@ -26,7 +26,7 @@ fs.mkdirSync(TEST_TMP_ROOT, { recursive: true });
 const TEST_TMP = fs.mkdtempSync(path.join(TEST_TMP_ROOT, "score-"));
 
 const KEY = "score-credential-placeholder-0000";
-const HASH = "ad7880acdc3b";
+const HASH = "f302de0ce97b";
 const MODEL = "jev-1.13.0";
 
 const sessionHeader = (id: string): Record<string, unknown> => ({ type: "session", id, cwd: "/tmp/project" });
