@@ -1,6 +1,6 @@
 # Stage 5 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.6.0** · Status: **Approved (user, 2026-10-17)**
+Project: **pi-session-compass** · Revision: **0.7.0** · Status: **Approved (user, 2026-10-17)**
 
 Date: **2026-10-16**
 
@@ -267,6 +267,14 @@ npm run test:compass
 npm test
 ```
 
+**Audit answers (CC, 2026-10-17; part of this spec; numbers refer to outputs/s5/handoff/S5-02c-audit.md):**
+
+1. **Blockers 1–2: your resolutions.** Add `scored` to `Verdict`; P11's first count adds `verdicts.scored ?? 0`; the gate cache keeps its four verdicts and the question cache gets its own validator (`scored`, `fallback`); a `scored` row resets the failure streak. Gate-mode output stays byte-identical.
+2. **Question 1: P34 before the freeze and key checks**, as you propose.
+3. **Questions 2–4: your defaults.** `${set}` is the literal `--set` value; `${n}` counts `scored` rows, cached included; a session with no scored rows keeps its row with `trios` 0; a missing, unreadable, or non-JSON file prints P34.
+4. **Question 5: your rules, but strict.** Unknown keys, at the top level or in a question, print P34; the file means exactly what it says.
+5. **Risks 1–5 and Noise 1–10: as you plan.** `summary.json.policyHash` stays the gate's hash beside `questionSet.hash`; codes.md gets a separator row under P37.
+
 ### Protected text R1–R5 and P34–P39 (approved by the user, 2026-10-17)
 
 **R — reply-code questions** (`reply-codes-v1`; each `instructions` is the gate's prefix + the question):
@@ -304,6 +312,6 @@ S5-02a review: `runPipeline` unchanged; one `export` in src; usage attributed pe
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.4.0 | 2026-10-16 | S5-02a audit answers (reuse P6/P7/P12, access error, usage source, diagnostics sink). |
 | 0.5.0 | 2026-10-17 | S5-02c reply codes spec; R1–R5 and P34–P39 approved by the user. |
 | 0.6.0 | 2026-10-17 | S5-02b audit answers; P40 approved by the user. |
+| 0.7.0 | 2026-10-17 | S5-02c audit answers (scored verdict, streak reset, strict set file). |
