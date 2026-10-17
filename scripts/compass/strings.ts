@@ -135,6 +135,16 @@ export const strings = {
     `Scored ${scored} · cached ${cached} · fallbacks ${fallbacks} · not run ${notRun} · requests ${requests} · stop: ${stop}`,
   scoreBadConcurrency: "compass score: --concurrency must be an integer from 1 to 8",
   scoreProgress: (done: number, total: number, verdict: string) => `trio ${done}/${total}: ${verdict}`,
+  scoreBadQuestions: (file: string) => `compass score: ${file} is not a valid question set`,
+  scoreModelQuestions: (model: string, name: string, hash: string, concurrency: number) =>
+    `Jev model: ${model} · questions ${name} (${hash}) · ${concurrency} at once`,
+  codesTitle: (name: string, set: string, scored: number) =>
+    `# Reply codes — ${name}, set ${set}, ${scored} scored trios (an answer ≥ 0.50 counts as yes)`,
+  codesTableHeader: (ids: string[]) => `| folder | session | trios | ${ids.join(" | ")} |`,
+  codesTotalCell: "all",
+  codesExamplesHeading: (id: string) => `## ${id}: top replies`,
+  codesExampleLine: (answer: string, session: string, index: number, reply: string) =>
+    `- ${answer} · ${session} trio ${index} · ${reply}`,
 
   // ── Corpus extraction ──
   extractHeader: "compass extract — extraction only (no review, no building, no portrait)",

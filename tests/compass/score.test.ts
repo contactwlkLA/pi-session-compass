@@ -767,3 +767,447 @@ describe("credential hygiene", () => {
     for (const artifact of artifacts) expect(artifact).not.toContain(KEY);
   });
 });
+
+describe("reply codes question set", () => {
+  const SET_NAME = "reply-codes-test";
+  const CODE_IDS = ["approval", "correction", "task_step"];
+
+  /**
+   * The counting fixture: two source folders, three sessions, eight trios.
+   * The answers the mock returns per reply, and the counts derived from them:
+   *
+   * | folder | session | trios | approval | correction | task_step |
+   * |---|---|---|---|---|---|
+   * | source-qa | alpha.jsonl | 3 | 1 | 1 | 1 |
+   * | source-qa | beta.jsonl | 2 | 1 | 1 | 1 |
+   * | source-qb | gamma.jsonl | 3 | 2 | 1 | 1 |
+   * | source-qa | all | 5 | 2 | 2 | 2 |
+   * | source-qb | all | 3 | 2 | 1 | 1 |
+   * | all | all | 8 | 4 | 3 | 3 |
+   *
+   * gamma one (approval 0.50) and gamma two (correction 0.40) pin the
+   * threshold: an answer ≥ 0.50 counts as a yes, one below it does not.
+   */
+  const FIXTURE_ANSWERS: Record<string, Record<string, number>> = {
+    "alpha one": { approval: 0.9, correction: 0.1, task_step: 0.1 },
+    "alpha two": { approval: 0.1, correction: 0.9, task_step: 0.9 },
+    "alpha three": { approval: 0.1, correction: 0.1, task_step: 0.1 },
+    "beta one": { approval: 0.9, correction: 0.9, task_step: 0.1 },
+    "beta two": { approval: 0.1, correction: 0.1, task_step: 0.9 },
+    "gamma one": { approval: 0.5, correction: 0.1, task_step: 0.9 },
+    "gamma two": { approval: 0.1, correction: 0.4, task_step: 0.1 },
+    "gamma three": { approval: 0.9, correction: 0.5, task_step: 0.1 },
+  };
+
+  interface SentRequest {
+    model: string;
+    questions: Record<string, unknown>;
+  }
+
+  function questionEntry(text: string): Record<string, unknown> {
+    return {
+      type: "noul",
+      instructions: `In this exchange between a user and an AI coding agent, ${text}`,
+      criteria: { true: "it applies", false: "it does not apply" },
+    };
+  }
+
+  function validQuestions(): Record<string, unknown> {
+    return {
+      approval: questionEntry("is the reply an approval?"),
+      correction: questionEntry("is the reply a correction?"),
+      task_step: questionEntry("is the reply a task step?"),
+    };
+  }
+
+  function writeSet(fileName: string, content: string): string {
+    const target = path.join(TEST_TMP, fileName);
+    fs.writeFileSync(target, content, "utf-8");
+    return target;
+  }
+
+  function writeValidSet(): string {
+    return writeSet("set-valid.json", JSON.stringify({ name: SET_NAME, questions: validQuestions() }));
+  }
+
+  /** The set's cache hash, computed the way the spec defines it. */
+  function expectedSetHash(setFile: string): string {
+    const parsed = JSON.parse(fs.readFileSync(setFile, "utf-8")) as {
+      name: string;
+      questions: Record<string, unknown>;
+    };
+    return sha256Text(JSON.stringify({ model: MODEL, name: parsed.name, questions: parsed.questions })).slice(0, 12);
+  }
+
+  function replyRecords(sessionId: string, replies: string[]): Record<string, unknown>[] {
+    const records: Record<string, unknown>[] = [sessionHeader(sessionId), assistant("the plan the agent laid out")];
+    for (const reply of replies) {
+      records.push(user(reply));
+      records.push(assistant("the agent's reply"));
+    }
+    return records;
+  }
+
+  /** Two source folders frozen into one corpus: source-qa (alpha, beta) and source-qb (gamma). */
+  async function freezeCountingCorpus(seed: string): Promise<string> {
+    const sourceA = path.join(TEST_TMP, "source-qa");
+    writeSession(sourceA, "alpha.jsonl", replyRecords("sess-a", ["alpha one", "alpha two", "alpha three"]));
+    writeSession(sourceA, "beta.jsonl", replyRecords("sess-b", ["beta one", "beta two"]));
+    const sourceB = path.join(TEST_TMP, "source-qb");
+    writeSession(sourceB, "gamma.jsonl", replyRecords("sess-c", ["gamma one", "gamma two", "gamma three"]));
+    const corpusDir = path.join(TEST_TMP, "corpus-counting");
+    const result = await capture(() =>
+      freezeCorpus(["--source", sourceA, "--source", sourceB, "--output", corpusDir, "--seed", seed]),
+    );
+    expect(result.code).toBe(0);
+    return corpusDir;
+  }
+
+  /** score's argv with --questions; the = form keeps parseArgv from swallowing the next switch. */
+  function questionArgv(run: ScoreRun, setFile: string): string[] {
+    return [...scoreArgv(run), `--questions=${setFile}`];
+  }
+
+  /** A mocked Jev endpoint whose answers come from FIXTURE_ANSWERS, keyed by the reply in the request. */
+  function mockByReply(): { sent: SentRequest[] } {
+    const sent: SentRequest[] = [];
+    globalThis.fetch = vi.fn(async (_input: unknown, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as {
+        model: string;
+        questions: Record<string, unknown>;
+        state: { userFeedback: string };
+      };
+      const fixture = FIXTURE_ANSWERS[body.state.userFeedback];
+      if (fixture === undefined) throw new Error(`unexpected reply in test request: ${body.state.userFeedback}`);
+      const answers: Record<string, { type: string; noul: number }> = {};
+      for (const [id, noul] of Object.entries(fixture)) answers[id] = { type: "noul", noul };
+      sent.push({ model: body.model, questions: body.questions });
+      return new Response(JSON.stringify({ model: MODEL, answers, usage: { input_tokens: 12, output_tokens: 3 } }), {
+        status: 200,
+      });
+    }) as unknown as typeof fetch;
+    return { sent };
+  }
+
+  /** A mocked Jev endpoint answering every question id with a fixed noul. */
+  function mockById(values: Record<string, number>): { sent: SentRequest[] } {
+    const sent: SentRequest[] = [];
+    globalThis.fetch = vi.fn(async (_input: unknown, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as {
+        model: string;
+        questions: Record<string, unknown>;
+        state: { userFeedback: string };
+      };
+      sent.push({ model: body.model, questions: body.questions });
+      const answers: Record<string, { type: string; noul: number }> = {};
+      for (const id of Object.keys(body.questions)) {
+        answers[id] = { type: "noul", noul: values[id] ?? 0.1 };
+      }
+      return new Response(JSON.stringify({ model: MODEL, answers, usage: { input_tokens: 12, output_tokens: 3 } }), {
+        status: 200,
+      });
+    }) as unknown as typeof fetch;
+    return { sent };
+  }
+
+  it("sends exactly the file's questions, caches under the set's hash, and writes codes.md", async () => {
+    const corpus = await freezeCountingCorpus("seed-counting");
+    const setFile = writeValidSet();
+    const hash = expectedSetHash(setFile);
+    process.env.TYPESAFE_API_KEY = KEY;
+    const { sent } = mockByReply();
+    const outDir = path.join(TEST_TMP, "score-out");
+
+    const { code, out, err } = await capture(() => scoreCorpus(questionArgv(defaultRun(corpus, outDir), setFile)));
+
+    expect(code).toBe(0);
+    expect(err).toBe("");
+    // The question-set model line replaces the gate's policy line in the run block.
+    expect(out.split("\n")[4]).toBe(`Jev model: ${MODEL} · questions ${SET_NAME} (${hash}) · 4 at once`);
+    expect(out).not.toContain(`policy ${HASH}`);
+
+    // Criterion 2: the wire carries exactly the file's questions.
+    expect(sent).toHaveLength(8);
+    for (const request of sent) {
+      expect(request.model).toBe(MODEL);
+      expect(request.questions).toEqual(validQuestions());
+    }
+
+    // Criterion 2: the cache name uses the set's hash, never the gate's.
+    const questionCache = path.join(corpus, "cache", `questions-${hash}.jsonl`);
+    const cacheLines = fs
+      .readFileSync(questionCache, "utf-8")
+      .split("\n")
+      .filter((line) => line.trim() !== "");
+    expect(cacheLines).toHaveLength(8);
+    expect(fs.existsSync(path.join(corpus, "cache", `gate-${HASH}.jsonl`))).toBe(false);
+
+    // The gate's results table is not written; codes.md is, and the summary records the set.
+    expect(fs.existsSync(path.join(outDir, "scores-table.md"))).toBe(false);
+    expect(fs.existsSync(path.join(outDir, "codes.md"))).toBe(true);
+    const rows = readRows(outDir);
+    expect(rows.map((row) => row.verdict)).toEqual(Array.from({ length: 8 }, () => "scored"));
+    expect(Object.keys(rows[0].answers ?? {})).toEqual(CODE_IDS);
+    const summary = readSummary(outDir);
+    expect(summary.policyHash).toBe(HASH);
+    expect(summary.questionSet).toEqual({ name: SET_NAME, hash, file: setFile });
+  });
+
+  it("codes.md counts match the hand-computed fixture", async () => {
+    const corpus = await freezeCountingCorpus("seed-counting");
+    const setFile = writeValidSet();
+    process.env.TYPESAFE_API_KEY = KEY;
+    mockByReply();
+    const outDir = path.join(TEST_TMP, "score-out");
+
+    const { code } = await capture(() => scoreCorpus(questionArgv(defaultRun(corpus, outDir), setFile)));
+
+    expect(code).toBe(0);
+    const codes = fs.readFileSync(path.join(outDir, "codes.md"), "utf-8").split("\n");
+    expect(codes[0]).toBe(`# Reply codes — ${SET_NAME}, set all, 8 scored trios (an answer ≥ 0.50 counts as yes)`);
+    expect(codes[1]).toBe("");
+    expect(codes[2]).toBe("| folder | session | trios | approval | correction | task_step |");
+    expect(codes[3]).toBe("|---|---|---|---|---|---|");
+    expect(codes.slice(4, 10)).toEqual([
+      "| source-qa | alpha.jsonl | 3 | 1 | 1 | 1 |",
+      "| source-qa | beta.jsonl | 2 | 1 | 1 | 1 |",
+      "| source-qb | gamma.jsonl | 3 | 2 | 1 | 1 |",
+      "| source-qa | all | 5 | 2 | 2 | 2 |",
+      "| source-qb | all | 3 | 2 | 1 | 1 |",
+      "| all | all | 8 | 4 | 3 | 3 |",
+    ]);
+    expect(codes.slice(11)).toEqual([
+      "## approval: top replies",
+      "- 0.90 · alpha.jsonl trio 1 · alpha one",
+      "- 0.90 · beta.jsonl trio 1 · beta one",
+      "- 0.90 · gamma.jsonl trio 3 · gamma three",
+      "- 0.50 · gamma.jsonl trio 1 · gamma one",
+      "",
+      "## correction: top replies",
+      "- 0.90 · alpha.jsonl trio 2 · alpha two",
+      "- 0.90 · beta.jsonl trio 1 · beta one",
+      "- 0.50 · gamma.jsonl trio 3 · gamma three",
+      "",
+      "## task_step: top replies",
+      "- 0.90 · alpha.jsonl trio 2 · alpha two",
+      "- 0.90 · beta.jsonl trio 2 · beta two",
+      "- 0.90 · gamma.jsonl trio 1 · gamma one",
+      "",
+    ]);
+  });
+
+  it("refuses an invalid question set before any request", async () => {
+    // The corpus path does not exist: the question-set refusal has to come first.
+    const corpus = path.join(TEST_TMP, "corpus-not-touched");
+    const valid = { name: SET_NAME, questions: validQuestions() };
+    const nineQuestions: Record<string, unknown> = {};
+    for (let i = 1; i <= 9; i++) nineQuestions[`q${i}`] = questionEntry("a question");
+    const noInstructions = validQuestions() as Record<string, Record<string, unknown>>;
+    noInstructions.approval = { type: "noul", criteria: { true: "yes", false: "no" } };
+    const invalid: Array<{ label: string; content: string }> = [
+      { label: "non-JSON content", content: "{not json" },
+      { label: "a top-level array", content: "[]" },
+      { label: "an unknown top-level key", content: JSON.stringify({ ...valid, extra: true }) },
+      { label: "a missing name", content: JSON.stringify({ questions: validQuestions() }) },
+      { label: "an empty name", content: JSON.stringify({ name: "", questions: validQuestions() }) },
+      { label: "no questions", content: JSON.stringify({ name: SET_NAME, questions: {} }) },
+      { label: "nine questions", content: JSON.stringify({ name: SET_NAME, questions: nineQuestions }) },
+      {
+        label: "a question id outside the id pattern",
+        content: JSON.stringify({ name: SET_NAME, questions: { ...validQuestions(), Approval: questionEntry("x") } }),
+      },
+      {
+        label: "a question with an unknown key",
+        content: JSON.stringify({
+          name: SET_NAME,
+          questions: { ...validQuestions(), approval: { ...questionEntry("x"), extra: true } },
+        }),
+      },
+      {
+        label: "a question without instructions",
+        content: JSON.stringify({ name: SET_NAME, questions: noInstructions }),
+      },
+      {
+        label: "a criteria object with an unknown key",
+        content: JSON.stringify({
+          name: SET_NAME,
+          questions: {
+            ...validQuestions(),
+            approval: { type: "noul", instructions: "x", criteria: { true: "y", false: "n", maybe: "m" } },
+          },
+        }),
+      },
+      {
+        label: "a question whose type is not noul",
+        content: JSON.stringify({
+          name: SET_NAME,
+          questions: { ...validQuestions(), approval: { ...questionEntry("x"), type: "prob" } },
+        }),
+      },
+    ];
+
+    const cases: Array<{ label: string; file: string }> = [
+      { label: "a missing file", file: path.join(TEST_TMP, "no-such-set.json") },
+    ];
+    for (const [index, item] of invalid.entries()) {
+      cases.push({ label: item.label, file: writeSet(`invalid-${index}.json`, item.content) });
+    }
+
+    for (const [index, item] of cases.entries()) {
+      const outDir = path.join(TEST_TMP, `refusal-${index}`);
+      const { code, out, err } = await capture(() =>
+        scoreCorpus(questionArgv({ ...defaultRun(corpus, outDir) }, item.file)),
+      );
+      expect(code, item.label).toBe(2);
+      expect(err, item.label).toBe(`${strings.scoreBadQuestions(item.file)}\n`);
+      expect(out, item.label).not.toContain("Corpus:");
+      expect(fs.existsSync(outDir), item.label).toBe(false);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("serves the question cache on a rerun and rebuilds codes.md without a request", async () => {
+    const corpus = await freezeCountingCorpus("seed-counting");
+    const setFile = writeValidSet();
+    const hash = expectedSetHash(setFile);
+    process.env.TYPESAFE_API_KEY = KEY;
+    const { sent } = mockByReply();
+
+    const firstOut = path.join(TEST_TMP, "score-first");
+    const first = await capture(() => scoreCorpus(questionArgv(defaultRun(corpus, firstOut), setFile)));
+    expect(first.code).toBe(0);
+    expect(sent).toHaveLength(8);
+    expect(fs.existsSync(path.join(corpus, "cache", `questions-${hash}.jsonl`))).toBe(true);
+    const firstCodes = fs.readFileSync(path.join(firstOut, "codes.md"), "utf-8");
+
+    const outDir = path.join(TEST_TMP, "score-out");
+    const second = await capture(() => scoreCorpus(questionArgv(defaultRun(corpus, outDir), setFile)));
+
+    expect(second.code).toBe(0);
+    expect(sent).toHaveLength(8);
+    expect(second.out).toContain("(8 cached, 0 to score)");
+    expect(second.out).toContain("Scored 8 · cached 8 · fallbacks 0 · not run 0 · requests 0 · stop: completed");
+    const rows = readRows(outDir);
+    expect(rows.every((row) => row.cached && row.verdict === "scored")).toBe(true);
+    expect(fs.readFileSync(path.join(outDir, "codes.md"), "utf-8")).toBe(firstCodes);
+  });
+
+  it("resets the failure streak when the run scores again", async () => {
+    const corpus = await freezeSource("streak-questions", "seed", {
+      "alpha.jsonl": trioRecords(sessionHeader("sess-alpha"), 8),
+    });
+    const setFile = writeValidSet();
+    process.env.TYPESAFE_API_KEY = KEY;
+    const answers = {
+      approval: { type: "noul", noul: 0.1 },
+      correction: { type: "noul", noul: 0.1 },
+      task_step: { type: "noul", noul: 0.1 },
+    };
+    let call = 0;
+    const mock = vi.fn(async () => {
+      call++;
+      if (call % 2 === 0) return statusResponse(500);
+      return new Response(JSON.stringify({ model: MODEL, answers, usage: { input_tokens: 12, output_tokens: 3 } }), {
+        status: 200,
+      });
+    });
+    globalThis.fetch = mock as unknown as typeof fetch;
+    const outDir = path.join(TEST_TMP, "score-out");
+
+    const { code } = await capture(() =>
+      scoreCorpus(questionArgv({ ...defaultRun(corpus, outDir), concurrency: "1" }, setFile)),
+    );
+
+    // Failures on even calls are never three in a row, so nothing stops the run.
+    expect(code).toBe(0);
+    expect(mock).toHaveBeenCalledTimes(8);
+    expect(readRows(outDir).map((row) => row.verdict)).toEqual([
+      "scored",
+      "fallback",
+      "scored",
+      "fallback",
+      "scored",
+      "fallback",
+      "scored",
+      "fallback",
+    ]);
+    expect(readSummary(outDir)).toMatchObject({ stop: "completed", requests: 8 });
+  });
+
+  it("scores with the checked-in reply-codes set", async () => {
+    const corpus = await freezeSource("reply-codes-file", "seed", threeTrioFiles());
+    const setFile = path.join(ROOT, "scripts", "compass", "questions", "reply-codes-v1.json");
+    process.env.TYPESAFE_API_KEY = KEY;
+    const { sent } = mockById({});
+    const outDir = path.join(TEST_TMP, "score-out");
+
+    const { code } = await capture(() => scoreCorpus(questionArgv(defaultRun(corpus, outDir), setFile)));
+
+    expect(code).toBe(0);
+    expect(sent).toHaveLength(3);
+    expect(Object.keys(sent[0].questions)).toEqual(["approval", "correction", "hold_back", "task_step", "chatter"]);
+    const checkedIn = JSON.parse(fs.readFileSync(setFile, "utf-8")) as { questions: Record<string, unknown> };
+    expect(sent[0].questions).toEqual(checkedIn.questions);
+    expect(fs.readFileSync(path.join(outDir, "codes.md"), "utf-8")).toContain("# Reply codes — reply-codes-v1");
+  });
+
+  it("lists at most ten top replies under one code", async () => {
+    const replies: string[] = [];
+    for (let i = 1; i <= 12; i++) replies.push(`cap reply ${i}`);
+    const corpus = await freezeSource("cap", "seed", { "alpha.jsonl": replyRecords("sess-cap", replies) });
+    const setFile = writeValidSet();
+    process.env.TYPESAFE_API_KEY = KEY;
+    mockById({ approval: 0.9 });
+    const outDir = path.join(TEST_TMP, "score-out");
+
+    const { code } = await capture(() => scoreCorpus(questionArgv(defaultRun(corpus, outDir), setFile)));
+
+    expect(code).toBe(0);
+    const codes = fs.readFileSync(path.join(outDir, "codes.md"), "utf-8").split("\n");
+    const heading = codes.indexOf("## approval: top replies");
+    expect(heading).toBeGreaterThan(-1);
+    const approvalLines = codes.slice(heading + 1).filter((line) => line.startsWith("- "));
+    expect(approvalLines).toHaveLength(10);
+    expect(approvalLines[0]).toBe("- 0.90 · alpha.jsonl trio 1 · cap reply 1");
+    expect(approvalLines[9]).toBe("- 0.90 · alpha.jsonl trio 10 · cap reply 10");
+    // The other two codes answer 0.10 everywhere, so they list no replies.
+    expect(codes.join("\n")).not.toContain("## correction: top replies\n- ");
+  });
+
+  it("caches an oversized state under the set's hash and keeps it out of the counts", async () => {
+    const corpus = await freezeSource("oversized-questions", "seed", {
+      "big.jsonl": [
+        sessionHeader("sess-big"),
+        assistant("the plan the agent laid out"),
+        user("x".repeat(40 * 1024)),
+        assistant("the agent's reply"),
+      ],
+    });
+    const setFile = writeValidSet();
+    const hash = expectedSetHash(setFile);
+    process.env.TYPESAFE_API_KEY = KEY;
+    const { sent } = mockByReply();
+    const outDir = path.join(TEST_TMP, "score-out");
+
+    const first = await capture(() => scoreCorpus(questionArgv(defaultRun(corpus, outDir), setFile)));
+
+    expect(first.code).toBe(0);
+    expect(sent).toHaveLength(0);
+    expect(readRows(outDir)[0]).toMatchObject({ verdict: "fallback", reason: "oversized_state", cached: false });
+    const cacheLines = fs
+      .readFileSync(path.join(corpus, "cache", `questions-${hash}.jsonl`), "utf-8")
+      .split("\n")
+      .filter((line) => line.trim() !== "");
+    expect(cacheLines).toHaveLength(1);
+
+    const secondOut = path.join(TEST_TMP, "score-second");
+    const second = await capture(() => scoreCorpus(questionArgv(defaultRun(corpus, secondOut), setFile)));
+
+    expect(second.code).toBe(0);
+    expect(sent).toHaveLength(0);
+    expect(readRows(secondOut)[0]).toMatchObject({ reason: "oversized_state", cached: true });
+    const codes = fs.readFileSync(path.join(secondOut, "codes.md"), "utf-8").split("\n");
+    expect(codes[0]).toContain("0 scored trios");
+    expect(codes).toContain("| source-oversized-questions | big.jsonl | 0 | 0 | 0 | 0 |");
+  });
+});

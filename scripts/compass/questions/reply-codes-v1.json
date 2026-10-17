@@ -1,0 +1,45 @@
+{
+  "name": "reply-codes-v1",
+  "questions": {
+    "approval": {
+      "type": "noul",
+      "instructions": "In this exchange between a user and an AI coding agent, is the user's reply only approving, confirming, or choosing among options the agent offered?",
+      "criteria": {
+        "true": "The user says go, yes, or ok, or picks an option the agent offered, and adds nothing else.",
+        "false": "The user adds an instruction, a correction, a question, or a preference."
+      }
+    },
+    "correction": {
+      "type": "noul",
+      "instructions": "In this exchange between a user and an AI coding agent, does the user's reply correct or push back on something the agent said or did?",
+      "criteria": {
+        "true": "The user says the agent got something wrong (code, a claim, an assumption), missed something, or did something the user did not want.",
+        "false": "The user accepts the work, moves on, or asks something new without saying the agent got anything wrong."
+      }
+    },
+    "hold_back": {
+      "type": "noul",
+      "instructions": "In this exchange between a user and an AI coding agent, does the user's reply hold the agent back because it acted, or was about to act, before the user agreed?",
+      "criteria": {
+        "true": "The user tells the agent to stop, wait, not act yet, or undo something it did without being asked.",
+        "false": "The user does not hold the agent back."
+      }
+    },
+    "task_step": {
+      "type": "noul",
+      "instructions": "In this exchange between a user and an AI coding agent, does the user's reply give the agent a new task or next step?",
+      "criteria": {
+        "true": "The user asks for something to be done next: a command to run, a file to read or write, an analysis, or a question to answer.",
+        "false": "The reply only approves, corrects, holds the agent back, or chats."
+      }
+    },
+    "chatter": {
+      "type": "noul",
+      "instructions": "In this exchange between a user and an AI coding agent, is the user's reply off-task?",
+      "criteria": {
+        "true": "Small talk, thanks, venting, or remarks unrelated to the work.",
+        "false": "The reply is about the task."
+      }
+    }
+  }
+}

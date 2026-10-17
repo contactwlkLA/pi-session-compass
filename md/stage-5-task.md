@@ -71,9 +71,9 @@ Pi codes two harness tasks from CC specs. CC runs the live scoring and extractio
 
 The session-instrument skill's idea (count what kind of exchange each user reply is) measured offline from the session logs, not self-reported by the live agent. Harness only; the gate, its policy hash, and the plugin do not change.
 
-- [ ] **1.** `score.ts --questions <file>`: score a set with a question set from a file; its own cache and hash; no gate verdicts.
-- [ ] **2.** `codes.md`: per folder and per session, how many replies answer yes (≥ 0.50) to each code, plus the top replies per code.
-- [ ] **3.** Tests (mocked).
+- [x] **1.** `score.ts --questions <file>`: score a set with a question set from a file; its own cache and hash; no gate verdicts.
+- [x] **2.** `codes.md`: per folder and per session, how many replies answer yes (≥ 0.50) to each code, plus the top replies per code.
+- [x] **3.** Tests (mocked).
 - [ ] **4.** CC: score the pilot corpus with the reply-code set (user-confirmed limits); report the tally as D4 evidence.
 
 ### S5-03 — Score, extract, label (CC + user)

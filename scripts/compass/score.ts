@@ -7,17 +7,29 @@
  * durable result to a cache so a rerun never pays for the same trio twice.
  * No extraction, no building, no portrait — only Jev requests, and none before
  * the corpus, the confirmation, and the credential have been checked.
+ * With --questions, a question set read from a file replaces the gate's
+ * questions on the wire: the rows carry no gate verdict, and codes.md tallies
+ * the answers per folder and session instead of the gate's results table.
  *
  * Usage:
  *   node score.js --corpus <dir> --set dev|heldout|all --run-type <t> \
  *     --max-model-requests N --max-run-ms N --limits-source <s> \
- *     [--concurrency N] [--output <dir>] [--confirmed]
+ *     [--concurrency N] [--output <dir>] [--questions <file>] [--confirmed]
  */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
-import { buildGateState, callJev, JEV_POLICY, JEV_POLICY_HASH, type JevResult, routeGate } from "../../src/jev.js";
+import {
+  buildGateState,
+  callJev,
+  JEV_POLICY,
+  JEV_POLICY_HASH,
+  type JevPolicy,
+  type JevQuestion,
+  type JevResult,
+  routeGate,
+} from "../../src/jev.js";
 import type { InteractionSequence } from "../../src/types.js";
 import {
   appendCacheLine,
@@ -34,9 +46,12 @@ import { parseLimits } from "./limits.js";
 import { renderTable } from "./probe.js";
 import { strings } from "./strings.js";
 import type { CorpusSet, CorpusTrio, Limits } from "./types.js";
-import { findWorkspaceRoot, parseArgv, sha256File } from "./util.js";
+import { findWorkspaceRoot, parseArgv, sha256File, sha256Text } from "./util.js";
 
-type Verdict = "no_lesson" | "maybe_lesson" | "fallback" | "not_run";
+type Verdict = "no_lesson" | "maybe_lesson" | "scored" | "fallback" | "not_run";
+
+/** The gate's four verdicts — the only ones the results table's columns understand. */
+type TableVerdict = "no_lesson" | "maybe_lesson" | "fallback" | "not_run";
 
 /** How the run ended, in the words the final line reports. */
 type StopLabel = "completed" | "request limit" | "time limit" | "auth error" | "three failed requests in a row";
@@ -73,10 +88,19 @@ interface CacheLine {
 /** Failed requests in a row after which scoring stops (the same limit the gate uses). */
 const FAILURE_LIMIT = 3;
 const SNIPPET_CHARS = 90;
-const VERDICTS: Verdict[] = ["no_lesson", "maybe_lesson", "fallback", "not_run"];
+/** An answer at or above this counts as a yes in the codes tally. */
+const YES_THRESHOLD = 0.5;
+/** The most example replies listed under one code. */
+const TOP_EXAMPLES = 10;
+const QUESTION_ID_RE = /^[a-z_]{1,32}$/;
+const MIN_QUESTIONS = 1;
+const MAX_QUESTIONS = 8;
+/** A gate cache line carries the gate's verdicts; a question-set cache line carries its own. */
+const GATE_CACHE_VERDICTS: Verdict[] = ["no_lesson", "maybe_lesson", "fallback", "not_run"];
+const QUESTION_CACHE_VERDICTS: Verdict[] = ["scored", "fallback"];
 
-function isVerdict(value: unknown): value is Verdict {
-  return typeof value === "string" && (VERDICTS as string[]).includes(value);
+function isVerdictIn(value: unknown, allowed: Verdict[]): value is Verdict {
+  return typeof value === "string" && (allowed as string[]).includes(value);
 }
 
 /** The table's reply cell: whitespace flattened, at most 90 characters. */
@@ -85,15 +109,76 @@ function snippet(text: string): string {
   return flat.length > SNIPPET_CHARS ? `${flat.slice(0, SNIPPET_CHARS - 1)}…` : flat;
 }
 
-/** True for a line this cache may serve: the gate's durable results only. */
-function isCacheLine(value: CacheLine): boolean {
-  if (typeof value.key !== "string" || !isVerdict(value.verdict)) return false;
+/** A question set read from a file: its name, its questions in file order, and the file it came from. */
+interface QuestionSet {
+  name: string;
+  questions: Record<string, JevQuestion>;
+  file: string;
+  hash: string;
+}
+
+/** The first 12 hex digits of sha256 over the model, the set's name, and its questions as parsed. */
+function questionSetHash(name: string, questions: Record<string, unknown>): string {
+  return sha256Text(JSON.stringify({ model: JEV_POLICY.model, name, questions })).slice(0, 12);
+}
+
+/** True for one question exactly as the file format describes it: no missing and no unknown fields. */
+function isQuestionShape(value: unknown): value is JevQuestion {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  if (Object.keys(record).length !== 3 || record.type !== "noul") return false;
+  if (typeof record.instructions !== "string") return false;
+  const criteria = record.criteria;
+  if (typeof criteria !== "object" || criteria === null) return false;
+  const criteriaRecord = criteria as Record<string, unknown>;
+  if (Object.keys(criteriaRecord).length !== 2) return false;
+  return typeof criteriaRecord.true === "string" && typeof criteriaRecord.false === "string";
+}
+
+/** The question set in `file`, or null when the file is missing, unreadable, or not the format. */
+function parseQuestionSet(file: string): QuestionSet | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const record = parsed as Record<string, unknown>;
+  if (Object.keys(record).length !== 2 || typeof record.name !== "string" || record.name === "") return null;
+  const questions = record.questions;
+  if (typeof questions !== "object" || questions === null) return null;
+  const questionRecords = questions as Record<string, unknown>;
+  const ids = Object.keys(questionRecords);
+  if (ids.length < MIN_QUESTIONS || ids.length > MAX_QUESTIONS) return null;
+  for (const id of ids) {
+    if (!QUESTION_ID_RE.test(id) || !isQuestionShape(questionRecords[id])) return null;
+  }
+  return {
+    name: record.name,
+    questions: questionRecords as Record<string, JevQuestion>,
+    file,
+    hash: questionSetHash(record.name, questionRecords),
+  };
+}
+
+/** True for a line this cache may serve: a durable result in this mode's verdicts only. */
+function isCacheLine(value: CacheLine, allowedVerdicts: Verdict[]): boolean {
+  if (typeof value.key !== "string" || !isVerdictIn(value.verdict, allowedVerdicts)) return false;
   if (typeof value.attempts !== "number" || typeof value.latencyMs !== "number") return false;
   if (value.reason !== null && typeof value.reason !== "string") return false;
   if (value.model !== null && typeof value.model !== "string") return false;
   if (value.answers !== null && typeof value.answers !== "object") return false;
   if (value.usage !== null && typeof value.usage !== "object") return false;
   return true;
+}
+
+function isGateCacheLine(value: CacheLine): boolean {
+  return isCacheLine(value, GATE_CACHE_VERDICTS);
+}
+
+function isQuestionCacheLine(value: CacheLine): boolean {
+  return isCacheLine(value, QUESTION_CACHE_VERDICTS);
 }
 
 function notRunRow(trio: CorpusTrio): ScoreRow {
@@ -125,7 +210,8 @@ function renderScoreTable(rows: ScoreRow[], texts: InteractionSequence[]): strin
       return {
         trio: row.index,
         userFeedback: trio === undefined ? "" : snippet(trio.userFeedback),
-        verdict: row.verdict,
+        // Only a gate run writes this table, so its rows carry one of the gate's four verdicts.
+        verdict: row.verdict as TableVerdict,
         answers: row.answers,
         reason: row.reason,
         model: row.model,
@@ -145,6 +231,83 @@ function renderScoreTable(rows: ScoreRow[], texts: InteractionSequence[]): strin
   return `${withSession.join("\n")}\n`;
 }
 
+/** A corpus file's source folder, with the freeze's numeric prefix dropped. */
+function folderOf(file: string): string {
+  const parts = file.split("/");
+  const folder = parts.length >= 2 ? parts[1] : path.basename(file);
+  return folder.replace(/^\d+-/, "");
+}
+
+/**
+ * The reply-codes report: the set's title, one row per session with each code's
+ * yes count, a total row per folder and one for all rows, then each code's top
+ * replies — highest answers first, ties in corpus order, capped at ten.
+ */
+function renderCodes(rows: ScoreRow[], texts: InteractionSequence[], set: QuestionSet, runSet: string): string {
+  const ids = Object.keys(set.questions);
+  const sessions: string[] = [];
+  const folders: string[] = [];
+  for (const row of rows) {
+    if (!sessions.includes(row.file)) sessions.push(row.file);
+    const folder = folderOf(row.file);
+    if (!folders.includes(folder)) folders.push(folder);
+  }
+  const scoredTrios = (subset: ScoreRow[]): number => subset.filter((row) => row.verdict === "scored").length;
+  const yesCounts = (subset: ScoreRow[]): number[] =>
+    ids.map(
+      (id) => subset.filter((row) => row.verdict === "scored" && (row.answers?.[id] ?? 0) >= YES_THRESHOLD).length,
+    );
+  const tableRow = (first: string, second: string, subset: ScoreRow[]): string =>
+    `| ${first.replace(/\|/g, "\\|")} | ${second.replace(/\|/g, "\\|")} | ${scoredTrios(subset)} | ${yesCounts(subset).join(" | ")} |`;
+
+  const lines: string[] = [strings.codesTitle(set.name, runSet, scoredTrios(rows)), ""];
+  lines.push(strings.codesTableHeader(ids));
+  lines.push(`|${"---|".repeat(3 + ids.length)}`);
+  for (const file of sessions) {
+    lines.push(
+      tableRow(
+        folderOf(file),
+        path.basename(file),
+        rows.filter((row) => row.file === file),
+      ),
+    );
+  }
+  for (const folder of folders) {
+    lines.push(
+      tableRow(
+        folder,
+        strings.codesTotalCell,
+        rows.filter((row) => folderOf(row.file) === folder),
+      ),
+    );
+  }
+  lines.push(tableRow(strings.codesTotalCell, strings.codesTotalCell, rows));
+
+  for (const id of ids) {
+    lines.push("", strings.codesExamplesHeading(id));
+    const examples: Array<{ answer: number; row: ScoreRow; reply: string }> = [];
+    for (const [position, row] of rows.entries()) {
+      if (row.verdict !== "scored" || row.answers === null) continue;
+      const answer = row.answers[id];
+      const text = texts[position];
+      if (answer === undefined || text === undefined || answer < YES_THRESHOLD) continue;
+      examples.push({ answer, row, reply: snippet(text.userFeedback) });
+    }
+    examples.sort((a, b) => b.answer - a.answer);
+    for (const example of examples.slice(0, TOP_EXAMPLES)) {
+      lines.push(
+        strings.codesExampleLine(
+          example.answer.toFixed(2),
+          path.basename(example.row.file),
+          example.row.index,
+          example.reply,
+        ),
+      );
+    }
+  }
+  return `${lines.join("\n")}\n`;
+}
+
 function exitCodeFor(stop: StopLabel): number {
   if (stop === "completed") return 0;
   if (stop === "request limit" || stop === "time limit") return 3;
@@ -158,7 +321,7 @@ function refuseCorpus(dir: string): void {
 export async function main(argv: string[]): Promise<number> {
   const args = parseArgv(argv);
 
-  // Checks before any request, in this order: limits, set, concurrency, freeze, keys.
+  // Checks before any request, in this order: limits, set, concurrency, question set, freeze, keys.
   let limits: Limits;
   try {
     limits = parseLimits(args);
@@ -176,6 +339,16 @@ export async function main(argv: string[]): Promise<number> {
     process.stderr.write(`${strings.scoreBadConcurrency}\n`);
     return 2;
   }
+  const questionsArg = typeof args.questions === "string" ? args.questions : null;
+  let questionSet: QuestionSet | null = null;
+  if (questionsArg !== null) {
+    questionSet = parseQuestionSet(questionsArg);
+    if (questionSet === null) {
+      process.stderr.write(`${strings.scoreBadQuestions(questionsArg)}\n`);
+      return 2;
+    }
+  }
+  const policy: JevPolicy = questionSet === null ? JEV_POLICY : { ...JEV_POLICY, questions: questionSet.questions };
   const corpusDir = path.resolve(typeof args.corpus === "string" ? args.corpus : "");
   if (!freezeMatches(corpusDir)) {
     refuseCorpus(corpusDir);
@@ -190,8 +363,12 @@ export async function main(argv: string[]): Promise<number> {
   }
   const { selected, texts: selectedTexts } = loaded;
 
-  const cachePath = path.join(corpusDir, "cache", `gate-${JEV_POLICY_HASH}.jsonl`);
-  const cache = loadCache<CacheLine>(cachePath, isCacheLine);
+  const cachePath = path.join(
+    corpusDir,
+    "cache",
+    questionSet === null ? `gate-${JEV_POLICY_HASH}.jsonl` : `questions-${questionSet.hash}.jsonl`,
+  );
+  const cache = loadCache<CacheLine>(cachePath, questionSet === null ? isGateCacheLine : isQuestionCacheLine);
   const cached = selected.filter((row) => cache.has(row.key)).length;
 
   const outputDir =
@@ -208,7 +385,9 @@ export async function main(argv: string[]): Promise<number> {
     strings.scoreCorpus(corpusDir, setArg, selected.length, cached, selected.length - cached),
     strings.confirmLimits(limits.maxModelRequests, limits.maxRunMs),
     strings.confirmLimitSource(limits.source),
-    strings.scoreModel(JEV_POLICY.model, JEV_POLICY_HASH, concurrency),
+    questionSet === null
+      ? strings.scoreModel(JEV_POLICY.model, JEV_POLICY_HASH, concurrency)
+      : strings.scoreModelQuestions(JEV_POLICY.model, questionSet.name, questionSet.hash, concurrency),
     strings.scoreOutput(outputDir),
   ].join("\n");
   process.stdout.write(`${block}\n`);
@@ -254,7 +433,7 @@ export async function main(argv: string[]): Promise<number> {
       } else if (row.verdict === "fallback" && row.attempts > 0) {
         consecutiveFailures++;
         if (consecutiveFailures >= FAILURE_LIMIT) stop ??= "three failed requests in a row";
-      } else if (row.verdict === "no_lesson" || row.verdict === "maybe_lesson") {
+      } else if (row.verdict === "no_lesson" || row.verdict === "maybe_lesson" || row.verdict === "scored") {
         consecutiveFailures = 0;
       }
     }
@@ -283,7 +462,7 @@ export async function main(argv: string[]): Promise<number> {
         cached: true,
       };
     }
-    const state = buildGateState(texts, JEV_POLICY);
+    const state = buildGateState(texts, policy);
     if (state.kind === "oversized") {
       const row: ScoreRow = {
         ...identity,
@@ -308,11 +487,13 @@ export async function main(argv: string[]): Promise<number> {
       });
       return row;
     }
-    const result: JevResult = await callJev(state.state, apiKey, JEV_POLICY, transport, beforeAttempt);
+    const result: JevResult = await callJev(state.state, apiKey, policy, transport, beforeAttempt);
     const scored = result.kind === "scored";
+    let verdict: Verdict = "fallback";
+    if (scored) verdict = questionSet === null ? routeGate(result, policy) : "scored";
     const row: ScoreRow = {
       ...identity,
-      verdict: scored ? routeGate(result, JEV_POLICY) : "fallback",
+      verdict,
       answers: scored ? result.answers : null,
       reason: scored ? null : result.reason,
       model: scored ? result.model : null,
@@ -362,7 +543,15 @@ export async function main(argv: string[]): Promise<number> {
     `${finalRows.map((row) => JSON.stringify(row)).join("\n")}\n`,
     "utf-8",
   );
-  fs.writeFileSync(path.join(outputDir, "scores-table.md"), renderScoreTable(finalRows, selectedTexts), "utf-8");
+  if (questionSet === null) {
+    fs.writeFileSync(path.join(outputDir, "scores-table.md"), renderScoreTable(finalRows, selectedTexts), "utf-8");
+  } else {
+    fs.writeFileSync(
+      path.join(outputDir, "codes.md"),
+      renderCodes(finalRows, selectedTexts, questionSet, setArg),
+      "utf-8",
+    );
+  }
   const withAnswers = finalRows.filter((row) => row.answers !== null);
   fs.writeFileSync(
     path.join(outputDir, "summary.json"),
@@ -377,6 +566,9 @@ export async function main(argv: string[]): Promise<number> {
         requests: snapshot.requestCount,
         elapsedMs: snapshot.elapsedMs,
         policyHash: JEV_POLICY_HASH,
+        ...(questionSet === null
+          ? {}
+          : { questionSet: { name: questionSet.name, hash: questionSet.hash, file: questionSet.file } }),
         modelsReturned: [...new Set(withAnswers.map((row) => row.model))],
         verdicts,
         latencyMs: {
@@ -404,7 +596,7 @@ export async function main(argv: string[]): Promise<number> {
   );
   process.stdout.write(
     `${strings.scoreDone(
-      (verdicts.no_lesson ?? 0) + (verdicts.maybe_lesson ?? 0),
+      (verdicts.no_lesson ?? 0) + (verdicts.maybe_lesson ?? 0) + (verdicts.scored ?? 0),
       cached,
       verdicts.fallback ?? 0,
       verdicts.not_run ?? 0,
