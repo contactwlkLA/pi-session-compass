@@ -1,6 +1,6 @@
 # Stage 5 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.7.0** · Status: **Approved (user, 2026-10-17)**
+Project: **pi-session-compass** · Revision: **0.8.0** · Status: **Approved (user, 2026-10-17)**
 
 Date: **2026-10-16**
 
@@ -300,11 +300,43 @@ R2 is the gate's approved `correction` question, unchanged.
 | P38 | codes.md total rows | session cell `all` for a folder total; folder and session cells `all` for the grand total |
 | P39 | codes.md examples | heading `## ${id}: top replies`; lines `- ${answer} · ${session} trio ${index} · ${reply}` |
 
+## S5-04a — The gate decides on the tuned questions and threshold
+
+The shipped gate adopts the policy tuned on dev and tested once on held-out: a scored trio is `no_lesson` when its `correction`, `preference`, and `confusion` answers are each at or below 0.30. `steering` is still asked, returned, and recorded, but no longer decides. The request body does not change. Every test mocks the network.
+
+**Read:** src/gate-config.ts (whole); src/jev.ts (`JevPolicy`, `JEV_POLICY`, `JEV_POLICY_HASH`, `routeGate`); src/gate.ts (the `routeGate` call); scripts/compass/score.ts (gate-mode verdict and cache name); tests/jev.test.ts (policy, hash, and `routeGate` tests). Hash literal `ad7880acdc3b` appears in tests/compass/*.test.ts and tests/gate.test.ts.
+
+**Where and how (CC's plan):**
+
+1. **src/gate-config.ts.** `GateConfig` gains `routeQuestions: readonly QuestionId[]`, placed right after `threshold`, commented: the answers that decide a skip; a scored trio carries no lesson when each of them is at or below the threshold, and the other questions are still asked and recorded. Value `["correction", "preference", "confusion"]`. `threshold` becomes `0.3`, its comment updated to say it applies to the routing answers. Frozen with the rest.
+2. **src/jev.ts.** `JevPolicy` gains `routeQuestions`; `JEV_POLICY` copies it. `JEV_POLICY_HASH` covers `{ model, threshold, routeQuestions, stateCapBytes, questions }` in that order. `routeGate` returns `no_lesson` only when every id in `policy.routeQuestions` has an answer at or below `policy.threshold`; an id with no answer gives `maybe_lesson`.
+3. **Hash literals.** Where a test compares with the live `JEV_POLICY_HASH` (or a cache file name derived from it), update it to the new value. Where `ad7880acdc3b` is only an opaque fixture string (a receipt or confirmation text built from a literal), leave it. List each file and which case it was under `Done`.
+
+**Acceptance criteria:**
+
+1. `GATE_CONFIG.threshold` is 0.3 and `GATE_CONFIG.routeQuestions` is the three ids above, both frozen.
+2. `routeGate`, table-driven: `steering` 0.90 with the other three ≤ 0.30 gives `no_lesson`; any routing answer 0.31 gives `maybe_lesson`; a routing answer of exactly 0.30 gives `no_lesson`; a missing routing answer gives `maybe_lesson`; a fallback is never `no_lesson`.
+3. The hash covers `routeQuestions`: the existing expected-hash test recomputes it from the field list in item 2, and the new literal is pinned in tests/jev.test.ts.
+4. The request body still carries all four questions unchanged (an existing or new body assertion).
+5. No user-facing string changes.
+
+**Allowed scope:** src/gate-config.ts, src/jev.ts, tests/jev.test.ts, tests/gate.test.ts (adapt only), tests/compass/*.test.ts (hash literal only, item 3).
+
+**Constraints:** no change to the questions, model, endpoint, state cap, deadline, retry, failure limit, or modes; no new user-facing text.
+
+**Verification:**
+
+```
+npx vitest run tests/jev.test.ts tests/gate.test.ts
+npm run test:compass
+npm test
+```
+
 ## CC review and gate (not for the coder)
 
 Review per planner-prompt.md Step 2; ledger entry in md/ledger.jsonl. Check: no request before the checks pass; the counter is the only path to a request; cache rules (only scored and `oversized_state`); split is by session and seeded; rows in corpus order; P1–P13 byte-exact; no key in any artifact. Then CC runs the freeze on D1's two folders (offline) and reports the census before any live scoring.
 
-Planner difficulty: S5-01 medium; S5-02a medium-high (model-boot move, concurrency attribution); S5-02b medium; S5-02c easy.
+Planner difficulty: S5-01 medium; S5-02a medium-high (model-boot move, concurrency attribution); S5-02b medium; S5-02c easy; S5-04a easy.
 
 S5-02a review: `runPipeline` unchanged; one `export` in src; usage attributed per trio under concurrency. S5-02b review: review selection, counts by hand on the fixture, sweep refuses held-out.
 
@@ -312,6 +344,6 @@ S5-02a review: `runPipeline` unchanged; one `export` in src; usage attributed pe
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.5.0 | 2026-10-17 | S5-02c reply codes spec; R1–R5 and P34–P39 approved by the user. |
 | 0.6.0 | 2026-10-17 | S5-02b audit answers; P40 approved by the user. |
 | 0.7.0 | 2026-10-17 | S5-02c audit answers (scored verdict, streak reset, strict set file). |
+| 0.8.0 | 2026-10-17 | S5-04a spec: the gate decides on correction, preference, and confusion at 0.30 (user chose option a). |
