@@ -12,13 +12,13 @@
  */
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import type { GateResultEvent } from "../../src/gate.js";
 import type { BuildEvent, CooldownEvent, TrioExaminedEvent } from "../../src/instrument.js";
 import type { LlmAttemptEvent } from "../../src/llm-call.js";
 import type { PipelineStopReason } from "../../src/types.js";
 import { emptyStats, RequestCounter } from "./counter.js";
+import { bootModel } from "./model-boot.js";
 import { strings } from "./strings.js";
 import type { CensusResult, GateRunConfig, Limits, RunSelection } from "./types.js";
 
@@ -200,56 +200,17 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
     const settingsSnapshot = JSON.parse(fs.readFileSync(path.join(outputDir, "settings-snapshot.json"), "utf-8"));
     const runSettings = settingsSnapshot.portraitSettings;
 
-    // 2. Model runtime from the operator's pi config (auth.json/models.json) — read only.
-    const agentDir = path.join(os.homedir(), ".pi", "agent");
-    const { ModelRuntime, ModelRegistry } = await import("@earendil-works/pi-coding-agent");
-    const { setDefaultStreamFn } = await import("@earendil-works/pi-agent-core");
-    const runtime = await ModelRuntime.create({
-      authPath: path.join(agentDir, "auth.json"),
-      modelsPath: path.join(agentDir, "models.json"),
-    });
-    const registry = new ModelRegistry(runtime);
-
-    // 3. Resolve the portrait model; record access blockers, never credentials.
-    const settingsUi = await import("../../src/settings-ui.js");
-    settingsUi._setGetPortraitSettings(() => ({ ...runSettings }));
-    const modelString: string | null = runSettings.model ?? null;
-    let model: { provider: string; id: string };
-    if (modelString) {
-      const slash = modelString.indexOf("/");
-      const found = slash > 0 ? registry.find(modelString.slice(0, slash), modelString.slice(slash + 1)) : undefined;
-      if (!found) {
-        const accessError = strings.modelUnavailable(modelString);
-        writeReceipt(opts, counter, stats, "error", null, accessError, attemptEvents, gateEvents, cooldowns, null);
-        process.stderr.write(`compass harness: ${accessError}\n`);
-        return 1;
-      }
-      model = found;
-    } else {
-      // No override configured — use the operator's default model.
-      const host = settingsSnapshot.hostPiSettings as { defaultProvider?: string; defaultModel?: string };
-      const found =
-        host.defaultProvider && host.defaultModel ? registry.find(host.defaultProvider, host.defaultModel) : undefined;
-      if (!found) {
-        const accessError = strings.noModelOverride;
-        writeReceipt(opts, counter, stats, "error", null, accessError, attemptEvents, gateEvents, cooldowns, null);
-        process.stderr.write(`compass harness: ${accessError}\n`);
-        return 1;
-      }
-      model = found;
+    // 2. Model runtime, model resolution, and the wrapped request path (shared with extract).
+    const booted = await bootModel(settingsSnapshot, counter);
+    if ("error" in booted) {
+      const accessError = booted.error;
+      writeReceipt(opts, counter, stats, "error", null, accessError, attemptEvents, gateEvents, cooldowns, null);
+      process.stderr.write(`compass harness: ${accessError}\n`);
+      return 1;
     }
 
-    // 4. Install the counter at the usable request hook: the wrapped default streamFn.
     const portraitDir = path.join(outputDir, "portrait");
     const rulesBeforeRun = readRules(portraitDir);
-    const wrapped = counter.wrapStreamFn((m: unknown, ctx: unknown, options: unknown) =>
-      registry.streamSimple(
-        m as Parameters<typeof registry.streamSimple>[0],
-        ctx as Parameters<typeof registry.streamSimple>[1],
-        options as Parameters<typeof registry.streamSimple>[2],
-      ),
-    );
-    setDefaultStreamFn(wrapped as never);
 
     const llmCall = await import("../../src/llm-call.js");
     llmCall.setLlmAttemptSink((event: LlmAttemptEvent) => {
@@ -259,7 +220,6 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
         if (!event.ok && !counter.refusedDuring(event.startedAtMs, event.endedAtMs)) stats.failures++;
       });
     });
-    llmCall.setCapturedModel(model as never, registry as never);
 
     const { setInstrumentHooks } = await import("../../src/instrument.js");
     setInstrumentHooks({
@@ -334,7 +294,7 @@ export async function runPipeline(opts: BootOptions): Promise<number> {
       },
     });
 
-    // 5. Missing UI in a headless run: log errors to diagnostics instead of dialogs.
+    // 3. Missing UI in a headless run: log errors to diagnostics instead of dialogs.
     const diagnosticsPath = path.join(outputDir, "diagnostics.log");
     globalThis.__piPortraitReportError = ((message: string, source: string) => {
       fs.appendFileSync(diagnosticsPath, `${new Date().toISOString()} [${source}] ${message}\n`, "utf-8");

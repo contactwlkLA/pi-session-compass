@@ -136,6 +136,17 @@ export const strings = {
   scoreBadConcurrency: "compass score: --concurrency must be an integer from 1 to 8",
   scoreProgress: (done: number, total: number, verdict: string) => `trio ${done}/${total}: ${verdict}`,
 
+  // ── Corpus extraction ──
+  extractHeader: "compass extract — extraction only (no review, no building, no portrait)",
+  extractCorpus: (dir: string, set: string, trios: number, cached: number, toRun: number) =>
+    `Corpus: ${dir} · set ${set}: ${trios} trios (${cached} cached, ${toRun} to extract)`,
+  extractModel: (provider: string, id: string, thinking: string, revision: string, concurrency: number) =>
+    `Extractor: ${provider}/${id} · thinking ${thinking} · revision ${revision} · ${concurrency} at once`,
+  extractProgress: (done: number, total: number, rules: number) => `trio ${done}/${total}: ${rules} rules`,
+  extractFailed: (done: number, total: number) => `trio ${done}/${total}: failed`,
+  extractDone: (ok: number, cached: number, failed: number, notRun: number, requests: number, stop: string) =>
+    `Extracted ${ok} · cached ${cached} · failed ${failed} · not run ${notRun} · requests ${requests} · stop: ${stop}`,
+
   // ── Sheets ──
   resultsSheetTitle: (runType: string) => `compass ${runType} results — samples, not a measurement`,
   runningTableTitle: (runType: string) => `compass ${runType} — running table`,

@@ -19,10 +19,19 @@ import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { buildGateState, callJev, JEV_POLICY, JEV_POLICY_HASH, type JevResult, routeGate } from "../../src/jev.js";
 import type { InteractionSequence } from "../../src/types.js";
-import { trioKey } from "./corpus.js";
+import {
+  appendCacheLine,
+  fillNotRun,
+  freezeMatches,
+  loadCache,
+  loadSelected,
+  parseConcurrency,
+  parseSet,
+  runPool,
+} from "./corpus-run.js";
 import { RequestCounter } from "./counter.js";
 import { parseLimits } from "./limits.js";
-import { readTrios, renderTable } from "./probe.js";
+import { renderTable } from "./probe.js";
 import { strings } from "./strings.js";
 import type { CorpusSet, CorpusTrio, Limits } from "./types.js";
 import { findWorkspaceRoot, parseArgv, sha256File } from "./util.js";
@@ -61,9 +70,6 @@ interface CacheLine {
   usage: { inputTokens: number; outputTokens: number } | null;
 }
 
-const DEFAULT_CONCURRENCY = 4;
-const MIN_CONCURRENCY = 1;
-const MAX_CONCURRENCY = 8;
 /** Failed requests in a row after which scoring stops (the same limit the gate uses). */
 const FAILURE_LIMIT = 3;
 const SNIPPET_CHARS = 90;
@@ -79,23 +85,7 @@ function snippet(text: string): string {
   return flat.length > SNIPPET_CHARS ? `${flat.slice(0, SNIPPET_CHARS - 1)}…` : flat;
 }
 
-/** The frozen copy's hash matches the recorded freeze, both files present. */
-function freezeMatches(corpusDir: string): boolean {
-  let freeze: Record<string, unknown>;
-  try {
-    freeze = JSON.parse(fs.readFileSync(path.join(corpusDir, "freeze.json"), "utf-8")) as Record<string, unknown>;
-  } catch {
-    return false;
-  }
-  const corpusHash = freeze["corpus.json"];
-  const triosHash = freeze["trios.jsonl"];
-  if (typeof corpusHash !== "string" || typeof triosHash !== "string") return false;
-  const corpusJson = path.join(corpusDir, "corpus.json");
-  const triosJsonl = path.join(corpusDir, "trios.jsonl");
-  if (!fs.existsSync(corpusJson) || !fs.existsSync(triosJsonl)) return false;
-  return sha256File(corpusJson) === corpusHash && sha256File(triosJsonl) === triosHash;
-}
-
+/** True for a line this cache may serve: the gate's durable results only. */
 function isCacheLine(value: CacheLine): boolean {
   if (typeof value.key !== "string" || !isVerdict(value.verdict)) return false;
   if (typeof value.attempts !== "number" || typeof value.latencyMs !== "number") return false;
@@ -104,29 +94,6 @@ function isCacheLine(value: CacheLine): boolean {
   if (value.answers !== null && typeof value.answers !== "object") return false;
   if (value.usage !== null && typeof value.usage !== "object") return false;
   return true;
-}
-
-/** The cache as a key → result map; a truncated or foreign line is ignored, first line wins. */
-function loadCache(cachePath: string): Map<string, CacheLine> {
-  const cache = new Map<string, CacheLine>();
-  let raw: string;
-  try {
-    raw = fs.readFileSync(cachePath, "utf-8");
-  } catch {
-    return cache;
-  }
-  for (const line of raw.split("\n")) {
-    if (!line.trim()) continue;
-    let parsed: CacheLine;
-    try {
-      parsed = JSON.parse(line) as CacheLine;
-    } catch {
-      continue;
-    }
-    if (!isCacheLine(parsed) || cache.has(parsed.key)) continue;
-    cache.set(parsed.key, parsed);
-  }
-  return cache;
 }
 
 function notRunRow(trio: CorpusTrio): ScoreRow {
@@ -199,14 +166,13 @@ export async function main(argv: string[]): Promise<number> {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     return 2;
   }
-  const setArg = typeof args.set === "string" ? args.set : null;
-  if (setArg !== "dev" && setArg !== "heldout" && setArg !== "all") {
+  const setArg = parseSet(args.set);
+  if (setArg === null) {
     process.stderr.write(`${strings.scoreBadSet}\n`);
     return 2;
   }
-  const rawConcurrency = typeof args.concurrency === "string" ? args.concurrency : `${DEFAULT_CONCURRENCY}`;
-  const concurrency = Number(rawConcurrency);
-  if (!Number.isInteger(concurrency) || concurrency < MIN_CONCURRENCY || concurrency > MAX_CONCURRENCY) {
+  const concurrency = parseConcurrency(args.concurrency);
+  if (concurrency === null) {
     process.stderr.write(`${strings.scoreBadConcurrency}\n`);
     return 2;
   }
@@ -216,37 +182,16 @@ export async function main(argv: string[]): Promise<number> {
     return 2;
   }
 
-  const selected: CorpusTrio[] = [];
-  for (const line of fs.readFileSync(path.join(corpusDir, "trios.jsonl"), "utf-8").split("\n")) {
-    if (!line.trim()) continue;
-    const row = JSON.parse(line) as CorpusTrio;
-    if (setArg === "all" || row.set === setArg) selected.push(row);
-  }
-
   // Every selected trio must reproduce its key from the frozen copy's text.
-  const textsByFile = new Map<string, InteractionSequence[]>();
-  const selectedTexts: InteractionSequence[] = [];
-  for (const row of selected) {
-    let texts = textsByFile.get(row.file);
-    if (texts === undefined) {
-      try {
-        texts = readTrios(path.join(corpusDir, row.file));
-      } catch {
-        refuseCorpus(corpusDir);
-        return 2;
-      }
-      textsByFile.set(row.file, texts);
-    }
-    const trio: InteractionSequence | undefined = texts[row.index - 1];
-    if (trio === undefined || trioKey(row.sessionId, row.index, trio) !== row.key) {
-      refuseCorpus(corpusDir);
-      return 2;
-    }
-    selectedTexts.push(trio);
+  const loaded = loadSelected(corpusDir, setArg);
+  if (loaded === null) {
+    refuseCorpus(corpusDir);
+    return 2;
   }
+  const { selected, texts: selectedTexts } = loaded;
 
   const cachePath = path.join(corpusDir, "cache", `gate-${JEV_POLICY_HASH}.jsonl`);
-  const cache = loadCache(cachePath);
+  const cache = loadCache<CacheLine>(cachePath, isCacheLine);
   const cached = selected.filter((row) => cache.has(row.key)).length;
 
   const outputDir =
@@ -287,7 +232,6 @@ export async function main(argv: string[]): Promise<number> {
   const beforeAttempt = (): boolean => counter.gateAttempt(JEV_POLICY.model);
 
   const rows: Array<ScoreRow | null> = selected.map(() => null);
-  let nextIndex = 0;
   let stop: StopLabel | null = null;
   let consecutiveFailures = 0;
   let done = 0;
@@ -298,9 +242,7 @@ export async function main(argv: string[]): Promise<number> {
     if (counter.exhausted()) stop = counter.stopReason === "deadline" ? "time limit" : "request limit";
   };
 
-  const appendCache = (line: CacheLine): void => {
-    fs.appendFileSync(cachePath, `${JSON.stringify(line)}\n`, "utf-8");
-  };
+  const appendCache = (line: CacheLine): void => appendCacheLine(cachePath, line);
 
   const finish = (row: ScoreRow): void => {
     process.stdout.write(`${strings.scoreProgress(done + 1, selected.length, row.verdict)}\n`);
@@ -394,23 +336,19 @@ export async function main(argv: string[]): Promise<number> {
     return row;
   };
 
-  // A worker takes the next unstarted trio while no stop is set; rows keep corpus order.
-  const worker = async (): Promise<void> => {
-    for (;;) {
-      if (stop !== null) return;
-      const position = nextIndex;
-      if (position >= selected.length) return;
-      nextIndex++;
-      const row = await scoreTrio(selected[position], selectedTexts[position]);
+  // The pool takes the next unstarted trio while no stop is set; rows keep corpus order.
+  await runPool<ScoreRow>({
+    concurrency,
+    size: selected.length,
+    shouldStart: () => stop === null,
+    runOne: (position) => scoreTrio(selected[position], selectedTexts[position]),
+    onRow: (position, row) => {
       rows[position] = row;
       finish(row);
-    }
-  };
-  const workers: Promise<void>[] = [];
-  for (let w = 0; w < concurrency; w++) workers.push(worker());
-  await Promise.all(workers);
+    },
+  });
 
-  const finalRows: ScoreRow[] = rows.map((row, position) => row ?? notRunRow(selected[position]));
+  const finalRows: ScoreRow[] = fillNotRun(selected, rows, notRunRow);
   const verdicts = finalRows.reduce<Record<string, number>>((acc, row) => {
     acc[row.verdict] = (acc[row.verdict] ?? 0) + 1;
     return acc;

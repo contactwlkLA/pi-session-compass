@@ -911,7 +911,7 @@ type ExtractionOutcome =
 
 type ReviewOutcome = { kind: "success"; notes: string[] } | { kind: "failed" };
 
-async function callExtractionLlm(sequence: InteractionSequence, dumpLimit: number): Promise<ExtractionOutcome> {
+export async function callExtractionLlm(sequence: InteractionSequence, dumpLimit: number): Promise<ExtractionOutcome> {
   const userText = `<agent-before>
 ${sequence.agentBefore}
 </agent-before>
