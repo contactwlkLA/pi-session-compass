@@ -91,7 +91,7 @@ The session-instrument skill's idea (count what kind of exchange each user reply
 
 ### S5-05 — Pilot report (CC)
 
-- [ ] **1.** Pilot report in outputs/s5/: checks with numerators and denominators, the rule-of-three bound, measured cost, labeling and run cost (kept separate from operating cost), time spent, and corpus limitations.
+- [x] **1.** Pilot report in outputs/s5/: checks with numerators and denominators, the rule-of-three bound, measured cost, labeling and run cost (kept separate from operating cost), time spent, and corpus limitations. *Done 2026-10-17: outputs/s5/pilot-report.md (all three checks pass on held-out; preliminary under D3; CC recommends stopping here and going to S6).*
 - [ ] **2.** Sync stage docs; checkpoint with the user: scale up (S5-06) or stop.
 
 ### S5-06 — Scale-up (CC + user; only on the user's go)
