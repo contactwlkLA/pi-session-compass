@@ -8,6 +8,7 @@
     "scripts/compass/probe.ts",
     "scripts/compass/corpus.ts",
     "scripts/compass/score.ts",
+    "scripts/compass/report.ts",
     "scripts/compass/extract.ts",
     "scripts/compass/labels.ts",
     "scripts/compass/evaluate.ts",

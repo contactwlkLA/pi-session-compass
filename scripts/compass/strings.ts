@@ -12,6 +12,17 @@ const LIMIT_SOURCE_LABELS: Record<string, string> = {
   "user-override": "user override",
 };
 
+/** Group digits in threes with commas: 28814 → "28,814". */
+function groupThousands(n: number): string {
+  const digits = Math.abs(n).toString();
+  let grouped = "";
+  for (let i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 === 0) grouped += ",";
+    grouped += digits[i];
+  }
+  return n < 0 ? `-${grouped}` : grouped;
+}
+
 export const strings = {
   // ── Limits and switches ──
   missingSwitch: (name: string) =>
@@ -254,4 +265,40 @@ export const strings = {
   sheetFinalDiffHeader: "## Final portrait diff",
   sheetAdded: (n: number) => `Added (${n}):`,
   sheetRemoved: (n: number) => `Removed (${n}):`,
+
+  // ── Session report ──
+  reportUsage: "compass report: pass --session <file> or --dir <folder>, and --output <dir>.",
+  reportNotALog: (p: string) => `compass report: ${p} is not a Pi or Claude Code session log.`,
+  reportNoLogs: (dir: string) => `compass report: no session logs in ${dir}.`,
+  reportMixedLogs: (dir: string) =>
+    `compass report: ${dir} holds both Pi and Claude Code logs; pass one folder per tool.`,
+  reportOutputRefused: "compass report: --output must not be inside the input, ~/.pi, or ~/.claude.",
+  reportDone: (sessions: number, prompts: number, output: string) =>
+    `compass report: ${sessions} sessions, ${prompts} prompts → ${output}/report.md`,
+  reportTitle: (input: string) => `# Session report: ${input}`,
+  reportHeader: (sessions: number, prompts: number, format: string, generated: string) =>
+    `Sessions: ${sessions} · Prompts: ${prompts} · Format: ${format} · Generated: ${generated}`,
+  reportEffortHeading: "## Effort",
+  reportEffortColumns: "| Session | Prompts | Turns | Wall time | Model time | Tool time |",
+  reportTokensHeading: "## Tokens and cost",
+  reportTokensColumns: "| Session | Input | Output | Cache read | Cache write | Peak context | Cost |",
+  reportChecksHeading: "## Checks",
+  reportChecksColumns: "| Session | Check runs | Failed | Fixed in session | Expected failures |",
+  reportQuestionsHeading: "## Agent questions",
+  reportQuestionsColumns: "| Session | Prompts | Turns ending with a question |",
+  reportInterventionsHeading: "## Your interventions",
+  reportLessonsHeading: "## Lessons",
+  reportBehaviorHeading: "## Behavior",
+  reportNotScored: "not scored",
+  reportNotApplicable: "not applicable",
+  reportNotRecorded: "not recorded",
+  reportAccuracyLine:
+    "Reply codes are model answers. Measured accuracy: correction precision 52%, recall 89%; " +
+    "hold-back precision 61%, recall 52%.",
+  reportFooter: "Counted from the session logs; no number is reported by an agent.",
+  reportTotalRow: "Total",
+  reportCheckRowLabel: (label: string, kind: string) => `${label} · ${kind}`,
+  reportMinutes: (ms: number) => `${(ms / 60000).toFixed(1)} min`,
+  reportNumber: (n: number) => groupThousands(n),
+  reportCost: (usd: number | null) => (usd === null ? "not recorded" : `$${usd.toFixed(4)}`),
 } as const;
