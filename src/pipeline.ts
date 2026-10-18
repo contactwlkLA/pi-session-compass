@@ -12,6 +12,7 @@ import { resetGateRun } from "./gate.js";
 import { emitCooldown } from "./instrument.js";
 import { type LlmProgressInfo, NO_LLM_PROGRESS_SINK, setLlmProgressSink } from "./llm-call.js";
 import { NO_CANCEL_CHECK, runMaintenance } from "./maintenance-core.js";
+import { PLUGIN_CONFIG } from "./plugin-config.js";
 import type { PortraitSettings } from "./schema.js";
 import { loadPortraitState, savePortraitState } from "./storage.js";
 import type { PipelineStopReason, PortraitPipelineState } from "./types.js";
@@ -217,7 +218,7 @@ export async function runPipelineLoop(
     }
 
     while (stopReason === null && remaining > 0 && totalSequences < maxSequences && !shouldCancel()) {
-      const scanResults = await scanSessions(portraitDir, pipelineState, 100, SINGLE_RESULT);
+      const scanResults = await scanSessions(portraitDir, pipelineState, PLUGIN_CONFIG.filesPerScan, SINGLE_RESULT);
       remaining = scanResults.remainingFiles;
       if (scanResults.stopReason) stopReason = scanResults.stopReason;
 

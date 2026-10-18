@@ -153,10 +153,12 @@ The user chose all three options from the design note (outputs/s7/s7-03-design-n
    pi.registerCommand("portrait:config", {
      description: "Show every portrait setting and fixed value with its source",
      handler: async (_args, ctx) => {
-       ctx.ui.notify(getConfig(PORTRAIT_SCHEMA.globalPath(undefined)), "info");
+       ctx.ui.notify(getConfig(PORTRAIT_SCHEMA.globalPath(NO_GLOBAL_DIR)), "info");
      },
    });
    ```
+
+   (`NO_GLOBAL_DIR` is a named `undefined` constant in src/index.ts, required by `lint:bare-literals`.)
 
    `getConfig` returns exactly these lines, joined with `\n`:
 

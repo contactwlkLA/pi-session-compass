@@ -14,6 +14,7 @@ import type { Api, Message, Model, ThinkingLevel } from "@earendil-works/pi-ai/c
 import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { appendDebug } from "./debug.js";
 import { reportError } from "./error.js";
+import { PLUGIN_CONFIG } from "./plugin-config.js";
 import { getPortraitSettings } from "./settings-ui.js";
 import { withCoordinator } from "./snippets/vendored/subscribe-to-dialog-coordinator.js";
 
@@ -389,7 +390,7 @@ export function countWords(s: string): number {
  * @param attempt - 0-indexed attempt number that just failed.
  */
 export function retryDelayMs(attempt: number): number {
-  return Math.min(1_000 * 2 ** attempt, 10_000);
+  return Math.min(PLUGIN_CONFIG.retryBackoffBaseMs * 2 ** attempt, PLUGIN_CONFIG.retryBackoffCapMs);
 }
 
 /**

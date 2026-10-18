@@ -115,6 +115,7 @@ Portrait dreaming runs in two modes:
 |---------|-------------|
 | `/portrait:status` | Show current dreaming status (phase, timer, pause state) |
 | `/portrait:settings` | Open the interactive settings editor (see [Configuration](./docs/CONFIGURATION.md)) |
+| `/portrait:config` | Show every setting with its value and source (default or settings file), the fixed gate and collection values, and the environment variables |
 | `/portrait:pause` | Pause automatic dreaming — stops the periodic timer. Manual `collect` runs are unaffected. (Lock holder only) |
 | `/portrait:resume` | Resume automatic dreaming — restarts the timer and runs an immediate cycle. (Lock holder only) |
 | `/portrait:collect [N]` | Run a one-shot manual collection. Optional `N` limits the number of session sequences to process. Runs in the background; use `/portrait:stop` to cancel. (Lock holder only) |

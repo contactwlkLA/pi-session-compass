@@ -5,6 +5,7 @@ import "./globals.js";
 import * as fs from "node:fs";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getLockPath } from "./config.js";
+import { PLUGIN_CONFIG } from "./plugin-config.js";
 import type { PortraitPipelineState } from "./types.js";
 import { DEFAULT_PIPELINE_STATE } from "./types.js";
 
@@ -58,7 +59,7 @@ function startStatusTimer(): void {
   const update = () => updateStatus();
 
   // Update status periodically (every 5 seconds)
-  _statusTimer = setInterval(update, 5000);
+  _statusTimer = setInterval(update, PLUGIN_CONFIG.footerRefreshMs);
   update(); // Initial render
 }
 

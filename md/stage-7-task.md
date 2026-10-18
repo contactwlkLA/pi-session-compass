@@ -47,7 +47,7 @@ Parent: [handoff.md](handoff.md) (open bugs and deferred work). Operating rules:
 ### S7-03 — Settings in one place (CC note, user picks, Pi codes)
 
 - [x] **1.** Design note (one page): option A, one config file in the style of src/gate-config.ts for models, limits, and cooldowns; option B, one settings screen listing every setting with its current value and source. Each option with what changes, its tests, and its risks. *Done 2026-10-18: outputs/s7/s7-03-design-note.md; CC added option C (docs only); the user chose A, B, and C and approved their text (stage-7-specs.md S7-03).*
-- [ ] **2.** The chosen options built and documented in docs/CONFIGURATION.md (protected text presented first): A, the internal constants in src/plugin-config.ts; B, `/portrait:config`; C, a fixed-values and environment section in docs/CONFIGURATION.md.
+- [x] **2.** The chosen options built and documented in docs/CONFIGURATION.md (protected text presented first): A, the internal constants in src/plugin-config.ts; B, `/portrait:config`; C, a fixed-values and environment section in docs/CONFIGURATION.md. *Done 2026-10-18: accepted first pass (outputs/s7/handoff/S7-03-r1.md).*
 
 ### S7-04 — Investigations (CC; Pi for any fix)
 
@@ -63,4 +63,4 @@ Parent: [handoff.md](handoff.md) (open bugs and deferred work). Operating rules:
 |---|---|---|
 | 0.3.0 | 2026-10-17 | S7-02 text approved; status shows gate checks and pending candidates; stop reason dropped. |
 | 0.4.0 | 2026-10-18 | S7-02 done. |
-| 0.5.0 | 2026-10-18 | S7-03: the user chose options A, B, and C. |
+| 0.5.0 | 2026-10-18 | S7-03: the user chose options A, B, and C; built. |

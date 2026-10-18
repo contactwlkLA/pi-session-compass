@@ -5,6 +5,7 @@ import "./globals.js";
 import * as fs from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { collect } from "./commands/collect.js";
+import { getConfig } from "./commands/config.js";
 import { maintenance } from "./commands/maintenance.js";
 import { pauseProfiling } from "./commands/pause.js";
 import { resumeProfiling } from "./commands/resume.js";
@@ -16,12 +17,17 @@ import type { PortraitUiSelect } from "./globals.js";
 import { setCapturedModel } from "./llm-call.js";
 import { persistCacheSnapshot, restoreCacheSnapshot } from "./persistence.js";
 import { runPipelineLoop } from "./pipeline.js";
+import { PLUGIN_CONFIG } from "./plugin-config.js";
+import { PORTRAIT_SCHEMA } from "./schema.js";
 import { getPortraitSettings, initPortraitSettings } from "./settings-ui.js";
 import { tryAcquireSqliteMutex } from "./snippets/vendored/sqlite-mutex.js";
 import { subscribeToDialogCoordinator } from "./snippets/vendored/subscribe-to-dialog-coordinator.js";
 import { loadPortraitState, readPortrait, savePortraitState } from "./storage.js";
 import type { PortraitState } from "./types.js";
 import { getErrorMessage } from "./utils.js";
+
+/** Sentinel: no global-dir override — the schema's default global location. */
+const NO_GLOBAL_DIR: undefined = undefined;
 
 // Idempotent wiring guard. portrait can be bundled into the avtc-pi umbrella
 // AND installed standalone — whichever copy loads first wires, the rest no-op.
@@ -146,7 +152,7 @@ function startLockPoll(portraitDir: string): void {
     } catch (error) {
       reportProfilingError(getErrorMessage(error), "lock poll error");
     }
-  }, 60_000);
+  }, PLUGIN_CONFIG.lockPollMs);
 }
 
 async function runProfilingCycle(): Promise<void> {
@@ -396,6 +402,13 @@ export default function (pi: ExtensionAPI) {
     description: "Show portrait profiling status",
     handler: async (_args, ctx) => {
       ctx.ui.notify(getStatus(), "info");
+    },
+  });
+
+  pi.registerCommand("portrait:config", {
+    description: "Show every portrait setting and fixed value with its source",
+    handler: async (_args, ctx) => {
+      ctx.ui.notify(getConfig(PORTRAIT_SCHEMA.globalPath(NO_GLOBAL_DIR)), "info");
     },
   });
 

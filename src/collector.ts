@@ -70,9 +70,6 @@ export function discoverFiles(sessionDirs: string[], cutoff: number): Discovered
   return files;
 }
 
-export const DEFAULT_MAX_FILES_PER_CYCLE = 10;
-export const DEFAULT_MAX_RESULTS = Infinity;
-
 /** sha256 hex digest of a record's text (its UTF-8 bytes without the line ending). */
 function recordDigest(text: string): string {
   return createHash("sha256").update(text).digest("hex");

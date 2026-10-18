@@ -38,6 +38,43 @@ Configure portrait via the `/portrait:settings` command, which opens an interact
 | `maintenanceMaxTokens` | number | `0` | Maximum output tokens per maintenance LLM call (0 = provider default) |
 | `maintenanceTimeoutMs` | duration | `1h` | Aborts a maintenance run if it runs longer than this. Off = no deadline (runs to completion) |
 
+## Fixed values and environment
+
+These values are not in `/portrait:settings`. `/portrait:config` shows them with the settings.
+
+### Jev gate
+
+Set in `src/gate-config.ts`; changing one changes the gate's policy hash.
+
+| Value | Current | Meaning |
+|---|---|---|
+| Model | `jev-1.13.0` | Classifier release every gate request is pinned to |
+| Endpoint | `https://api.typesafe.ai/v1/systemone` | Where every gate request is sent |
+| Threshold | `0.3` | A trio is skipped when its correction, preference, and confusion answers are all at or below this |
+| Deadline | 5 s | Total time one gate check may take, retry included |
+| Retry wait | 0.5 s | Wait before the single retry when the response gives no Retry-After |
+| Failure limit | 3 | Failed checks in a row after which the gate stops checking until the next collection run |
+| State cap | 32 KB | A larger trio is extracted without a gate check |
+
+### Collection
+
+Set in `src/plugin-config.ts`.
+
+| Value | Current | Meaning |
+|---|---|---|
+| Files per scan | 100 | Session files one scan step reads before it returns |
+| Lock poll | 60 s | How often an instance without the lock checks whether it can take it |
+| Retry backoff | 1 s, doubling, capped at 10 s | Wait between retries of a failed LLM call |
+| Footer refresh | 5 s | How often the status footer updates |
+
+### Environment
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PI_PORTRAIT_STATE_DIR` | `~/.pi/portrait` | Where the portrait and its state are kept |
+| `PI_PORTRAIT_SESSION_DIRS` | `~/.pi/agent/sessions` | Session folders to scan; separate several with `:` (`;` on Windows) |
+| `TYPESAFE_API_KEY` | not set | API key for the Jev gate; needed by `shadow` and `enforce` |
+
 ## Setting types
 
 - **duration** — entered as a human-friendly string (`5m`, `2s`, `1h`) in the editor; stored as milliseconds. Duration settings have an `Ms` suffix in their key. Some durations offer an Off/Infinite preset (stored as `null`).
