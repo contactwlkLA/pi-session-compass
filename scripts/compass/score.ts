@@ -33,7 +33,6 @@ import {
 import type { InteractionSequence } from "../../src/types.js";
 import {
   appendCacheLine,
-  fillNotRun,
   freezeMatches,
   loadCache,
   loadSelected,
@@ -318,17 +317,427 @@ function refuseCorpus(dir: string): void {
   process.stderr.write(`${strings.scoreCorpusChanged(dir)}\n`);
 }
 
-export async function main(argv: string[]): Promise<number> {
-  const args = parseArgv(argv);
+/** One item to score: a corpus trio or a report exchange, with the key its cache line carries. */
+interface ScoreTarget {
+  key: string;
+  texts: InteractionSequence;
+}
 
-  // Checks before any request, in this order: limits, set, concurrency, question set, freeze, keys.
-  let limits: Limits;
+/** One item's outcome, before it is shaped into a row. */
+interface ScoredOutcome {
+  verdict: Verdict;
+  answers: Record<string, number> | null;
+  reason: string | null;
+  model: string | null;
+  attempts: number;
+  latencyMs: number;
+  usage: { inputTokens: number; outputTokens: number } | null;
+  cached: boolean;
+}
+
+interface ScoringRun {
+  targets: ScoreTarget[];
+  cache: Map<string, CacheLine>;
+  cachePath: string;
+  policy: JevPolicy;
+  /** Gate mode routes the gate's own verdicts; a question set always scores. */
+  gate: boolean;
+  apiKey: string;
+  limits: Limits;
+  concurrency: number;
+  progress: (done: number, total: number, verdict: string) => string;
+}
+
+interface ScoringResult {
+  outcomes: Array<ScoredOutcome | null>;
+  stop: StopLabel;
+  requests: number;
+  elapsedMs: number;
+}
+
+/** Score every target once: cache hits first, then requests under the counter, pool, and stop rules. */
+async function scoreTargets(run: ScoringRun): Promise<ScoringResult> {
+  const counter = new RequestCounter(run.limits);
+  const transport = {
+    fetch: (input: string | URL | Request, init?: RequestInit) => globalThis.fetch(input, init),
+    now: () => Date.now(),
+    sleep: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+  };
+  const beforeAttempt = (): boolean => counter.gateAttempt(JEV_POLICY.model);
+
+  const outcomes: Array<ScoredOutcome | null> = run.targets.map(() => null);
+  let stop: StopLabel | null = null;
+  let consecutiveFailures = 0;
+  let done = 0;
+
+  /** Surface a ceiling the counter reached on its own; the first stop set wins. */
+  const syncStop = (): void => {
+    if (stop !== null) return;
+    if (counter.exhausted()) stop = counter.stopReason === "deadline" ? "time limit" : "request limit";
+  };
+
+  const appendCache = (line: CacheLine): void => appendCacheLine(run.cachePath, line);
+
+  const finish = (outcome: ScoredOutcome): void => {
+    process.stdout.write(`${run.progress(done + 1, run.targets.length, outcome.verdict)}\n`);
+    done++;
+    if (!outcome.cached) {
+      // Only this run's own requests move the failure streak: a cached line is history.
+      if (outcome.verdict === "fallback" && (outcome.reason === "http_401" || outcome.reason === "http_403")) {
+        stop ??= "auth error";
+      } else if (outcome.verdict === "fallback" && outcome.attempts > 0) {
+        consecutiveFailures++;
+        if (consecutiveFailures >= FAILURE_LIMIT) stop ??= "three failed requests in a row";
+      } else if (
+        outcome.verdict === "no_lesson" ||
+        outcome.verdict === "maybe_lesson" ||
+        outcome.verdict === "scored"
+      ) {
+        consecutiveFailures = 0;
+      }
+    }
+    syncStop();
+  };
+
+  const scoreTarget = async (target: ScoreTarget): Promise<ScoredOutcome> => {
+    const hit = run.cache.get(target.key);
+    if (hit !== undefined) {
+      return {
+        verdict: hit.verdict,
+        answers: hit.answers,
+        reason: hit.reason,
+        model: hit.model,
+        attempts: hit.attempts,
+        latencyMs: hit.latencyMs,
+        usage: hit.usage,
+        cached: true,
+      };
+    }
+    const state = buildGateState(target.texts, run.policy);
+    if (state.kind === "oversized") {
+      appendCache({
+        key: target.key,
+        verdict: "fallback",
+        answers: null,
+        reason: "oversized_state",
+        model: null,
+        attempts: 0,
+        latencyMs: 0,
+        usage: null,
+      });
+      return {
+        verdict: "fallback",
+        answers: null,
+        reason: "oversized_state",
+        model: null,
+        attempts: 0,
+        latencyMs: 0,
+        usage: null,
+        cached: false,
+      };
+    }
+    const result: JevResult = await callJev(state.state, run.apiKey, run.policy, transport, beforeAttempt);
+    const scored = result.kind === "scored";
+    let verdict: Verdict = "fallback";
+    if (scored) verdict = run.gate ? routeGate(result, run.policy) : "scored";
+    const outcome: ScoredOutcome = {
+      verdict,
+      answers: scored ? result.answers : null,
+      reason: scored ? null : result.reason,
+      model: scored ? result.model : null,
+      attempts: result.attempts,
+      latencyMs: result.latencyMs,
+      usage: scored ? result.usage : null,
+      cached: false,
+    };
+    if (scored || result.reason === "oversized_state") {
+      appendCache({
+        key: target.key,
+        verdict: outcome.verdict,
+        answers: outcome.answers,
+        reason: outcome.reason,
+        model: outcome.model,
+        attempts: outcome.attempts,
+        latencyMs: outcome.latencyMs,
+        usage: outcome.usage,
+      });
+    }
+    return outcome;
+  };
+
+  // The pool takes the next unstarted target while no stop is set; outcomes keep target order.
+  await runPool<ScoredOutcome>({
+    concurrency: run.concurrency,
+    size: run.targets.length,
+    shouldStart: () => stop === null,
+    runOne: (position) => scoreTarget(run.targets[position]),
+    onRow: (position, outcome) => {
+      outcomes[position] = outcome;
+      finish(outcome);
+    },
+  });
+
+  const snapshot = counter.snapshot();
+  return {
+    outcomes,
+    stop: stop ?? "completed",
+    requests: snapshot.requestCount,
+    elapsedMs: snapshot.elapsedMs,
+  };
+}
+
+/** One line of scores.jsonl in exchanges mode: an exchange as it was scored. */
+interface ExchangeScoreRow {
+  key: string;
+  session: string;
+  index: number;
+  verdict: Verdict;
+  answers: Record<string, number> | null;
+  reason: string | null;
+  model: string | null;
+  attempts: number;
+  latencyMs: number;
+  usage: { inputTokens: number; outputTokens: number } | null;
+  cached: boolean;
+}
+
+/** One line of an exchanges file, as the report writes it. */
+interface ExchangeLine {
+  key: string;
+  session: string;
+  sessionId: string;
+  file: string;
+  index: number;
+  agentBefore: string;
+  userFeedback: string;
+  agentAfter: string;
+  trimmed: boolean;
+}
+
+const EXCHANGE_STRING_FIELDS = [
+  "key",
+  "session",
+  "sessionId",
+  "file",
+  "agentBefore",
+  "userFeedback",
+  "agentAfter",
+] as const;
+
+/** The exchanges file's lines, or null when a line is malformed or a key repeats. */
+function parseExchanges(file: string): ExchangeLine[] | null {
+  let raw: string;
   try {
-    limits = parseLimits(args);
-  } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    raw = fs.readFileSync(file, "utf-8");
+  } catch {
+    return null;
+  }
+  const lines: ExchangeLine[] = [];
+  const keys = new Set<string>();
+  for (const line of raw.split("\n")) {
+    if (line.trim() === "") continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      return null;
+    }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+    const record = parsed as Record<string, unknown>;
+    for (const field of EXCHANGE_STRING_FIELDS) {
+      if (typeof record[field] !== "string") return null;
+    }
+    const index = record.index;
+    if (typeof index !== "number" || !Number.isInteger(index)) return null;
+    const key = record.key as string;
+    if (keys.has(key)) return null;
+    keys.add(key);
+    lines.push({
+      key,
+      session: record.session as string,
+      sessionId: record.sessionId as string,
+      file: record.file as string,
+      index,
+      agentBefore: record.agentBefore as string,
+      userFeedback: record.userFeedback as string,
+      agentAfter: record.agentAfter as string,
+      trimmed: record.trimmed === true,
+    });
+  }
+  return lines;
+}
+
+function notRunExchangeRow(exchange: ExchangeLine): ExchangeScoreRow {
+  return {
+    key: exchange.key,
+    session: exchange.session,
+    index: exchange.index,
+    verdict: "not_run",
+    answers: null,
+    reason: null,
+    model: null,
+    attempts: 0,
+    latencyMs: 0,
+    usage: null,
+    cached: false,
+  };
+}
+
+function tally(rows: ExchangeScoreRow[]): Record<string, number> {
+  return rows.reduce<Record<string, number>>((acc, row) => {
+    acc[row.verdict] = (acc[row.verdict] ?? 0) + 1;
+    return acc;
+  }, {});
+}
+
+/** The run's summary for one output folder. */
+function writeSummary(outputDir: string, summary: Record<string, unknown>): void {
+  fs.writeFileSync(path.join(outputDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`, "utf-8");
+}
+
+/** Score a report's exchanges with a question set, writing scores.jsonl and summary.json. */
+async function runExchanges(
+  args: Record<string, string | string[]>,
+  limits: Limits,
+  exchangesArg: string,
+): Promise<number> {
+  if (args.corpus !== undefined || args.set !== undefined || typeof args.questions !== "string") {
+    process.stderr.write(`${strings.scoreInputConflict}\n`);
     return 2;
   }
+  const concurrency = parseConcurrency(args.concurrency);
+  if (concurrency === null) {
+    process.stderr.write(`${strings.scoreBadConcurrency}\n`);
+    return 2;
+  }
+  const questionSet = parseQuestionSet(args.questions);
+  if (questionSet === null) {
+    process.stderr.write(`${strings.scoreBadQuestions(args.questions)}\n`);
+    return 2;
+  }
+  const file = path.resolve(exchangesArg);
+  const exchanges = parseExchanges(file);
+  if (exchanges === null) {
+    process.stderr.write(`${strings.scoreBadExchanges(file)}\n`);
+    return 2;
+  }
+  const policy: JevPolicy = { ...JEV_POLICY, questions: questionSet.questions };
+  const cachePath = path.join(path.dirname(file), "cache", `questions-${questionSet.hash}.jsonl`);
+  const cache = loadCache<CacheLine>(cachePath, isQuestionCacheLine);
+  const cached = exchanges.filter((exchange) => cache.has(exchange.key)).length;
+  const outputDir = typeof args.output === "string" ? path.resolve(args.output) : path.dirname(file);
+
+  const block = [
+    strings.scoreHeader,
+    strings.scoreExchanges(file, exchanges.length, cached, exchanges.length - cached),
+    strings.confirmLimits(limits.maxModelRequests, limits.maxRunMs),
+    strings.confirmLimitSource(limits.source),
+    strings.scoreModelQuestions(JEV_POLICY.model, questionSet.name, questionSet.hash, concurrency),
+    strings.scoreOutput(outputDir),
+  ].join("\n");
+  process.stdout.write(`${block}\n`);
+  if (args.confirmed !== "true") {
+    process.stdout.write(`${strings.scoreNotConfirmed}\n`);
+    return 2;
+  }
+  const apiKey = process.env.TYPESAFE_API_KEY;
+  if (!apiKey) {
+    process.stderr.write(`${strings.scoreNoKey}\n`);
+    return 2;
+  }
+  fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+
+  const result = await scoreTargets({
+    targets: exchanges.map((exchange) => ({
+      key: exchange.key,
+      texts: {
+        agentBefore: exchange.agentBefore,
+        userFeedback: exchange.userFeedback,
+        agentAfter: exchange.agentAfter,
+      },
+    })),
+    cache,
+    cachePath,
+    policy,
+    gate: false,
+    apiKey,
+    limits,
+    concurrency,
+    progress: (done, total, verdict) => strings.scoreProgressPrompt(done, total, verdict),
+  });
+
+  const rows: ExchangeScoreRow[] = exchanges.map((exchange, position) => {
+    const outcome = result.outcomes[position];
+    if (outcome === null) return notRunExchangeRow(exchange);
+    return {
+      key: exchange.key,
+      session: exchange.session,
+      index: exchange.index,
+      verdict: outcome.verdict,
+      answers: outcome.answers,
+      reason: outcome.reason,
+      model: outcome.model,
+      attempts: outcome.attempts,
+      latencyMs: outcome.latencyMs,
+      usage: outcome.usage,
+      cached: outcome.cached,
+    };
+  });
+  const verdicts = tally(rows);
+  const endStop = result.stop;
+  const withAnswers = rows.filter((row) => row.answers !== null);
+
+  fs.mkdirSync(outputDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(outputDir, "scores.jsonl"),
+    `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`,
+    "utf-8",
+  );
+  writeSummary(outputDir, {
+    runType: limits.runType,
+    exchanges: file,
+    prompts: exchanges.length,
+    limits: { maxRequests: limits.maxModelRequests, maxRunMs: limits.maxRunMs, source: limits.source },
+    stop: endStop,
+    requests: result.requests,
+    elapsedMs: result.elapsedMs,
+    policyHash: JEV_POLICY_HASH,
+    questionSet: { name: questionSet.name, hash: questionSet.hash, file: questionSet.file },
+    modelsReturned: [...new Set(withAnswers.map((row) => row.model))],
+    verdicts,
+    latencyMs: {
+      mean: withAnswers.length
+        ? Math.round(withAnswers.reduce((sum, row) => sum + row.latencyMs, 0) / withAnswers.length)
+        : null,
+      max: withAnswers.length ? Math.max(...withAnswers.map((row) => row.latencyMs)) : null,
+    },
+    usage: withAnswers.reduce(
+      (acc, row) => ({
+        inputTokens: acc.inputTokens + (row.usage?.inputTokens ?? 0),
+        outputTokens: acc.outputTokens + (row.usage?.outputTokens ?? 0),
+      }),
+      { inputTokens: 0, outputTokens: 0 },
+    ),
+    concurrency,
+    cached,
+    confirmed: true,
+  });
+  process.stdout.write(
+    `${strings.scoreDone(
+      verdicts.scored ?? 0,
+      cached,
+      verdicts.fallback ?? 0,
+      verdicts.not_run ?? 0,
+      result.requests,
+      endStop,
+    )}\n`,
+  );
+  return exitCodeFor(endStop);
+}
+
+/** Score one set of a frozen corpus: the corpus command's path, unchanged beside exchanges mode. */
+async function runCorpus(args: Record<string, string | string[]>, limits: Limits): Promise<number> {
+  // Checks before any request, in this order: set, concurrency, question set, freeze, keys.
   const setArg = parseSet(args.set);
   if (setArg === null) {
     process.stderr.write(`${strings.scoreBadSet}\n`);
@@ -402,140 +811,42 @@ export async function main(argv: string[]): Promise<number> {
   }
   fs.mkdirSync(path.dirname(cachePath), { recursive: true });
 
-  const counter = new RequestCounter(limits);
-  const transport = {
-    fetch: (input: string | URL | Request, init?: RequestInit) => globalThis.fetch(input, init),
-    now: () => Date.now(),
-    sleep: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
-  };
-  const beforeAttempt = (): boolean => counter.gateAttempt(JEV_POLICY.model);
+  const result = await scoreTargets({
+    targets: selected.map((trio, position) => ({ key: trio.key, texts: selectedTexts[position] })),
+    cache,
+    cachePath,
+    policy,
+    gate: questionSet === null,
+    apiKey,
+    limits,
+    concurrency,
+    progress: (done, total, verdict) => strings.scoreProgress(done, total, verdict),
+  });
 
-  const rows: Array<ScoreRow | null> = selected.map(() => null);
-  let stop: StopLabel | null = null;
-  let consecutiveFailures = 0;
-  let done = 0;
-
-  /** Surface a ceiling the counter reached on its own; the first stop set wins. */
-  const syncStop = (): void => {
-    if (stop !== null) return;
-    if (counter.exhausted()) stop = counter.stopReason === "deadline" ? "time limit" : "request limit";
-  };
-
-  const appendCache = (line: CacheLine): void => appendCacheLine(cachePath, line);
-
-  const finish = (row: ScoreRow): void => {
-    process.stdout.write(`${strings.scoreProgress(done + 1, selected.length, row.verdict)}\n`);
-    done++;
-    if (!row.cached) {
-      // Only this run's own requests move the failure streak: a cached line is history.
-      if (row.verdict === "fallback" && (row.reason === "http_401" || row.reason === "http_403")) {
-        stop ??= "auth error";
-      } else if (row.verdict === "fallback" && row.attempts > 0) {
-        consecutiveFailures++;
-        if (consecutiveFailures >= FAILURE_LIMIT) stop ??= "three failed requests in a row";
-      } else if (row.verdict === "no_lesson" || row.verdict === "maybe_lesson" || row.verdict === "scored") {
-        consecutiveFailures = 0;
-      }
-    }
-    syncStop();
-  };
-
-  const scoreTrio = async (trio: CorpusTrio, texts: InteractionSequence): Promise<ScoreRow> => {
-    const identity = {
+  const finalRows: ScoreRow[] = selected.map((trio, position) => {
+    const outcome = result.outcomes[position];
+    if (outcome === null) return notRunRow(trio);
+    return {
       key: trio.key,
       set: trio.set,
       sessionId: trio.sessionId,
       file: trio.file,
       index: trio.index,
+      verdict: outcome.verdict,
+      answers: outcome.answers,
+      reason: outcome.reason,
+      model: outcome.model,
+      attempts: outcome.attempts,
+      latencyMs: outcome.latencyMs,
+      usage: outcome.usage,
+      cached: outcome.cached,
     };
-    const hit = cache.get(trio.key);
-    if (hit !== undefined) {
-      return {
-        ...identity,
-        verdict: hit.verdict,
-        answers: hit.answers,
-        reason: hit.reason,
-        model: hit.model,
-        attempts: hit.attempts,
-        latencyMs: hit.latencyMs,
-        usage: hit.usage,
-        cached: true,
-      };
-    }
-    const state = buildGateState(texts, policy);
-    if (state.kind === "oversized") {
-      const row: ScoreRow = {
-        ...identity,
-        verdict: "fallback",
-        answers: null,
-        reason: "oversized_state",
-        model: null,
-        attempts: 0,
-        latencyMs: 0,
-        usage: null,
-        cached: false,
-      };
-      appendCache({
-        key: row.key,
-        verdict: row.verdict,
-        answers: null,
-        reason: row.reason,
-        model: null,
-        attempts: 0,
-        latencyMs: 0,
-        usage: null,
-      });
-      return row;
-    }
-    const result: JevResult = await callJev(state.state, apiKey, policy, transport, beforeAttempt);
-    const scored = result.kind === "scored";
-    let verdict: Verdict = "fallback";
-    if (scored) verdict = questionSet === null ? routeGate(result, policy) : "scored";
-    const row: ScoreRow = {
-      ...identity,
-      verdict,
-      answers: scored ? result.answers : null,
-      reason: scored ? null : result.reason,
-      model: scored ? result.model : null,
-      attempts: result.attempts,
-      latencyMs: result.latencyMs,
-      usage: scored ? result.usage : null,
-      cached: false,
-    };
-    if (scored || result.reason === "oversized_state") {
-      appendCache({
-        key: row.key,
-        verdict: row.verdict,
-        answers: row.answers,
-        reason: row.reason,
-        model: row.model,
-        attempts: row.attempts,
-        latencyMs: row.latencyMs,
-        usage: row.usage,
-      });
-    }
-    return row;
-  };
-
-  // The pool takes the next unstarted trio while no stop is set; rows keep corpus order.
-  await runPool<ScoreRow>({
-    concurrency,
-    size: selected.length,
-    shouldStart: () => stop === null,
-    runOne: (position) => scoreTrio(selected[position], selectedTexts[position]),
-    onRow: (position, row) => {
-      rows[position] = row;
-      finish(row);
-    },
   });
-
-  const finalRows: ScoreRow[] = fillNotRun(selected, rows, notRunRow);
   const verdicts = finalRows.reduce<Record<string, number>>((acc, row) => {
     acc[row.verdict] = (acc[row.verdict] ?? 0) + 1;
     return acc;
   }, {});
-  const snapshot = counter.snapshot();
-  const endStop: StopLabel = stop ?? "completed";
+  const endStop = result.stop;
 
   fs.mkdirSync(outputDir, { recursive: true });
   fs.writeFileSync(
@@ -553,58 +864,66 @@ export async function main(argv: string[]): Promise<number> {
     );
   }
   const withAnswers = finalRows.filter((row) => row.answers !== null);
-  fs.writeFileSync(
-    path.join(outputDir, "summary.json"),
-    `${JSON.stringify(
-      {
-        runType: limits.runType,
-        corpus: corpusDir,
-        trios: selected.length,
-        set: setArg,
-        limits: { maxRequests: limits.maxModelRequests, maxRunMs: limits.maxRunMs, source: limits.source },
-        stop: endStop,
-        requests: snapshot.requestCount,
-        elapsedMs: snapshot.elapsedMs,
-        policyHash: JEV_POLICY_HASH,
-        ...(questionSet === null
-          ? {}
-          : { questionSet: { name: questionSet.name, hash: questionSet.hash, file: questionSet.file } }),
-        modelsReturned: [...new Set(withAnswers.map((row) => row.model))],
-        verdicts,
-        latencyMs: {
-          mean: withAnswers.length
-            ? Math.round(withAnswers.reduce((sum, row) => sum + row.latencyMs, 0) / withAnswers.length)
-            : null,
-          max: withAnswers.length ? Math.max(...withAnswers.map((row) => row.latencyMs)) : null,
-        },
-        usage: withAnswers.reduce(
-          (acc, row) => ({
-            inputTokens: acc.inputTokens + (row.usage?.inputTokens ?? 0),
-            outputTokens: acc.outputTokens + (row.usage?.outputTokens ?? 0),
-          }),
-          { inputTokens: 0, outputTokens: 0 },
-        ),
-        corpusFreeze: sha256File(path.join(corpusDir, "freeze.json")),
-        concurrency,
-        cached,
-        confirmed: true,
-      },
-      null,
-      2,
-    )}\n`,
-    "utf-8",
-  );
+  writeSummary(outputDir, {
+    runType: limits.runType,
+    corpus: corpusDir,
+    trios: selected.length,
+    set: setArg,
+    limits: { maxRequests: limits.maxModelRequests, maxRunMs: limits.maxRunMs, source: limits.source },
+    stop: endStop,
+    requests: result.requests,
+    elapsedMs: result.elapsedMs,
+    policyHash: JEV_POLICY_HASH,
+    ...(questionSet === null
+      ? {}
+      : { questionSet: { name: questionSet.name, hash: questionSet.hash, file: questionSet.file } }),
+    modelsReturned: [...new Set(withAnswers.map((row) => row.model))],
+    verdicts,
+    latencyMs: {
+      mean: withAnswers.length
+        ? Math.round(withAnswers.reduce((sum, row) => sum + row.latencyMs, 0) / withAnswers.length)
+        : null,
+      max: withAnswers.length ? Math.max(...withAnswers.map((row) => row.latencyMs)) : null,
+    },
+    usage: withAnswers.reduce(
+      (acc, row) => ({
+        inputTokens: acc.inputTokens + (row.usage?.inputTokens ?? 0),
+        outputTokens: acc.outputTokens + (row.usage?.outputTokens ?? 0),
+      }),
+      { inputTokens: 0, outputTokens: 0 },
+    ),
+    corpusFreeze: sha256File(path.join(corpusDir, "freeze.json")),
+    concurrency,
+    cached,
+    confirmed: true,
+  });
   process.stdout.write(
     `${strings.scoreDone(
       (verdicts.no_lesson ?? 0) + (verdicts.maybe_lesson ?? 0) + (verdicts.scored ?? 0),
       cached,
       verdicts.fallback ?? 0,
       verdicts.not_run ?? 0,
-      snapshot.requestCount,
+      result.requests,
       endStop,
     )}\n`,
   );
   return exitCodeFor(endStop);
+}
+
+export async function main(argv: string[]): Promise<number> {
+  const args = parseArgv(argv);
+  const exchangesArg = typeof args.exchanges === "string" ? args.exchanges : null;
+
+  // Limits first in both modes; then the input mode decides which run follows.
+  let limits: Limits;
+  try {
+    limits = parseLimits(args);
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    return 2;
+  }
+  if (exchangesArg !== null) return runExchanges(args, limits, exchangesArg);
+  return runCorpus(args, limits);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

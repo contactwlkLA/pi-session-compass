@@ -1211,3 +1211,331 @@ describe("reply codes question set", () => {
     expect(codes).toContain("| source-oversized-questions | big.jsonl | 0 | 0 | 0 | 0 |");
   });
 });
+
+describe("score --exchanges", () => {
+  const SET_NAME = "exchange-codes-test";
+  const CODE_IDS = ["approval", "correction", "hold_back", "task_step", "chatter"];
+
+  function questionEntry(text: string): Record<string, unknown> {
+    return {
+      type: "noul",
+      instructions: `In this exchange between a user and an AI coding agent, ${text}`,
+      criteria: { true: "it applies", false: "it does not apply" },
+    };
+  }
+
+  function validQuestions(): Record<string, unknown> {
+    const questions: Record<string, unknown> = {};
+    for (const id of CODE_IDS) questions[id] = questionEntry(`is the reply ${id}?`);
+    return questions;
+  }
+
+  function writeSetFile(): string {
+    const target = path.join(TEST_TMP, "exchange-set.json");
+    fs.writeFileSync(target, JSON.stringify({ name: SET_NAME, questions: validQuestions() }), "utf-8");
+    return target;
+  }
+
+  /** The set's cache hash, computed the way the spec defines it. */
+  function expectedSetHash(setFile: string): string {
+    const parsed = JSON.parse(fs.readFileSync(setFile, "utf-8")) as {
+      name: string;
+      questions: Record<string, unknown>;
+    };
+    return sha256Text(JSON.stringify({ model: MODEL, name: parsed.name, questions: parsed.questions })).slice(0, 12);
+  }
+
+  /** One exchanges line; `extra` adds or replaces fields, and a null value is written as null. */
+  function exchangeLine(index: number, feedback: string, extra: Record<string, unknown>): Record<string, unknown> {
+    return {
+      key: sha256Text(`exchange-${index}-${feedback}`).slice(0, 16),
+      session: "2026-10-18 01a14cf6",
+      sessionId: "01a14cf6aaaaaaaa",
+      file: "a.jsonl",
+      index,
+      agentBefore: `agent before ${index}`,
+      userFeedback: feedback,
+      agentAfter: `agent after ${index}`,
+      trimmed: false,
+      ...extra,
+    };
+  }
+
+  function exchangesDir(): string {
+    const dir = path.join(TEST_TMP, "exchanges");
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+
+  function writeExchanges(name: string, lines: Record<string, unknown>[]): string {
+    const file = path.join(exchangesDir(), name);
+    fs.writeFileSync(file, `${lines.map((line) => JSON.stringify(line)).join("\n")}\n`, "utf-8");
+    return file;
+  }
+
+  interface LimitsArgv {
+    requests: string;
+    runMs: string;
+    /** null omits the switch entirely, so the default applies. */
+    concurrency: string | null;
+  }
+
+  function exchangeArgv(
+    file: string,
+    setFile: string,
+    output: string,
+    limits: LimitsArgv,
+    confirmed: boolean,
+  ): string[] {
+    const argv = [
+      "--exchanges",
+      file,
+      "--run-type",
+      "smoke",
+      "--max-model-requests",
+      limits.requests,
+      "--max-run-ms",
+      limits.runMs,
+      "--limits-source",
+      "user-override",
+      "--output",
+      output,
+      "--questions",
+      setFile,
+    ];
+    if (limits.concurrency !== null) argv.push("--concurrency", limits.concurrency);
+    if (confirmed) argv.push("--confirmed");
+    return argv;
+  }
+
+  function defaultLimits(requests: string): LimitsArgv {
+    return { requests, runMs: "600000", concurrency: "4" };
+  }
+
+  interface ExchangeRowJson {
+    key: string;
+    session: string;
+    index: number;
+    verdict: string;
+    answers: Record<string, number> | null;
+    reason: string | null;
+    model: string | null;
+    attempts: number;
+    latencyMs: number;
+    usage: { inputTokens: number; outputTokens: number } | null;
+    cached: boolean;
+  }
+
+  function readExchangeRows(outputDir: string): ExchangeRowJson[] {
+    return fs
+      .readFileSync(path.join(outputDir, "scores.jsonl"), "utf-8")
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((line) => JSON.parse(line) as ExchangeRowJson);
+  }
+
+  /** A mocked Jev endpoint answering every asked question id with the fixture value (0.1 by default). */
+  function mockAnswers(values: Record<string, number>): void {
+    const answerRequest = async (_input: unknown, init: RequestInit): Promise<Response> => {
+      const body = JSON.parse(String(init.body)) as { questions: Record<string, unknown> };
+      const answers: Record<string, { type: string; noul: number }> = {};
+      for (const id of Object.keys(body.questions)) answers[id] = { type: "noul", noul: values[id] ?? 0.1 };
+      return new Response(JSON.stringify({ model: MODEL, answers, usage: { input_tokens: 12, output_tokens: 3 } }), {
+        status: 200,
+      });
+    };
+    fetchMock.mockImplementation(answerRequest as unknown as () => Promise<Response>);
+  }
+
+  /** Expected: both mixed input modes and a missing question set are refused before any request. */
+  it("refuses --exchanges with --corpus or --set, and without --questions", async () => {
+    const file = writeExchanges("conflict.jsonl", [exchangeLine(2, "one", {}), exchangeLine(3, "two", {})]);
+    const setFile = writeSetFile();
+    const outDir = path.join(TEST_TMP, "out");
+
+    const withSet = await capture(() =>
+      scoreCorpus([
+        "--exchanges",
+        file,
+        "--set",
+        "dev",
+        "--run-type",
+        "smoke",
+        "--max-model-requests",
+        "10",
+        "--max-run-ms",
+        "1000",
+        "--limits-source",
+        "user-override",
+        "--output",
+        outDir,
+        "--questions",
+        setFile,
+        "--confirmed",
+      ]),
+    );
+    expect(withSet.code).toBe(2);
+    expect(withSet.err).toBe(`${strings.scoreInputConflict}\n`);
+
+    const withoutQuestions = await capture(() =>
+      scoreCorpus([
+        "--exchanges",
+        file,
+        "--run-type",
+        "smoke",
+        "--max-model-requests",
+        "10",
+        "--max-run-ms",
+        "1000",
+        "--limits-source",
+        "user-override",
+        "--output",
+        outDir,
+        "--confirmed",
+      ]),
+    );
+    expect(withoutQuestions.code).toBe(2);
+    expect(withoutQuestions.err).toBe(`${strings.scoreInputConflict}\n`);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  /** Expected: a missing field and a repeated key each refuse the whole file, with no request. */
+  it("refuses a malformed exchanges file", async () => {
+    const setFile = writeSetFile();
+    const missing = { ...exchangeLine(2, "one", {}) };
+    delete missing.agentAfter;
+    const repeated = [exchangeLine(2, "one", {}), exchangeLine(3, "two", {})];
+    repeated[1].key = repeated[0].key;
+
+    for (const [name, lines] of [
+      ["missing.jsonl", [missing]],
+      ["duplicate.jsonl", repeated],
+    ] as [string, Record<string, unknown>[]][]) {
+      const file = writeExchanges(name, lines);
+      const outDir = path.join(TEST_TMP, `out-${name}`);
+      const { code, err } = await capture(() =>
+        scoreCorpus(exchangeArgv(file, setFile, outDir, defaultLimits("10"), true)),
+      );
+      expect(code).toBe(2);
+      expect(err).toBe(`${strings.scoreBadExchanges(file)}\n`);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  /** Expected: the exchanges line, no request without --confirmed, and no request without the key. */
+  it("shows the exchanges line and needs both --confirmed and the key", async () => {
+    const file = writeExchanges("gate.jsonl", [exchangeLine(2, "one", {}), exchangeLine(3, "two", {})]);
+    const setFile = writeSetFile();
+    const outDir = path.join(TEST_TMP, "out");
+
+    const unconfirmed = await capture(() =>
+      scoreCorpus(exchangeArgv(file, setFile, outDir, { requests: "10", runMs: "1000", concurrency: null }, false)),
+    );
+
+    expect(unconfirmed.code).toBe(2);
+    expect(unconfirmed.out.split("\n")[1]).toBe(strings.scoreExchanges(file, 2, 0, 2));
+    expect(unconfirmed.out).toContain(strings.scoreNotConfirmed);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const noKey = await capture(() => scoreCorpus(exchangeArgv(file, setFile, outDir, defaultLimits("10"), true)));
+
+    expect(noKey.code).toBe(2);
+    expect(noKey.err).toBe(`${strings.scoreNoKey}\n`);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Fixture: two exchanges. Expected rows in file order, each scored, with the
+   * question set's answers; a cache under the set's hash and a summary that
+   * names the exchanges file instead of a corpus.
+   */
+  it("writes scores.jsonl in file order and the exchanges summary", async () => {
+    const lines = [exchangeLine(2, "one", {}), exchangeLine(3, "two", {})];
+    const file = writeExchanges("run.jsonl", lines);
+    const setFile = writeSetFile();
+    const hash = expectedSetHash(setFile);
+    process.env.TYPESAFE_API_KEY = KEY;
+    mockAnswers({ approval: 0.9 });
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code, out } = await capture(() =>
+      scoreCorpus(exchangeArgv(file, setFile, outDir, defaultLimits("10"), true)),
+    );
+
+    expect(code).toBe(0);
+    expect(out.split("\n")[1]).toBe(strings.scoreExchanges(file, 2, 0, 2));
+    expect(out.split("\n")[4]).toBe(`Jev model: ${MODEL} · questions ${SET_NAME} (${hash}) · 4 at once`);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const rows = readExchangeRows(outDir);
+    expect(rows.map((row) => row.key)).toEqual([lines[0].key, lines[1].key]);
+    expect(rows.map((row) => row.verdict)).toEqual(["scored", "scored"]);
+    expect(rows.map((row) => row.session)).toEqual(["2026-10-18 01a14cf6", "2026-10-18 01a14cf6"]);
+    expect(rows.map((row) => row.index)).toEqual([2, 3]);
+    expect(Object.keys(rows[0].answers ?? {})).toEqual(CODE_IDS);
+    expect(rows[0].answers?.approval).toBe(0.9);
+    expect(fs.existsSync(path.join(outDir, "codes.md"))).toBe(false);
+    expect(fs.existsSync(path.join(outDir, "scores-table.md"))).toBe(false);
+    expect(fs.existsSync(path.join(path.dirname(file), "cache", `questions-${hash}.jsonl`))).toBe(true);
+
+    const summary = readSummary(outDir);
+    expect(summary).toMatchObject({ exchanges: file, prompts: 2, stop: "completed", requests: 2, cached: 0 });
+    expect(summary.questionSet).toEqual({ name: SET_NAME, hash, file: setFile });
+    expect(Object.keys(summary)).toEqual(
+      expect.arrayContaining(["runType", "exchanges", "prompts", "limits", "stop", "requests", "elapsedMs"]),
+    );
+    expect("corpus" in summary).toBe(false);
+    expect("set" in summary).toBe(false);
+    expect("corpusFreeze" in summary).toBe(false);
+    expect(out).toContain("prompt 2/2: scored");
+    expect(out).toContain("Scored 2 · cached 0 · fallbacks 0 · not run 0 · requests 2 · stop: completed");
+  });
+
+  /** Expected: the second run is served from the cache and makes no request. */
+  it("serves a rerun from the cache", async () => {
+    const file = writeExchanges("rerun.jsonl", [exchangeLine(2, "one", {}), exchangeLine(3, "two", {})]);
+    const setFile = writeSetFile();
+    process.env.TYPESAFE_API_KEY = KEY;
+    mockAnswers({ approval: 0.9 });
+
+    await capture(() =>
+      scoreCorpus(exchangeArgv(file, setFile, path.join(TEST_TMP, "out-one"), defaultLimits("10"), true)),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const secondOut = path.join(TEST_TMP, "out-two");
+    const second = await capture(() => scoreCorpus(exchangeArgv(file, setFile, secondOut, defaultLimits("10"), true)));
+
+    expect(second.code).toBe(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(second.out).toContain(strings.scoreExchanges(file, 2, 2, 0));
+    expect(readExchangeRows(secondOut).every((row) => row.cached)).toBe(true);
+  });
+
+  /**
+   * Fixture: three exchanges, a one-request limit, one at a time.
+   * Expected: the first scored, the other two not run, and the run stops at the limit.
+   */
+  it("stops at the request limit and leaves the rest not run", async () => {
+    const file = writeExchanges("limited.jsonl", [
+      exchangeLine(2, "one", {}),
+      exchangeLine(3, "two", {}),
+      exchangeLine(4, "three", {}),
+    ]);
+    const setFile = writeSetFile();
+    process.env.TYPESAFE_API_KEY = KEY;
+    mockAnswers({ approval: 0.9 });
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code, out } = await capture(() =>
+      scoreCorpus(exchangeArgv(file, setFile, outDir, { requests: "1", runMs: "600000", concurrency: "1" }, true)),
+    );
+
+    expect(code).toBe(3);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const rows = readExchangeRows(outDir);
+    expect(rows.map((row) => row.verdict)).toEqual(["scored", "not_run", "not_run"]);
+    expect(rows[2]).toMatchObject({ answers: null, reason: null, model: null, attempts: 0, cached: false, index: 4 });
+    expect(out).toContain("not run 2");
+    expect(out).toContain("stop: request limit");
+  });
+});

@@ -146,6 +146,11 @@ export const strings = {
     `Scored ${scored} · cached ${cached} · fallbacks ${fallbacks} · not run ${notRun} · requests ${requests} · stop: ${stop}`,
   scoreBadConcurrency: "compass score: --concurrency must be an integer from 1 to 8",
   scoreProgress: (done: number, total: number, verdict: string) => `trio ${done}/${total}: ${verdict}`,
+  scoreExchanges: (file: string, prompts: number, cached: number, toScore: number) =>
+    `Exchanges: ${file}: ${prompts} prompts (${cached} cached, ${toScore} to score)`,
+  scoreProgressPrompt: (done: number, total: number, verdict: string) => `prompt ${done}/${total}: ${verdict}`,
+  scoreBadExchanges: (file: string) => `compass score: ${file} is not a valid exchanges file.`,
+  scoreInputConflict: "compass score: pass either --corpus with --set, or --exchanges with --questions.",
   scoreBadQuestions: (file: string) => `compass score: ${file} is not a valid question set`,
   scoreModelQuestions: (model: string, name: string, hash: string, concurrency: number) =>
     `Jev model: ${model} · questions ${name} (${hash}) · ${concurrency} at once`,
@@ -273,6 +278,7 @@ export const strings = {
   reportMixedLogs: (dir: string) =>
     `compass report: ${dir} holds both Pi and Claude Code logs; pass one folder per tool.`,
   reportOutputRefused: "compass report: --output must not be inside the input, ~/.pi, or ~/.claude.",
+  reportBadCodes: (file: string) => `compass report: ${file} is not a scores file from compass score.`,
   reportDone: (sessions: number, prompts: number, output: string) =>
     `compass report: ${sessions} sessions, ${prompts} prompts → ${output}/report.md`,
   reportTitle: (input: string) => `# Session report: ${input}`,
@@ -287,6 +293,8 @@ export const strings = {
   reportQuestionsHeading: "## Agent questions",
   reportQuestionsColumns: "| Session | Prompts | Turns ending with a question |",
   reportInterventionsHeading: "## Your interventions",
+  reportInterventionsColumns:
+    "| Session | Approval | Correction | Hold-back | Task step | Chatter | Corrections followed by edits |",
   reportLessonsHeading: "## Lessons",
   reportBehaviorHeading: "## Behavior",
   reportNotScored: "not scored",

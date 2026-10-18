@@ -15,18 +15,23 @@ import {
   type ChangeRec,
   type CheckRunRec,
   checkKind,
+  EXCHANGE_CAP_BYTES,
+  type ExchangeLine,
   type FullReport,
+  fitExchange,
   fixedEpisodes,
   isCheck,
   isExpected,
   isFailed,
   type MeasuredRow,
   measureSegment,
+  readSegments,
   renderMarkdown,
   main as runReport,
   type SegmentInput,
 } from "../../scripts/compass/report.js";
 import { strings } from "../../scripts/compass/strings.js";
+import { JEV_POLICY } from "../../src/jev.js";
 
 const ROOT = process.cwd();
 // Unique per test-file run so overlapping suite runs never share a directory.
@@ -269,6 +274,8 @@ interface JsonlRow {
   costUsd: number | null;
   checks: Record<string, { runs: number; failed: number; fixed: number; expected: number }>;
   questions: number;
+  codes?: Record<string, boolean> | null;
+  interventions?: Record<string, number> | null;
 }
 
 function readJsonl(outDir: string): JsonlRow[] {
@@ -287,6 +294,9 @@ function emptySegment(lastAgentText: string): SegmentInput {
   return {
     index: 1,
     promptHead: "prompt",
+    promptText: "prompt",
+    firstAgentText: "",
+    hasAgentText: false,
     firstTimestampMs: 0,
     lastTimestampMs: 0,
     assistants: [],
@@ -1163,6 +1173,8 @@ describe("report — number grouping", () => {
         },
       ],
       total: { ...row, skippedFiles: 0, sessions: 1 },
+      exchanges: [],
+      scores: null,
     };
 
     const md = renderMarkdown(report);
@@ -1170,5 +1182,707 @@ describe("report — number grouping", () => {
     expect(md).toContain("| 2026-10-18 01a14cf6 | 2,202 | 2,202 | 0.0 min | 0.0 min | 0.0 min |");
     expect(md).toContain("| 2026-10-18 01a14cf6 | 2,202 | 2,202 |");
     expect(md).not.toContain("| 2202 |");
+  });
+});
+
+/** The exchanges.jsonl lines a report run wrote. */
+function readExchanges(outDir: string): ExchangeLine[] {
+  return fs
+    .readFileSync(path.join(outDir, "exchanges.jsonl"), "utf-8")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => JSON.parse(line) as ExchangeLine);
+}
+
+/** A scores fixture file in the temp root; the answers it carries are the test's own. */
+function writeScores(lines: Record<string, unknown>[]): string {
+  const target = path.join(TEST_TMP, `${nextId("scores")}.jsonl`);
+  fs.writeFileSync(target, `${lines.map((line) => JSON.stringify(line)).join("\n")}\n`, "utf-8");
+  return target;
+}
+
+/** Every reply code at low confidence, so one override decides the tally. */
+const LOW_CODE_ANSWERS: Record<string, number> = {
+  approval: 0.1,
+  correction: 0.1,
+  hold_back: 0.1,
+  task_step: 0.1,
+  chatter: 0.1,
+};
+
+function codeAnswers(overrides: Record<string, number>): Record<string, number> {
+  return { ...LOW_CODE_ANSWERS, ...overrides };
+}
+
+describe("report — exchanges", () => {
+  /**
+   * Fixture: three prompts, each followed by one assistant text.
+   * Expected exchanges (a prompt needs agent text on both sides):
+   *   | index | agentBefore | userFeedback | agentAfter |
+   *   | 2 | first reply | second prompt | second reply |
+   *   | 3 | second reply | third prompt | third reply |
+   */
+  it("writes one exchange per prompt with agent text on both sides", async () => {
+    const log = writeLog(
+      path.join(TEST_TMP, "logs"),
+      "a.jsonl",
+      piSession("01a14cf6aaaaaaaa", [
+        piUser("first prompt", "2026-10-18T10:00:00.000Z"),
+        piAssistant({
+          text: "first reply",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:00:10.000Z",
+        }),
+        piUser("second prompt", "2026-10-18T10:01:00.000Z"),
+        piAssistant({
+          text: "second reply",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:01:10.000Z",
+        }),
+        piUser("third prompt", "2026-10-18T10:02:00.000Z"),
+        piAssistant({
+          text: "third reply",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:02:10.000Z",
+        }),
+      ]),
+    );
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code } = await capture(() => runReport(["--session", log, "--output", outDir]));
+
+    expect(code).toBe(0);
+    const exchanges = readExchanges(outDir);
+    expect(
+      exchanges.map((exchange) => [exchange.index, exchange.agentBefore, exchange.userFeedback, exchange.agentAfter]),
+    ).toEqual([
+      [2, "first reply", "second prompt", "second reply"],
+      [3, "second reply", "third prompt", "third reply"],
+    ]);
+    expect(exchanges[0]).toMatchObject({
+      session: "2026-10-18 01a14cf6",
+      sessionId: "01a14cf6aaaaaaaa",
+      file: "a.jsonl",
+      trimmed: false,
+    });
+    expect(exchanges[0].key).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  /** Expected: a segment with no agent text of its own gives no exchange, and does not borrow one. */
+  it("gives no exchange when a segment has no agent text", async () => {
+    const log = writeLog(
+      path.join(TEST_TMP, "logs"),
+      "a.jsonl",
+      piSession("01a14cf6aaaaaaaa", [
+        piUser("one", "2026-10-18T10:00:00.000Z"),
+        piAssistant({
+          text: "only reply",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:00:10.000Z",
+        }),
+        piUser("two", "2026-10-18T10:01:00.000Z"),
+        piUser("three", "2026-10-18T10:02:00.000Z"),
+        piAssistant({
+          text: "third reply",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:02:10.000Z",
+        }),
+      ]),
+    );
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code } = await capture(() => runReport(["--session", log, "--output", outDir]));
+
+    expect(code).toBe(0);
+    expect(readExchanges(outDir)).toEqual([]);
+  });
+
+  /** Expected: two records of one message id are one agent text. */
+  it("joins a Claude Code reply split across records with one message id", async () => {
+    const log = writeLog(
+      path.join(TEST_TMP, "logs"),
+      "cc.jsonl",
+      ccSession("cccccccc-1111-2222-3333-444444444444", [
+        ccUser({ text: "one", originKind: "human", isMeta: false, timestamp: "2026-10-18T12:00:00.000Z" }),
+        ccAssistant({
+          messageId: "msg_1",
+          text: "part one",
+          toolUses: [],
+          usage: null,
+          timestamp: "2026-10-18T12:00:01.000Z",
+        }),
+        ccAssistant({
+          messageId: "msg_1",
+          text: "part two",
+          toolUses: [],
+          usage: null,
+          timestamp: "2026-10-18T12:00:02.000Z",
+        }),
+        ccUser({ text: "two", originKind: "human", isMeta: false, timestamp: "2026-10-18T12:01:00.000Z" }),
+        ccAssistant({
+          messageId: "msg_2",
+          text: "reply two",
+          toolUses: [],
+          usage: null,
+          timestamp: "2026-10-18T12:01:01.000Z",
+        }),
+      ]),
+    );
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code } = await capture(() => runReport(["--session", log, "--output", outDir]));
+
+    expect(code).toBe(0);
+    expect(readExchanges(outDir)).toHaveLength(1);
+    expect(readExchanges(outDir)[0]).toMatchObject({
+      index: 2,
+      agentBefore: "part one\npart two",
+      userFeedback: "two",
+      agentAfter: "reply two",
+      sessionId: "cccccccc-1111-2222-3333-444444444444",
+    });
+  });
+
+  /** Expected: two copies of one log give one exchange, so score accepts the file. */
+  it("drops a repeated exchange key when one log appears twice", async () => {
+    const logsDir = path.join(TEST_TMP, "logs");
+    const records = piSession("01a14cf6aaaaaaaa", [
+      piUser("one", "2026-10-18T10:00:00.000Z"),
+      piAssistant({ text: "reply", toolCalls: [], usage: null, durationMs: 0, timestamp: "2026-10-18T10:00:10.000Z" }),
+      piUser("two", "2026-10-18T10:01:00.000Z"),
+      piAssistant({
+        text: "reply two",
+        toolCalls: [],
+        usage: null,
+        durationMs: 0,
+        timestamp: "2026-10-18T10:01:10.000Z",
+      }),
+    ]);
+    writeLog(logsDir, "a.jsonl", records);
+    writeLog(logsDir, "b.jsonl", records);
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code } = await capture(() => runReport(["--dir", logsDir, "--output", outDir]));
+
+    expect(code).toBe(0);
+    expect(readExchanges(outDir)).toHaveLength(1);
+  });
+
+  /** Expected: a plain-string prompt keeps its text in the prompt head and in the exchange. */
+  it("reads a Claude Code prompt whose content is a plain string", async () => {
+    const log = writeLog(
+      path.join(TEST_TMP, "logs"),
+      "cc-string.jsonl",
+      ccSession("eeeeeeee-1111-2222-3333-444444444444", [
+        {
+          type: "user",
+          origin: { kind: "human" },
+          isMeta: false,
+          timestamp: "2026-10-18T12:00:00.000Z",
+          message: { role: "user", content: "please fix the test" },
+        },
+        ccAssistant({
+          messageId: "msg_1",
+          text: "fixing",
+          toolUses: [],
+          usage: null,
+          timestamp: "2026-10-18T12:00:01.000Z",
+        }),
+        {
+          type: "user",
+          origin: { kind: "human" },
+          isMeta: false,
+          timestamp: "2026-10-18T12:01:00.000Z",
+          message: { role: "user", content: "thanks" },
+        },
+        ccAssistant({
+          messageId: "msg_2",
+          text: "done",
+          toolUses: [],
+          usage: null,
+          timestamp: "2026-10-18T12:01:01.000Z",
+        }),
+      ]),
+    );
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code } = await capture(() => runReport(["--session", log, "--output", outDir]));
+
+    expect(code).toBe(0);
+    const segments = readJsonl(outDir).filter((row) => row.level === "segment");
+    expect(segments.map((row) => row.promptHead)).toEqual(["please fix the test", "thanks"]);
+    expect(readExchanges(outDir)).toHaveLength(1);
+    expect(readExchanges(outDir)[0].userFeedback).toBe("thanks");
+  });
+
+  /** Expected: a Claude Code log whose first record has no session id takes the next one. */
+  it("takes a Claude Code session id from the first record that carries one", async () => {
+    const log = writeLog(path.join(TEST_TMP, "logs"), "cc-id.jsonl", [
+      { type: "mode", timestamp: "2026-10-18T12:00:00.000Z" },
+      ...ccSession("dddddddd-1111-2222-3333-444444444444", [
+        ccUser({ text: "one", originKind: "human", isMeta: false, timestamp: "2026-10-18T12:00:01.000Z" }),
+        ccAssistant({
+          messageId: "msg_1",
+          text: "reply",
+          toolUses: [],
+          usage: null,
+          timestamp: "2026-10-18T12:00:02.000Z",
+        }),
+      ]),
+    ]);
+
+    const input = await readSegments(log, "claude-code");
+
+    expect(input.id).toBe("dddddddd-1111-2222-3333-444444444444");
+  });
+
+  /** Expected: the key depends only on the texts, so two runs agree. */
+  it("writes stable keys across two runs", async () => {
+    const log = writeLog(
+      path.join(TEST_TMP, "logs"),
+      "a.jsonl",
+      piSession("01a14cf6aaaaaaaa", [
+        piUser("one", "2026-10-18T10:00:00.000Z"),
+        piAssistant({
+          text: "reply",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:00:10.000Z",
+        }),
+        piUser("two", "2026-10-18T10:01:00.000Z"),
+        piAssistant({
+          text: "reply two",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:01:10.000Z",
+        }),
+      ]),
+    );
+    const first = path.join(TEST_TMP, "out-one");
+    const second = path.join(TEST_TMP, "out-two");
+
+    await capture(() => runReport(["--session", log, "--output", first]));
+    await capture(() => runReport(["--session", log, "--output", second]));
+
+    expect(readExchanges(second).map((exchange) => exchange.key)).toEqual(
+      readExchanges(first).map((exchange) => exchange.key),
+    );
+  });
+});
+
+describe("report — exchange trim", () => {
+  /**
+   * Fixture: a 40 KB agent text before the prompt and a 10 KB one after it.
+   * Expected: one exchange, trimmed, inside the cap, the prompt whole, the
+   * before text keeping its end and the after text keeping its start.
+   */
+  it("trims an oversized exchange to the cap and keeps the prompt whole", async () => {
+    const beforeTail = `${"T".repeat(99)}!`;
+    const before = `${"x".repeat(40 * 1024 - 100)}${beforeTail}`;
+    const afterStart = "START".repeat(20);
+    const after = `${afterStart}${"c".repeat(10 * 1024 - afterStart.length)}`;
+    const log = writeLog(
+      path.join(TEST_TMP, "logs"),
+      "big.jsonl",
+      piSession("01a14cf6aaaaaaaa", [
+        piUser("go", "2026-10-18T10:00:00.000Z"),
+        piAssistant({ text: before, toolCalls: [], usage: null, durationMs: 0, timestamp: "2026-10-18T10:00:10.000Z" }),
+        piUser("next", "2026-10-18T10:01:00.000Z"),
+        piAssistant({ text: after, toolCalls: [], usage: null, durationMs: 0, timestamp: "2026-10-18T10:01:10.000Z" }),
+      ]),
+    );
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code } = await capture(() => runReport(["--session", log, "--output", outDir]));
+
+    expect(code).toBe(0);
+    const exchanges = readExchanges(outDir);
+    expect(exchanges).toHaveLength(1);
+    const exchange = exchanges[0];
+    expect(exchange.trimmed).toBe(true);
+    expect(
+      Buffer.byteLength(
+        JSON.stringify({
+          agentBefore: exchange.agentBefore,
+          userFeedback: exchange.userFeedback,
+          agentAfter: exchange.agentAfter,
+        }),
+        "utf-8",
+      ),
+    ).toBeLessThanOrEqual(EXCHANGE_CAP_BYTES);
+    expect(exchange.userFeedback).toBe("next");
+    expect(exchange.agentBefore.endsWith(beforeTail)).toBe(true);
+    expect(exchange.agentAfter.startsWith(afterStart)).toBe(true);
+    expect(exchange.agentBefore.length).toBeLessThan(before.length);
+    expect(exchange.agentAfter.length).toBeLessThan(after.length);
+  });
+
+  /** Expected: a prompt over the cap alone gives no exchange. */
+  it("writes no exchange when the prompt alone is over the cap", async () => {
+    const log = writeLog(
+      path.join(TEST_TMP, "logs"),
+      "huge-prompt.jsonl",
+      piSession("01a14cf6aaaaaaaa", [
+        piUser("one", "2026-10-18T10:00:00.000Z"),
+        piAssistant({
+          text: "reply",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:00:10.000Z",
+        }),
+        piUser("p".repeat(33 * 1024), "2026-10-18T10:01:00.000Z"),
+        piAssistant({
+          text: "reply two",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:01:10.000Z",
+        }),
+      ]),
+    );
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code } = await capture(() => runReport(["--session", log, "--output", outDir]));
+
+    expect(code).toBe(0);
+    expect(readExchanges(outDir)).toEqual([]);
+  });
+
+  /**
+   * Fixture: five-character ends around a one-character prompt, three bytes of base.
+   * Expected: at two bytes over, the after text loses its end; at seven over, the
+   * after text empties first and then the before text loses its start.
+   */
+  it("drops the end of the after text, then the start of the before text", () => {
+    const fields = { agentBefore: "AAAAA", userFeedback: "p", agentAfter: "CCCCC" };
+    const base = Buffer.byteLength(
+      JSON.stringify({ agentBefore: "", userFeedback: fields.userFeedback, agentAfter: "" }),
+      "utf-8",
+    );
+
+    expect(fitExchange(fields, base + 8)).toEqual({ agentBefore: "AAAAA", userFeedback: "p", agentAfter: "CCC" });
+    expect(fitExchange(fields, base + 3)).toEqual({ agentBefore: "AAA", userFeedback: "p", agentAfter: "" });
+  });
+
+  /** Expected: the report's cap is the classifier's ceiling. */
+  it("uses the classifier's state cap", () => {
+    expect(EXCHANGE_CAP_BYTES).toBe(JEV_POLICY.stateCapBytes);
+  });
+});
+
+describe("report — reply codes", () => {
+  /** Two-prompt session: one exchange, which the scores fixture answers. */
+  function oneExchangeLog(): string {
+    return writeLog(
+      path.join(TEST_TMP, "logs"),
+      "a.jsonl",
+      piSession("01a14cf6aaaaaaaa", [
+        piUser("one", "2026-10-18T10:00:00.000Z"),
+        piAssistant({
+          text: "reply",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:00:10.000Z",
+        }),
+        piUser("two", "2026-10-18T10:01:00.000Z"),
+        piAssistant({
+          text: "reply two",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:01:10.000Z",
+        }),
+      ]),
+    );
+  }
+
+  /**
+   * Fixture: two exchanges, the first answered 0.49 on correction and the second 0.50.
+   * Expected: correction 0 in the first row's codes, 1 in the second's; one counted.
+   */
+  it("counts an answer of 0.5 as yes and 0.49 as no", async () => {
+    const log = writeLog(
+      path.join(TEST_TMP, "logs"),
+      "thr.jsonl",
+      piSession("01a14cf6aaaaaaaa", [
+        piUser("one", "2026-10-18T10:00:00.000Z"),
+        piAssistant({
+          text: "reply",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:00:10.000Z",
+        }),
+        piUser("two", "2026-10-18T10:01:00.000Z"),
+        piAssistant({
+          text: "reply two",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:01:10.000Z",
+        }),
+        piUser("three", "2026-10-18T10:02:00.000Z"),
+        piAssistant({
+          text: "reply three",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:02:10.000Z",
+        }),
+      ]),
+    );
+    const first = path.join(TEST_TMP, "out-one");
+    await capture(() => runReport(["--session", log, "--output", first]));
+    const exchanges = readExchanges(first);
+    const scoresFile = writeScores([
+      { key: exchanges[0].key, verdict: "scored", answers: codeAnswers({ correction: 0.49 }) },
+      { key: exchanges[1].key, verdict: "scored", answers: codeAnswers({ correction: 0.5 }) },
+    ]);
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code } = await capture(() => runReport(["--session", log, "--output", outDir, "--codes", scoresFile]));
+
+    expect(code).toBe(0);
+    expect(readMarkdown(outDir)).toContain("| 2026-10-18 01a14cf6 | 0 | 1 | 0 | 0 | 0 | 0 |");
+    const segments = readJsonl(outDir).filter((row) => row.level === "segment");
+    expect(segments.map((row) => row.codes)).toEqual([
+      null,
+      { approval: false, correction: false, holdBack: false, taskStep: false, chatter: false },
+      { approval: false, correction: true, holdBack: false, taskStep: false, chatter: false },
+    ]);
+  });
+
+  /**
+   * Fixture: session a has two exchanges but one line in the scores file; session b's
+   * one line is a fallback. Expected: both sessions and the Total row read not scored.
+   */
+  it("reads a session not scored when a line is missing or a fallback", async () => {
+    const logsDir = path.join(TEST_TMP, "logs");
+    writeLog(
+      logsDir,
+      "a.jsonl",
+      piSession("01a14cf6aaaaaaaa", [
+        piUser("one", "2026-10-18T10:00:00.000Z"),
+        piAssistant({
+          text: "reply",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:00:10.000Z",
+        }),
+        piUser("two", "2026-10-18T10:01:00.000Z"),
+        piAssistant({
+          text: "reply two",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:01:10.000Z",
+        }),
+        piUser("three", "2026-10-18T10:02:00.000Z"),
+        piAssistant({
+          text: "reply three",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:02:10.000Z",
+        }),
+      ]),
+    );
+    writeLog(
+      logsDir,
+      "b.jsonl",
+      piSession("02b2c3d4bbbbbbbb", [
+        piUser("hello", "2026-10-18T11:00:00.000Z"),
+        piAssistant({ text: "hi", toolCalls: [], usage: null, durationMs: 0, timestamp: "2026-10-18T11:00:10.000Z" }),
+        piUser("go", "2026-10-18T11:01:00.000Z"),
+        piAssistant({ text: "yes", toolCalls: [], usage: null, durationMs: 0, timestamp: "2026-10-18T11:01:10.000Z" }),
+      ]),
+    );
+    const first = path.join(TEST_TMP, "out-one");
+    await capture(() => runReport(["--dir", logsDir, "--output", first]));
+    const exchanges = readExchanges(first);
+    expect(exchanges).toHaveLength(3);
+    const scoresFile = writeScores([
+      { key: exchanges[0].key, verdict: "scored", answers: codeAnswers({ approval: 0.9 }) },
+      { key: exchanges[2].key, verdict: "fallback", answers: null },
+    ]);
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code } = await capture(() => runReport(["--dir", logsDir, "--output", outDir, "--codes", scoresFile]));
+
+    expect(code).toBe(0);
+    const md = readMarkdown(outDir);
+    const notScoredRow = "| not scored | not scored | not scored | not scored | not scored | not scored |";
+    expect(md).toContain(`| 2026-10-18 01a14cf6 ${notScoredRow}`);
+    expect(md).toContain(`| 2026-10-18 02b2c3d4 ${notScoredRow}`);
+    expect(md).toContain(`| ${strings.reportTotalRow} ${notScoredRow}`);
+    const rows = readJsonl(outDir);
+    for (const row of rows) {
+      if (row.level === "segment") expect(row.codes).toBeNull();
+      else expect(row.interventions).toBeNull();
+    }
+  });
+
+  /**
+   * Fixture: two exchanges with correction 0.9; the second prompt's segment holds an
+   * edit call and the third's holds none. Expected: correction 2, followed by edits 1.
+   */
+  it("counts corrections followed by edits only where the segment holds a change", async () => {
+    const log = writeLog(
+      path.join(TEST_TMP, "logs"),
+      "edits.jsonl",
+      piSession("01a14cf6aaaaaaaa", [
+        piUser("one", "2026-10-18T10:00:00.000Z"),
+        piAssistant({
+          text: "reply",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:00:10.000Z",
+        }),
+        piUser("two", "2026-10-18T10:01:00.000Z"),
+        piAssistant({
+          text: "edited it",
+          toolCalls: [{ id: "e1", name: "edit", command: null }],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:01:10.000Z",
+        }),
+        piUser("three", "2026-10-18T10:02:00.000Z"),
+        piAssistant({
+          text: "no change here",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:02:10.000Z",
+        }),
+      ]),
+    );
+    const first = path.join(TEST_TMP, "out-one");
+    await capture(() => runReport(["--session", log, "--output", first]));
+    const exchanges = readExchanges(first);
+    const scoresFile = writeScores([
+      { key: exchanges[0].key, verdict: "scored", answers: codeAnswers({ correction: 0.9 }) },
+      { key: exchanges[1].key, verdict: "scored", answers: codeAnswers({ correction: 0.9 }) },
+    ]);
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code } = await capture(() => runReport(["--session", log, "--output", outDir, "--codes", scoresFile]));
+
+    expect(code).toBe(0);
+    expect(readMarkdown(outDir)).toContain("| 2026-10-18 01a14cf6 | 0 | 2 | 0 | 0 | 0 | 1 |");
+  });
+
+  /** Fixture: a scores line without a verdict. Expected: the refusal message, nothing written. */
+  it("refuses a bad scores file without writing anything", async () => {
+    const log = oneExchangeLog();
+    const scoresFile = writeScores([{ key: "0123456789abcdef" }]);
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code, err } = await capture(() => runReport(["--session", log, "--output", outDir, "--codes", scoresFile]));
+
+    expect(code).toBe(2);
+    expect(err).toBe(`${strings.reportBadCodes(scoresFile)}\n`);
+    expect(fs.existsSync(path.join(outDir, "report.md"))).toBe(false);
+    expect(fs.existsSync(path.join(outDir, "report.jsonl"))).toBe(false);
+    expect(fs.existsSync(path.join(outDir, "exchanges.jsonl"))).toBe(false);
+  });
+
+  /**
+   * Fixture: two sessions, three exchanges.
+   *   | session | exchange | approval | correction | followed by edits |
+   *   | 01a14cf6 | 2 | 0.9 → yes | 0.1 → no | - |
+   *   | 01a14cf6 | 3 | 0.1 → no | 0.9 → yes (segment 3 holds an edit) | yes |
+   *   | 02b2c3d4 | 2 | 0.5 → yes | 0.1 → no | - |
+   *   | rows | | 1, 1, Total 2 | 1, 0, Total 1 | 1, 0, Total 1 |
+   */
+  it("renders the Your interventions table byte for byte", async () => {
+    const logsDir = path.join(TEST_TMP, "logs");
+    writeLog(
+      logsDir,
+      "a.jsonl",
+      piSession("01a14cf6aaaaaaaa", [
+        piUser("first", "2026-10-18T10:00:00.000Z"),
+        piAssistant({ text: "plan", toolCalls: [], usage: null, durationMs: 0, timestamp: "2026-10-18T10:00:10.000Z" }),
+        piUser("second", "2026-10-18T10:01:00.000Z"),
+        piAssistant({
+          text: "doing",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:01:10.000Z",
+        }),
+        piUser("third", "2026-10-18T10:02:00.000Z"),
+        piAssistant({
+          text: "changed",
+          toolCalls: [{ id: "e1", name: "edit", command: null }],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:02:10.000Z",
+        }),
+      ]),
+    );
+    writeLog(
+      logsDir,
+      "b.jsonl",
+      piSession("02b2c3d4bbbbbbbb", [
+        piUser("hello", "2026-10-18T11:00:00.000Z"),
+        piAssistant({ text: "hi", toolCalls: [], usage: null, durationMs: 0, timestamp: "2026-10-18T11:00:10.000Z" }),
+        piUser("go", "2026-10-18T11:01:00.000Z"),
+        piAssistant({ text: "yes", toolCalls: [], usage: null, durationMs: 0, timestamp: "2026-10-18T11:01:10.000Z" }),
+      ]),
+    );
+    const first = path.join(TEST_TMP, "out-one");
+    await capture(() => runReport(["--dir", logsDir, "--output", first]));
+    const exchanges = readExchanges(first);
+    expect(exchanges).toHaveLength(3);
+    const scoresFile = writeScores([
+      { key: exchanges[0].key, verdict: "scored", answers: codeAnswers({ approval: 0.9 }) },
+      { key: exchanges[1].key, verdict: "scored", answers: codeAnswers({ correction: 0.9 }) },
+      { key: exchanges[2].key, verdict: "scored", answers: codeAnswers({ approval: 0.5 }) },
+    ]);
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code } = await capture(() => runReport(["--dir", logsDir, "--output", outDir, "--codes", scoresFile]));
+
+    expect(code).toBe(0);
+    const expected = [
+      strings.reportInterventionsHeading,
+      strings.reportInterventionsColumns,
+      "| --- | --- | --- | --- | --- | --- | --- |",
+      "| 2026-10-18 01a14cf6 | 1 | 1 | 0 | 0 | 0 | 1 |",
+      "| 2026-10-18 02b2c3d4 | 1 | 0 | 0 | 0 | 0 | 0 |",
+      `| ${strings.reportTotalRow} | 2 | 1 | 0 | 0 | 0 | 1 |`,
+      "",
+      strings.reportAccuracyLine,
+    ].join("\n");
+    expect(readMarkdown(outDir)).toContain(expected);
+    const rows = readJsonl(outDir);
+    expect(rows.filter((row) => row.level === "session").map((row) => row.interventions)).toEqual([
+      { approval: 1, correction: 1, holdBack: 0, taskStep: 0, chatter: 0, correctionsFollowedByEdits: 1 },
+      { approval: 1, correction: 0, holdBack: 0, taskStep: 0, chatter: 0, correctionsFollowedByEdits: 0 },
+    ]);
+    expect(rows[rows.length - 1].interventions).toEqual({
+      approval: 2,
+      correction: 1,
+      holdBack: 0,
+      taskStep: 0,
+      chatter: 0,
+      correctionsFollowedByEdits: 1,
+    });
   });
 });

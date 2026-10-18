@@ -4,13 +4,16 @@
 /**
  * Session report: read one Pi or Claude Code session log (or a folder of them)
  * read-only and write report.md and report.jsonl with the Effort, Tokens and
- * cost, Checks, and Agent questions sections measured per segment. The other
- * sections are present and say "not scored" (Behavior says "not applicable" on
- * Claude Code logs). Offline: no model request, no network, nothing from src/.
+ * cost, Checks, and Agent questions sections measured per segment, plus
+ * exchanges.jsonl: one line per prompt with agent text on both sides, for
+ * compass score --exchanges. With --codes, the Your interventions section
+ * counts the scores that command wrote back. The other sections say "not
+ * scored" (Behavior says "not applicable" on Claude Code logs). Offline: no
+ * model request, no network, nothing from src/.
  *
  * Usage:
  *   node_modules/.bin/jiti scripts/compass/report.ts \
- *     (--session <file.jsonl> | --dir <folder>) --output <dir>
+ *     (--session <file.jsonl> | --dir <folder>) --output <dir> [--codes <scores.jsonl>]
  */
 
 import * as fs from "node:fs";
@@ -19,7 +22,7 @@ import * as path from "node:path";
 import * as readline from "node:readline";
 import { pathToFileURL } from "node:url";
 import { strings } from "./strings.js";
-import { parseArgv } from "./util.js";
+import { parseArgv, sha256Text } from "./util.js";
 
 export type LogFormat = "pi" | "claude-code";
 
@@ -29,6 +32,12 @@ const CHECK_KINDS: CheckKind[] = ["test", "lint", "typecheck"];
 
 /** Bytes of the most recent agent text kept before a check call. */
 const AGENT_TEXT_TAIL = 600;
+
+/** The classifier's state ceiling: a bigger exchange is trimmed before scoring. */
+export const EXCHANGE_CAP_BYTES = 32 * 1024;
+
+/** An answer at or above this counts as a yes. */
+const YES_THRESHOLD = 0.5;
 
 export interface EffortCounts {
   prompts: number;
@@ -113,6 +122,9 @@ export interface ChangeRec {
 export interface SegmentInput {
   index: number;
   promptHead: string;
+  promptText: string;
+  firstAgentText: string;
+  hasAgentText: boolean;
   firstTimestampMs: number;
   lastTimestampMs: number;
   assistants: AssistantRec[];
@@ -139,6 +151,54 @@ export interface EpisodeRec {
   kind: CheckKind;
   segmentIndex: number;
   fixed: boolean;
+}
+
+/** The three texts of one exchange, as the classifier receives them. */
+export interface ExchangeFields {
+  agentBefore: string;
+  userFeedback: string;
+  agentAfter: string;
+}
+
+/** One line of exchanges.jsonl: a prompt with the agent text before and after it. */
+export interface ExchangeLine extends ExchangeFields {
+  key: string;
+  session: string;
+  sessionId: string;
+  file: string;
+  index: number;
+  trimmed: boolean;
+}
+
+/** An exchange plus the one join fact it does not print: its segment holds a change. */
+export interface ExchangeRecord extends ExchangeLine {
+  hasChange: boolean;
+}
+
+/** The five reply codes, counted for one prompt. */
+export interface CodeFlags {
+  approval: boolean;
+  correction: boolean;
+  holdBack: boolean;
+  taskStep: boolean;
+  chatter: boolean;
+}
+
+/** The Your interventions counts for one session or for the total. */
+export interface InterventionCounts {
+  approval: number;
+  correction: number;
+  holdBack: number;
+  taskStep: number;
+  chatter: number;
+  correctionsFollowedByEdits: number;
+}
+
+/** One line of a scores file, as --codes reads it. */
+export interface ScoreLine {
+  key: string;
+  verdict: string;
+  answers: Record<string, number> | null;
 }
 
 /**
@@ -342,6 +402,10 @@ interface PendingPair {
 interface SegmentBuilder {
   index: number;
   promptHead: string;
+  promptText: string;
+  firstMessageKey: string | null;
+  firstAgentText: string;
+  hasAgentText: boolean;
   firstTimestampMs: number;
   lastTimestampMs: number;
   assistants: AssistantRec[];
@@ -399,6 +463,10 @@ function startSegment(state: BuilderState, promptText: string, timestampMs: numb
   state.current = {
     index: state.segments.length + 1,
     promptHead: collapseWhitespace(promptText).slice(0, 48),
+    promptText,
+    firstMessageKey: null,
+    firstAgentText: "",
+    hasAgentText: false,
     firstTimestampMs: timestampMs,
     lastTimestampMs: timestampMs,
     assistants: [],
@@ -422,16 +490,28 @@ function closeSegment(state: BuilderState): void {
   state.current = null;
 }
 
-/** Agent text accumulates per message (same message key appends, a new key replaces). */
+/**
+ * Agent text accumulates per message (same message key appends, a new key
+ * replaces). The first message that carries text supplies the segment's first
+ * agent text; a segment without text of its own has none to inherit.
+ */
 function appendAgentText(state: BuilderState, key: string, text: string): void {
   if (text === "") return;
+  const segment = state.current;
   if (state.agentKey === key) {
     state.agentText = state.agentText === "" ? text : `${state.agentText}\n${text}`;
+    if (segment !== null && segment.firstMessageKey === key)
+      segment.firstAgentText = `${segment.firstAgentText}\n${text}`;
     return;
   }
   if (state.agentText !== "") state.priorAgentText = state.agentText;
   state.agentKey = key;
   state.agentText = text;
+  if (segment !== null && segment.firstMessageKey === null) {
+    segment.firstMessageKey = key;
+    segment.firstAgentText = text;
+    segment.hasAgentText = true;
+  }
 }
 
 /** The most recent agent text before a call, last 600 characters. */
@@ -638,9 +718,9 @@ function claudeAssistant(state: BuilderState, record: Record<string, unknown>, t
 
 function claudeUser(state: BuilderState, record: Record<string, unknown>, timestampMs: number): void {
   const message = asRecord(record.message);
-  const content = message === null ? [] : asArray(message.content);
+  const content = message === null ? null : message.content;
   let hasToolResult = false;
-  for (const block of content) {
+  for (const block of asArray(content)) {
     const item = asRecord(block);
     if (item === null || item.type !== "tool_result") continue;
     hasToolResult = true;
@@ -656,6 +736,7 @@ function claudeUser(state: BuilderState, record: Record<string, unknown>, timest
   const origin = asRecord(record.origin);
   const isHuman = origin !== null && origin.kind === "human";
   if (!isHuman || record.isMeta === true || hasToolResult) return;
+  // A prompt's content is a string in real logs and an array of blocks elsewhere; both keep their text.
   startSegment(state, contentText(content), timestampMs);
 }
 
@@ -691,6 +772,9 @@ function toSegmentInput(builder: SegmentBuilder): SegmentInput {
   return {
     index: builder.index,
     promptHead: builder.promptHead,
+    promptText: builder.promptText,
+    firstAgentText: builder.firstAgentText,
+    hasAgentText: builder.hasAgentText,
     firstTimestampMs: builder.firstTimestampMs,
     lastTimestampMs: builder.lastTimestampMs,
     assistants: builder.assistants,
@@ -731,8 +815,9 @@ export async function readSegments(file: string, format: LogFormat): Promise<Ses
     }
     state.order++;
     const timestampMs = timestampOf(record);
-    if (state.order === 1) {
-      state.sessionId = (format === "pi" ? asString(record.id) : asString(record.sessionId)) ?? "";
+    if (state.sessionId === "") {
+      const recordId = format === "pi" ? (state.order === 1 ? asString(record.id) : null) : asString(record.sessionId);
+      if (recordId !== null) state.sessionId = recordId;
     }
     if (!state.sawStart && record.timestamp !== undefined && record.timestamp !== null) {
       state.startTimestamp = asString(record.timestamp) ?? "";
@@ -765,6 +850,214 @@ export async function readSegments(file: string, format: LogFormat): Promise<Ses
 
 function sum(values: number[]): number {
   return values.reduce((total, value) => total + value, 0);
+}
+
+/** The JSON-escaped size of one string value: its bytes between the two quotes. */
+function escapedBytes(text: string): number {
+  return Buffer.byteLength(JSON.stringify(text), "utf-8") - 2;
+}
+
+function exchangeBytes(fields: ExchangeFields): number {
+  return Buffer.byteLength(
+    JSON.stringify({
+      agentBefore: fields.agentBefore,
+      userFeedback: fields.userFeedback,
+      agentAfter: fields.agentAfter,
+    }),
+    "utf-8",
+  );
+}
+
+/** Drop one character from the end, keeping a surrogate pair together. */
+function dropLastCharacter(text: string): string {
+  const last = text.slice(-2);
+  return [...last].length === 1 && last.length === 2 ? text.slice(0, -2) : text.slice(0, -1);
+}
+
+/** Drop one character, keeping a surrogate pair together. */
+function dropFirstCharacter(text: string): string {
+  const first = text.slice(0, 2);
+  return [...first].length === 1 && first.length === 2 ? text.slice(2) : text.slice(1);
+}
+
+/** The longest end of `text` whose JSON-escaped size fits `budget`. */
+function keepSuffix(text: string, budget: number): string {
+  let low = 0;
+  let high = text.length;
+  while (low < high) {
+    const kept = Math.ceil((low + high) / 2);
+    if (escapedBytes(text.slice(text.length - kept)) <= budget) low = kept;
+    else high = kept - 1;
+  }
+  let suffix = text.slice(text.length - low);
+  while (suffix !== "" && escapedBytes(suffix) > budget) suffix = suffix.slice(1);
+  return suffix;
+}
+
+/** The longest start of `text` whose JSON-escaped size fits `budget`. */
+function keepPrefix(text: string, budget: number): string {
+  let low = 0;
+  let high = text.length;
+  while (low < high) {
+    const kept = Math.ceil((low + high) / 2);
+    if (escapedBytes(text.slice(0, kept)) <= budget) low = kept;
+    else high = kept - 1;
+  }
+  let prefix = text.slice(0, low);
+  while (prefix !== "" && escapedBytes(prefix) > budget) prefix = prefix.slice(0, -1);
+  return prefix;
+}
+
+/**
+ * The exchange as the classifier receives it: the prompt whole, the end of the
+ * agent text before it, and the start of the agent text after it. Over the cap,
+ * the after text gets at most a quarter of the room left by the prompt and the
+ * before text the rest; null when the prompt alone does not fit.
+ */
+export function trimExchange(fields: ExchangeFields, cap: number): (ExchangeFields & { trimmed: boolean }) | null {
+  if (exchangeBytes(fields) <= cap) return { ...fields, trimmed: false };
+  const room = cap - exchangeBytes({ agentBefore: "", userFeedback: fields.userFeedback, agentAfter: "" });
+  if (room < 0) return null;
+  const afterShare = Math.floor(room / 4);
+  const fitted = fitExchange(
+    {
+      agentBefore: keepSuffix(fields.agentBefore, room - afterShare),
+      userFeedback: fields.userFeedback,
+      agentAfter: keepPrefix(fields.agentAfter, afterShare),
+    },
+    cap,
+  );
+  return { ...fitted, trimmed: true };
+}
+
+/**
+ * Shorten an over-cap exchange by characters until it fits: the end of the after
+ * text goes first, then the start of the before text, so the kept parts stay at
+ * the prompt's edge.
+ */
+export function fitExchange(fields: ExchangeFields, cap: number): ExchangeFields {
+  let agentBefore = fields.agentBefore;
+  let agentAfter = fields.agentAfter;
+  while (exchangeBytes({ agentBefore, userFeedback: fields.userFeedback, agentAfter }) > cap) {
+    if (agentAfter !== "") agentAfter = dropLastCharacter(agentAfter);
+    else if (agentBefore !== "") agentBefore = dropFirstCharacter(agentBefore);
+    else break;
+  }
+  return { agentBefore, userFeedback: fields.userFeedback, agentAfter };
+}
+
+/** The exchange's cache and score key: 16 hex characters over the session and the three texts. */
+export function exchangeKey(sessionId: string, index: number, fields: ExchangeFields): string {
+  return sha256Text(
+    `${sessionId}\n${index}\n${fields.agentBefore}\n${fields.userFeedback}\n${fields.agentAfter}`,
+  ).slice(0, 16);
+}
+
+/**
+ * Every prompt that has agent text on both sides: the prompt of segment i, the
+ * last agent text of segment i − 1, and the first agent text of segment i.
+ */
+export function buildExchanges(input: SessionInput): ExchangeRecord[] {
+  const exchanges: ExchangeRecord[] = [];
+  for (let position = 1; position < input.segments.length; position++) {
+    const before = input.segments[position - 1];
+    const after = input.segments[position];
+    // A segment with text of its own keeps that text in lastAgentText; closeSegment only
+    // borrows a predecessor's when the segment has none, so hasAgentText guards the borrow.
+    if (!before.hasAgentText || !after.hasAgentText) continue;
+    const fields = trimExchange(
+      {
+        agentBefore: before.lastAgentText,
+        userFeedback: after.promptText,
+        agentAfter: after.firstAgentText,
+      },
+      EXCHANGE_CAP_BYTES,
+    );
+    if (fields === null) continue;
+    exchanges.push({
+      key: exchangeKey(input.id, after.index, fields),
+      session: sessionLabel(input),
+      sessionId: input.id,
+      file: path.basename(input.file),
+      index: after.index,
+      agentBefore: fields.agentBefore,
+      userFeedback: fields.userFeedback,
+      agentAfter: fields.agentAfter,
+      trimmed: fields.trimmed,
+      hasChange: after.changes.length > 0,
+    });
+  }
+  return exchanges;
+}
+
+/** The sessions' exchanges with any repeated key dropped, first one wins. */
+export function dedupeExchanges(bySession: ExchangeRecord[][]): ExchangeRecord[][] {
+  const seen = new Set<string>();
+  return bySession.map((exchanges) =>
+    exchanges.filter((exchange) => {
+      if (seen.has(exchange.key)) return false;
+      seen.add(exchange.key);
+      return true;
+    }),
+  );
+}
+
+/** exchanges.jsonl: one line per exchange, in session order then segment order. */
+export function renderExchanges(bySession: ExchangeRecord[][]): string {
+  const lines: string[] = [];
+  for (const exchanges of bySession) {
+    for (const exchange of exchanges) {
+      lines.push(
+        JSON.stringify({
+          key: exchange.key,
+          session: exchange.session,
+          sessionId: exchange.sessionId,
+          file: exchange.file,
+          index: exchange.index,
+          agentBefore: exchange.agentBefore,
+          userFeedback: exchange.userFeedback,
+          agentAfter: exchange.agentAfter,
+          trimmed: exchange.trimmed,
+        }),
+      );
+    }
+  }
+  return lines.length === 0 ? "" : `${lines.join("\n")}\n`;
+}
+
+/** A scores file as a key → line map; null when a line is unreadable or lacks key and verdict. */
+export function parseScores(file: string): Map<string, ScoreLine> | null {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(file, "utf-8");
+  } catch {
+    return null;
+  }
+  const scores = new Map<string, ScoreLine>();
+  for (const line of raw.split("\n")) {
+    if (line.trim() === "") continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      return null;
+    }
+    const record = asRecord(parsed);
+    if (record === null) return null;
+    const key = asString(record.key);
+    const verdict = asString(record.verdict);
+    if (key === null || verdict === null) return null;
+    const answers = asRecord(record.answers);
+    const values: Record<string, number> = {};
+    if (answers !== null) {
+      for (const [id, value] of Object.entries(answers)) {
+        const answer = asNumber(value);
+        if (answer !== null) values[id] = answer;
+      }
+    }
+    if (!scores.has(key)) scores.set(key, { key, verdict, answers: answers === null ? null : values });
+  }
+  return scores;
 }
 
 function emptyChecks(): CheckCountsByKind {
@@ -849,7 +1142,7 @@ function endsWithQuestion(text: string): boolean {
   return lines.slice(-3).some((line) => line.endsWith("?"));
 }
 
-/** The S8-01 metrics for one segment. */
+/** The report's metrics for one segment. */
 export function measureSegment(segment: SegmentInput, format: LogFormat, episodes: EpisodeRec[]): SegmentReport {
   const toolMs = format === "pi" ? sum(segment.toolResultDurationsMs) : sum(segment.toolPairMs);
   const wallMs =
@@ -957,6 +1250,88 @@ export interface FullReport {
   skippedFiles: number;
   sessions: SessionReport[];
   total: TotalReport;
+  exchanges: ExchangeRecord[][];
+  scores: Map<string, ScoreLine> | null;
+}
+
+/** The five codes for one prompt: an answer at or above 0.5 is a yes. */
+function flagsOf(answers: Record<string, number> | null): CodeFlags {
+  const answer = (id: string): boolean => (answers?.[id] ?? 0) >= YES_THRESHOLD;
+  return {
+    approval: answer("approval"),
+    correction: answer("correction"),
+    holdBack: answer("hold_back"),
+    taskStep: answer("task_step"),
+    chatter: answer("chatter"),
+  };
+}
+
+/** One session's join: its counts when every exchange scored, and each prompt's codes. */
+interface SessionJoin {
+  interventions: InterventionCounts | null;
+  codes: Map<number, CodeFlags>;
+}
+
+/**
+ * A session is scored when every one of its exchanges has a scored line; its
+ * counts and per-prompt codes then come from those answers. A session with no
+ * exchanges is scored with zero counts.
+ */
+function joinSession(exchanges: ExchangeRecord[], scores: Map<string, ScoreLine> | null): SessionJoin {
+  const none: SessionJoin = { interventions: null, codes: new Map() };
+  if (scores === null) return none;
+  for (const exchange of exchanges) {
+    const line = scores.get(exchange.key);
+    if (line === undefined || line.verdict !== "scored") return none;
+  }
+  const counts: InterventionCounts = {
+    approval: 0,
+    correction: 0,
+    holdBack: 0,
+    taskStep: 0,
+    chatter: 0,
+    correctionsFollowedByEdits: 0,
+  };
+  const codes = new Map<number, CodeFlags>();
+  for (const exchange of exchanges) {
+    const line = scores.get(exchange.key);
+    const flags = flagsOf(line === undefined ? null : line.answers);
+    codes.set(exchange.index, flags);
+    if (flags.approval) counts.approval++;
+    if (flags.correction) counts.correction++;
+    if (flags.holdBack) counts.holdBack++;
+    if (flags.taskStep) counts.taskStep++;
+    if (flags.chatter) counts.chatter++;
+    if (flags.correction && exchange.hasChange) counts.correctionsFollowedByEdits++;
+  }
+  return { interventions: counts, codes };
+}
+
+function joinReport(report: FullReport): SessionJoin[] {
+  return report.sessions.map((_session, position) => joinSession(report.exchanges[position] ?? [], report.scores));
+}
+
+/** The total row: the sum of every session's counts, or null when any session is not scored. */
+function totalInterventions(joins: SessionJoin[]): InterventionCounts | null {
+  const total: InterventionCounts = {
+    approval: 0,
+    correction: 0,
+    holdBack: 0,
+    taskStep: 0,
+    chatter: 0,
+    correctionsFollowedByEdits: 0,
+  };
+  for (const join of joins) {
+    const counts = join.interventions;
+    if (counts === null) return null;
+    total.approval += counts.approval;
+    total.correction += counts.correction;
+    total.holdBack += counts.holdBack;
+    total.taskStep += counts.taskStep;
+    total.chatter += counts.chatter;
+    total.correctionsFollowedByEdits += counts.correctionsFollowedByEdits;
+  }
+  return total;
 }
 
 function formatLabel(format: LogFormat): string {
@@ -1008,6 +1383,40 @@ function checkCells(row: MeasuredRow): string[] {
 
 function questionRow(label: string, row: MeasuredRow): string {
   return tableRow([label, strings.reportNumber(row.effort.prompts), strings.reportNumber(row.questions)]);
+}
+
+/** Your interventions: the counts table when scores were read, the not-scored text otherwise. */
+function renderInterventions(report: FullReport): string {
+  if (report.scores === null) {
+    return [strings.reportInterventionsHeading, strings.reportNotScored, strings.reportAccuracyLine].join("\n");
+  }
+  const joins = joinReport(report);
+  const countsCells = (counts: InterventionCounts | null): string[] =>
+    counts === null
+      ? Array.from({ length: 6 }, () => strings.reportNotScored)
+      : [
+          strings.reportNumber(counts.approval),
+          strings.reportNumber(counts.correction),
+          strings.reportNumber(counts.holdBack),
+          strings.reportNumber(counts.taskStep),
+          strings.reportNumber(counts.chatter),
+          strings.reportNumber(counts.correctionsFollowedByEdits),
+        ];
+  const rows = report.sessions.map((session, position) =>
+    tableRow([session.label, ...countsCells(joins[position].interventions)]),
+  );
+  if (report.sessions.length >= 2)
+    rows.push(tableRow([strings.reportTotalRow, ...countsCells(totalInterventions(joins))]));
+  // A blank line keeps the accuracy line out of the table's last row.
+  return [
+    [
+      strings.reportInterventionsHeading,
+      strings.reportInterventionsColumns,
+      separatorRow(strings.reportInterventionsColumns),
+      ...rows,
+    ].join("\n"),
+    strings.reportAccuracyLine,
+  ].join("\n\n");
 }
 
 /** The report.md body: the approved title and header, the seven sections, the footer. */
@@ -1066,11 +1475,7 @@ export function renderMarkdown(report: FullReport): string {
     ...questionRows,
   ].join("\n");
 
-  const interventionsSection = [
-    strings.reportInterventionsHeading,
-    strings.reportNotScored,
-    strings.reportAccuracyLine,
-  ].join("\n");
+  const interventionsSection = renderInterventions(report);
   const lessonsSection = [strings.reportLessonsHeading, strings.reportNotScored].join("\n");
   const behaviorSection = [
     strings.reportBehaviorHeading,
@@ -1098,7 +1503,9 @@ export function renderMarkdown(report: FullReport): string {
 /** The report.jsonl body: one object per segment, per session, and one total. */
 export function renderJsonl(report: FullReport): string {
   const lines: string[] = [];
-  for (const session of report.sessions) {
+  const joins = joinReport(report);
+  report.sessions.forEach((session, position) => {
+    const codes = joins[position].codes;
     for (const segment of session.segments) {
       lines.push(
         JSON.stringify({
@@ -1111,6 +1518,7 @@ export function renderJsonl(report: FullReport): string {
           costUsd: segment.costUsd,
           checks: segment.checks,
           questions: segment.questions,
+          codes: codes.get(segment.index) ?? null,
         }),
       );
     }
@@ -1126,9 +1534,10 @@ export function renderJsonl(report: FullReport): string {
         costUsd: session.costUsd,
         checks: session.checks,
         questions: session.questions,
+        interventions: joins[position].interventions,
       }),
     );
-  }
+  });
   lines.push(
     JSON.stringify({
       level: "total",
@@ -1139,6 +1548,7 @@ export function renderJsonl(report: FullReport): string {
       costUsd: report.total.costUsd,
       checks: report.total.checks,
       questions: report.total.questions,
+      interventions: totalInterventions(joins),
     }),
   );
   return `${lines.join("\n")}\n`;
@@ -1195,6 +1605,9 @@ export async function main(argv: string[]): Promise<number> {
   const dirArg = typeof args.dir === "string" ? args.dir : null;
   const outputArg = typeof args.output === "string" ? args.output : null;
   if (outputArg === null || (sessionArg === null) === (dirArg === null)) return refuse(strings.reportUsage);
+  const codesArg = typeof args.codes === "string" ? args.codes : null;
+  const scores = codesArg === null ? null : parseScores(codesArg);
+  if (scores === null && codesArg !== null) return refuse(strings.reportBadCodes(codesArg));
 
   const inputPath = sessionArg !== null ? sessionArg : String(dirArg);
   const inputDir = sessionArg !== null ? path.dirname(path.resolve(sessionArg)) : path.resolve(String(dirArg));
@@ -1237,6 +1650,7 @@ export async function main(argv: string[]): Promise<number> {
   inputs.sort((a, b) => a.startMs - b.startMs || a.file.localeCompare(b.file));
   const sessions = inputs.map((input) => measureSession(input));
   const total = measureTotal(sessions, skippedFiles);
+  const exchanges = dedupeExchanges(inputs.map((input) => buildExchanges(input)));
   const report: FullReport = {
     inputPath,
     format: candidates[0].format,
@@ -1244,11 +1658,14 @@ export async function main(argv: string[]): Promise<number> {
     skippedFiles,
     sessions,
     total,
+    exchanges,
+    scores,
   };
 
   fs.mkdirSync(outputResolved, { recursive: true });
   fs.writeFileSync(path.join(outputResolved, "report.md"), renderMarkdown(report), "utf-8");
   fs.writeFileSync(path.join(outputResolved, "report.jsonl"), renderJsonl(report), "utf-8");
+  fs.writeFileSync(path.join(outputResolved, "exchanges.jsonl"), renderExchanges(exchanges), "utf-8");
   process.stdout.write(`${strings.reportDone(sessions.length, total.effort.prompts, shownOutput(outputArg))}\n`);
   return 0;
 }
