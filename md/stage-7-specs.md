@@ -1,6 +1,6 @@
 # Stage 7 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.7.0** · Status: **Ready (stage-7-task.md approved by the user, 2026-10-17)**
+Project: **pi-session-compass** · Revision: **0.8.0** · Status: **Ready (stage-7-task.md approved by the user, 2026-10-17)**
 
 Date: **2026-10-18**
 
@@ -336,6 +336,12 @@ npm test
 npm run test:compass
 ```
 
+**Round 2 (CC review of r1, 2026-10-18):** r1 is accepted except one regression, md/bugs.md B24. The manual `records.next()` loop in `streamAndExtract` no longer closes the record generator on an early return or a thrown error (`for await` called its `return()`), so every limit stop, stop-reason return, malformed-record error, or PAUSED leaves the file's read stream open.
+
+1. **Fix:** in `streamAndExtract`, wrap the record loop and its returns in `try { … } finally { await records.return(undefined); }`. Nothing else changes; the lookahead stays.
+2. **Test (fails on r1):** in tests/collect-remaining.test.ts, skipped when `/proc/self/fd` does not exist: write five files like b.jsonl (distinct mtimes), call `scanSessions(portraitDir, freshState(), 10, 1)` five times (each a limit stop with records left), wait 200 ms, then assert that no entry of `/proc/self/fd` links to a path under `portraitDir`. Quote its failing output on r1 in the handoff.
+3. **Verification:** the spec's Verification block; handoff outputs/s7/handoff/S7-04-T2-r2.md (round-2 changes only).
+
 ## CC review and gate (not for the coder)
 
 Review per planner-prompt.md Step 2; ledger entry in md/ledger.jsonl. Check: `candidateText` is read only by the harness; the B13 refusal makes no model request; B15 output matches the approved text byte for byte; B20 did not change src/; B21's report text is otherwise identical. Update md/bugs.md (status, fix commit, evidence) for each bug.
@@ -346,6 +352,6 @@ Planner difficulty: S7-01 easy; S7-02 easy; S7-03 medium; S7-04 T1 easy; S7-04 T
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.5.0 | 2026-10-18 | S7-03 spec: options A, B, and C with the user-approved text; audit answers. |
 | 0.6.0 | 2026-10-18 | S7-04 T1 spec: tests for the S7-03 mutant survivors. |
 | 0.7.0 | 2026-10-18 | S7-04 T2 spec: P4, P11, B16 fixes (user-approved). |
+| 0.8.0 | 2026-10-18 | S7-04 T2 round 2: close the record generator (B24). |

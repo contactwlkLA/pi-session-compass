@@ -1,6 +1,6 @@
 # Stage 7 — Fixes and deferred cleanup
 
-Project: **pi-session-compass** · Revision: **0.7.0** · Status: **Approved (user, 2026-10-17)**
+Project: **pi-session-compass** · Revision: **0.8.0** · Status: **Approved (user, 2026-10-17)**
 
 Date: **2026-10-18**
 
@@ -53,10 +53,10 @@ Parent: [handoff.md](handoff.md) (open bugs and deferred work). Operating rules:
 ### S7-04 — Investigations (CC; Pi for any fix)
 
 - [x] **T1** Tests for the S7-03 spot-mutant survivors (no source change): an empty `PI_PORTRAIT_*` env var shows `· default`; `portrait:config` is registered with its approved description; the lock poll and the footer timer use `PLUGIN_CONFIG.lockPollMs` and `PLUGIN_CONFIG.footerRefreshMs`. Each new test kills its mutant (CC re-runs the mutants at review). *Done 2026-10-18: 4 tests, 4 of 4 mutants killed (outputs/s7/handoff/S7-04-T1-r1.md).*
-- [ ] **T2** Fixes for P4, P11, and B16 in one Pi task (user 2026-10-18; stage-7-specs.md S7-04 T2).
-- [ ] **P4** Offline test: does a manual collect over two files stop after the first productive trio of the last file? If yes, fix in the scan loop (spec'd as its own Pi task); if no, mark FIXED with the test.
-- [ ] **B16** Find the test that adds the listeners; fix the leak or raise the limit in that test only.
-- [ ] **P11** Decide what the correct pairing is for a user record before a file's first assistant text; test the detector against it; fix or mark WONTFIX with the reason.
+- [x] **T2** Fixes for P4, P11, and B16 in one Pi task (user 2026-10-18; stage-7-specs.md S7-04 T2). *Done 2026-10-18: accepted in round 2 (round 1 added B24, an open read stream; fixed in round 2); outputs/s7/handoff/S7-04-T2-r1.md, -r2.md.*
+- [x] **P4** Offline test: does a manual collect over two files stop after the first productive trio of the last file? If yes, fix in the scan loop (spec'd as its own Pi task); if no, mark FIXED with the test.
+- [x] **B16** Find the test that adds the listeners; fix the leak or raise the limit in that test only.
+- [x] **P11** Decide what the correct pairing is for a user record before a file's first assistant text; test the detector against it; fix or mark WONTFIX with the reason.
 - [x] **B23** Look for a recurrence in existing traces; if needed, one live run with `debugDumpLimit` > 0 (run type `compare`, limits suggested and user-confirmed at launch). *Done 2026-10-18: duplicate of P2, found in existing traces; no live run (bugs.md).*
 - [x] **P2** Propose WONTFIX: zero-output responses come from the provider and are already counted. *Done 2026-10-18: WONTFIX, user-approved (bugs.md).*
 
@@ -64,6 +64,6 @@ Parent: [handoff.md](handoff.md) (open bugs and deferred work). Operating rules:
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.5.0 | 2026-10-18 | S7-03: the user chose options A, B, and C; built. |
 | 0.6.0 | 2026-10-18 | Spot mutants at every review; S7-04 T1 adds the tests for the S7-03 survivors. |
 | 0.7.0 | 2026-10-18 | S7-04: P2 WONTFIX, B23 closed; T2 fixes P4, P11, B16. |
+| 0.8.0 | 2026-10-18 | S7-04 T2 done: P4, P11, B16 fixed; B24 found and fixed in review. |
