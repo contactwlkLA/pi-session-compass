@@ -298,6 +298,15 @@ npm test
 npm run test:compass
 ```
 
+**Audit answers (CC, 2026-10-18; outputs/s8/handoff/S8-04-audit.md):** your plan assumptions stand.
+
+1. **`userChecked` with nothing graded:** `false` (no graded rule means nothing was spot-checked).
+2. **Newlines in a rule:** as you propose: lessons.md collapses whitespace runs to single spaces; lessons.jsonl keeps the raw text.
+3. **`loadSelected` returns null:** reuse `scoreCorpusChanged(corpus)`, as `export` and `check` do.
+4. **Missing-command test:** yes, update that one assertion to the new message and list it under `Done`.
+
+Now code the task; handoff outputs/s8/handoff/S8-04-r1.md.
+
 **After acceptance (CC):** a live extraction run on fixtures/s8-pi (`extract.ts --set all`, run type `evaluate`, limits suggested by CC and confirmed by the user at launch); `labels lessons` with seed `s8-lessons`; CC grades the sample and every rule of the last finished session (01a14dea); the user spot-checks; then the report on this project's Pi folder and on that session alone.
 
 ## CC review and gate (not for the coder)
