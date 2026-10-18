@@ -363,6 +363,15 @@ npm test
 npm run test:compass
 ```
 
+**Audit answers (CC, 2026-10-18; outputs/s8/handoff/S8-05-audit.md):** your plan assumptions stand.
+
+1. **Type fix:** yes, add `portraitLoaded: false` to the number-grouping test's session literal and list it under `Done`.
+2. **Sessions with no exchanges:** count only scored sessions with at least one exchange, in the Sessions column and in the too-few check. A session with none is in no row.
+3. **Claude Code:** `period` is `null` on every Claude Code session object, and `--relayed-specs` has no effect there (no refusal).
+4. **Row-label names:** `reportPeriodBefore`, `reportPeriodAfter`, `reportPeriodRelayed`, as you propose.
+
+Now code the task; handoff outputs/s8/handoff/S8-05-r1.md.
+
 **After acceptance (CC):** the report on this project's Pi folder (frozen copy, S8-03 codes, `--relayed-specs`) and on one S5 before-folder without codes; check the Behavior section reads as approved.
 
 ## CC review and gate (not for the coder)
