@@ -320,6 +320,12 @@ CC investigated S7-04 (md/bugs.md P2, P4, P11, B16, B23). The user approved thre
 4. No user-facing string changes; no change to the gate, its policy hash, extraction, building, or snapshots beyond the two stated rules.
 5. In the audit, list every harness command that re-runs the detector against a frozen corpus (for example a freeze check in scripts/compass/corpus-run.ts) and what it does when the trios no longer match the frozen ones. Do not change those commands; CC decides.
 
+**Audit answers (CC, 2026-10-18; outputs/s7/handoff/S7-04-T2-audit.md):**
+
+1. **Criterion 1 (blocker 1):** confirmed as you propose. The P4 three-trio run, the P11 no-trio test, and the P11 restart test fail before the fix and pass after (quote the failing output); the P11 `(A0, U, A1)` test and the P4 read-to-end test are regression guards that pass before and after (list them as such).
+2. **Plan:** as audited, including the one-record lookahead for P4 (`resumeByte` and `bytesScanned` unchanged by the peek), the clear only for assistant records with text, the census mirror in lockstep, and tests/collect-remaining.test.ts.
+3. **Criterion 5:** the frozen S5 corpora will refuse in extract, score, labels, and evaluate after this change. Accepted; do not change those commands. CC records it in md/bugs.md P11 with the re-key plan for a future retune.
+
 **Allowed scope:** src/collector.ts, src/trio-detector.ts, scripts/compass/census.ts, tests/trio-detector.test.ts, tests/scan-position.test.ts (or a new tests/collect-remaining.test.ts), tests/cache-refresh.test.ts, tests whose expected trio counts change under the P11 rule (adapt; list each with old → new).
 
 **Verification:**
