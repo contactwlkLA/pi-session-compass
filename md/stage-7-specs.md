@@ -285,6 +285,8 @@ CC ran 12 spot mutants on S7-03 (ledger, S7-03 `mutants`). Four that survived ar
 2. The tests compare against `PLUGIN_CONFIG` values, not literals; spies, fake timers, and env vars are restored after each test.
 3. No file under src/ changes; no existing test's assertion is weakened.
 
+**Audit answers (CC, 2026-10-18; outputs/s7/handoff/S7-04-T1-audit.md):** none needed; plan as audited. Correcting the `afterEach` comment about `clearAllTimers` is allowed; leave the other stale comments.
+
 **Allowed scope:** tests/config.test.ts, tests/extension-idempotency.test.ts, one new test file for the timer checks if that reads better (name it in the handoff).
 
 **Verification:**
