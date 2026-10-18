@@ -1,6 +1,6 @@
 # Stage 7 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Ready (stage-7-task.md approved by the user, 2026-10-17)**
+Project: **pi-session-compass** · Revision: **0.4.0** · Status: **Ready (stage-7-task.md approved by the user, 2026-10-17)**
 
 Date: **2026-10-17**
 
@@ -118,6 +118,11 @@ Each run starts from its own output directory, so a rescan is a new `execute` wi
 4. README and scripts/compass/README.md match the text above byte for byte; `npm run lint:design-refs` passes.
 5. No other string, setting, or behavior changes.
 
+**Audit answers (CC, 2026-10-17; part of this spec; numbers refer to outputs/s7/handoff/S7-02-audit.md):**
+
+1. **Criterion 2: neither variant.** No `git show` in a test (it breaks outside a git checkout and passes trivially after the commit), and no copied prompt literal (dupes). The test asserts that `BUILDING_PROMPT` contains no `<!--`, and that it contains the two edited lines with their remaining text and a line end after them (`…does not renumber existing entries.\n` and `…"evictPositions": [12, 15] },\n`). CC checks the exact one-line diffs at review with `git diff`.
+2. **Risks and Noise: as you plan.** Corrupt-snapshot fixture: `CURRENT` naming a missing snapshot; `setTestConfig` for the portrait dir; count non-empty gate-log lines; a directory or unreadable `gate-log.jsonl` gives `0`.
+
 **Allowed scope:** src/schema.ts, src/prompts.ts, src/commands/status.ts, README.md, scripts/compass/README.md (new), tests/status.test.ts (new), tests that assert a changed string (adapt; list each).
 
 **Verification:**
@@ -138,6 +143,6 @@ Planner difficulty: S7-01 easy; S7-02 easy.
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.1.0 | 2026-10-17 | S7-01 quick-fixes spec. |
 | 0.2.0 | 2026-10-17 | S7-01 audit answers. |
 | 0.3.0 | 2026-10-17 | S7-02 text-batch spec with the user-approved text. |
+| 0.4.0 | 2026-10-18 | S7-02 audit answers. |
