@@ -1,6 +1,6 @@
 # Stage 8 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.3.0** · Status: **S8-01 approved (user, 2026-10-18); S8-02 ready (command messages approved)**
+Project: **pi-session-compass** · Revision: **0.4.0** · Status: **S8-01 approved; S8-02 done; S8-03 ready (design and text approved by the user, 2026-10-18)**
 
 Date: **2026-10-18**
 
@@ -162,6 +162,65 @@ npm run test:compass
 3. **Nit:** the Prompts, Turns, and Turns ending with a question columns use the thousands format too (`2,202`, not `2202`).
 4. **Verification:** the S8-02 block; handoff outputs/s8/handoff/S8-02-r2.md (round-2 changes only).
 
+## S8-03 — Your interventions: score every prompt
+
+**Approved by the user, 2026-10-18 (design change to stage-8-task.md S8-03):** every prompt after the first is scored from the report's own segments, in Pi and Claude Code logs alike, instead of from a trio corpus (the trio detector reads only Pi logs and skips short approvals). The report writes the exchanges, `score.ts` scores them with the reply-code questions, and the report reads the scores back. Exchanges over the classifier's 32 KB limit are trimmed, not skipped. The Claude Code run sends this project's Claude Code prompts and the agent text around them to api.typesafe.ai (user-approved).
+
+**Audit (shorter than before):** write only `Blockers` and `Questions` (one line `none` each if so); skip `Risks` and `Noise` unless something would break. Read only the Read list; do not search `node_modules`: the record shapes are in S8-01 and in the code you wrote in S8-02.
+
+**Read:** scripts/compass/report.ts (your S8-02 code: segments, agent text, changes, rendering, `main`); scripts/compass/score.ts (whole `main`: checks order, confirmation block, cache, stop rules, outputs); scripts/compass/corpus-run.ts (`loadCache`, `appendCacheLine`); scripts/compass/strings.ts (`// ── Corpus scoring ──` and `// ── Session report ──`); scripts/compass/questions/reply-codes-v1.json; src/jev.ts (`buildGateState`, `JEV_POLICY.stateCapBytes`); tests/compass/score.test.ts (fetch mock and key handling); tests/compass/report.test.ts.
+
+**Where and how (CC's plan):**
+
+1. **Exchanges (report.ts).** For each session and each segment `i ≥ 2` where segment `i − 1` has agent text and segment `i` has agent text, one exchange: `agentBefore` = the last agent text of segment `i − 1`, `userFeedback` = the prompt text of segment `i`, `agentAfter` = the first agent text of segment `i` (agent text = the text blocks of one assistant message, Claude Code records grouped by `message.id`, as in S8-02). Other prompts get no exchange and are not counted. Each `report` run writes `exchanges.jsonl` next to report.md, one line per exchange: `key`, `session` (the label), `sessionId`, `file` (base name), `index` (segment index), `agentBefore`, `userFeedback`, `agentAfter`, `trimmed`.
+   - **Key:** the first 16 hex characters of sha256 over `${sessionId}\n${index}\n${agentBefore}\n${userFeedback}\n${agentAfter}` (after trimming), like `trioKey` in corpus.ts.
+   - **Trim:** size = `Buffer.byteLength(JSON.stringify({agentBefore, userFeedback, agentAfter}))`. When it is over `EXCHANGE_CAP_BYTES` (a report.ts constant, 32 × 1024; a test asserts it equals `JEV_POLICY.stateCapBytes`; report.ts itself imports nothing from src/): keep `userFeedback` whole, keep the **end** of `agentBefore` and the **start** of `agentAfter`, giving `agentAfter` at most a quarter of the room left after the prompt and `agentBefore` the rest; shorten by characters until the size is at most the cap; `trimmed: true`. A prompt that alone does not fit gets no exchange.
+2. **Scoring (score.ts `--exchanges <file>`).** A second input mode beside `--corpus/--set`, which stays unchanged.
+   - Checks before any request, in this order: limits; then the input mode: `--exchanges` with `--corpus` or `--set`, or `--exchanges` without `--questions`, is refused with `scoreInputConflict`; concurrency; question set; then the exchanges file: every line parses and has string `key`, `session`, `sessionId`, `file`, `agentBefore`, `userFeedback`, `agentAfter` and an integer `index`, keys are unique, else `scoreBadExchanges`.
+   - Cache: `<folder of the exchanges file>/cache/questions-<question-set hash>.jsonl`, the same line shape and rules as the corpus question cache. Output: `--output`, default the folder of the exchanges file.
+   - Confirmation block: `scoreHeader`, `scoreExchanges(file, n, cached, toScore)`, `confirmLimits`, `confirmLimitSource`, `scoreModelQuestions`, `scoreOutput`; then `--confirmed`, then `TYPESAFE_API_KEY`, as now.
+   - Each exchange is scored like a trio (`buildGateState` → `callJev` with the question-set policy, the same counter, retries, stop rules, and concurrency); the progress line is `scoreProgressPrompt`; the done line is `scoreDone`. Writes `scores.jsonl` (one line per exchange in file order: `key`, `session`, `index`, `verdict`, `answers`, `reason`, `model`, `attempts`, `latencyMs`, `usage`, `cached`) and `summary.json` as now; no `codes.md` or score table in this mode.
+3. **Join (report.ts `--codes <scores.jsonl>`).**
+   - Every line must parse and carry a string `key` and a string `verdict`, else `reportBadCodes` (exit 2, nothing written).
+   - A session is **scored** when every one of its exchanges has a line with `verdict: "scored"`; otherwise all its Your interventions cells read `not scored`. The `Total` row reads `not scored` when any session is not scored. A session with no exchanges is scored with zero counts.
+   - Counts per scored session: Approval, Correction, Hold-back, Task step, Chatter = exchanges whose answer for `approval`, `correction`, `hold_back`, `task_step`, `chatter` is ≥ 0.5; Corrections followed by edits = exchanges with `correction` ≥ 0.5 whose segment contains a change (the S8-02 change rule).
+   - Your interventions then renders as a table with the approved columns (thousands format), followed by the approved accuracy line; without `--codes` it stays as in S8-02 (`not scored`, accuracy line).
+   - report.jsonl: each segment object gains `codes` (the five codes as booleans, or `null` when the segment has no scored exchange) and each session and total object gains `interventions` (the six counts, or `null` when not scored).
+
+**Strings (approved by the user, 2026-10-18; exact):**
+
+- `scoreExchanges`: `Exchanges: <file>: <n> prompts (<c> cached, <k> to score)`
+- `scoreProgressPrompt`: `prompt <n>/<total>: <verdict>`
+- `scoreBadExchanges`: `compass score: <file> is not a valid exchanges file.`
+- `scoreInputConflict`: `compass score: pass either --corpus with --set, or --exchanges with --questions.`
+- `reportBadCodes`: `compass report: <file> is not a scores file from compass score.`
+
+**Tests.** Fixture values first, expected counts in a comment table, assertions from the table.
+
+1. Exchanges: a 3-prompt Pi session gives 2 exchanges with the right three texts and indexes; a segment with no agent text before or after gives none; a Claude Code reply split across records with one `message.id` is one agent text; keys are stable across two runs.
+2. Trim: a 40 KB `agentBefore` → `trimmed: true`, size ≤ cap, the prompt whole, `agentBefore` ends with the original's last 100 characters, `agentAfter` starts with the original's first 100 characters; a 33 KB prompt alone → no exchange; an exchange under the cap is unchanged with `trimmed: false`; `EXCHANGE_CAP_BYTES === JEV_POLICY.stateCapBytes`.
+3. score `--exchanges` (fetch mocked as in score.test.ts): `--exchanges` with `--set`, and without `--questions`, are refused with `scoreInputConflict` and no request; a file with a missing field or a duplicate key → `scoreBadExchanges`, no request; without `--confirmed` the block shows the exchanges line and no request is made; a scored run writes scores.jsonl in file order; a rerun is served from the cache with zero requests; the request limit stops the run with the remaining lines `not run`.
+4. Join: answers 0.49 and 0.5 → no and yes; a session with one missing line, and one with a `fallback` line, read `not scored`, and the `Total` row reads `not scored`; corrections followed by edits counts only correction exchanges whose segment has a change; a bad codes file → `reportBadCodes`, exit 2, nothing written; without `--codes` the section is unchanged from S8-02; report.md's Your interventions table for a 2-session fixture matches an expected string byte for byte.
+
+**Acceptance criteria:**
+
+1. Every test above passes; `npm test` and `npm run test:compass` pass in full.
+2. The new strings match the approved text byte for byte; no other user-facing string is added or changed.
+3. The corpus mode of score.ts behaves as before (its existing tests pass unchanged); no change to src/, the gate, or its policy hash.
+4. No request without `--confirmed` and the key; report.ts makes no request and imports nothing from src/.
+
+**Allowed scope:** scripts/compass/report.ts, scripts/compass/score.ts, scripts/compass/strings.ts (the new strings only), tests/compass/report.test.ts, tests/compass/score.test.ts (or a new tests/compass/score-exchanges.test.ts).
+
+**Verification:**
+
+```
+npx vitest run --config vitest.compass.config.ts tests/compass/report.test.ts tests/compass/score.test.ts
+npm test
+npm run test:compass
+```
+
+**After acceptance (CC):** two live runs, each with limits suggested by CC and confirmed by the user at launch (run type `evaluate`): this project's Pi folder (about 87 exchanges) and Claude Code folder (about 461). Then the report with `--codes` for each.
+
 ## CC review and gate (not for the coder)
 
 Review per planner-prompt.md Step 2 with 2–3 spot mutants (in `isFailed`, the episode rule, the Claude Code turn de-duplication); ledger entry in md/ledger.jsonl. Run the command on this project's Pi folder and Claude Code folder and check acceptance criterion 2. After acceptance the ledger's harness fields come from report.jsonl instead of ~/.claude/tools/pi-session-report.py.
@@ -170,6 +229,6 @@ Review per planner-prompt.md Step 2 with 2–3 spot mutants (in `isFailed`, the 
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.1.0 | 2026-10-18 | S8-01 definitions and report text (user-approved); S8-02 spec. |
 | 0.2.0 | 2026-10-18 | S8-02 audit answers; episode rule amended (change includes `--write` checks; an episode closes at its first pass). |
 | 0.3.0 | 2026-10-18 | S8-02 round 2: Claude Code session start (B25), two format nits. |
+| 0.4.0 | 2026-10-18 | S8-03 spec: score every prompt from the report's segments (user-approved design and text). |
