@@ -372,6 +372,12 @@ npm run test:compass
 
 Now code the task; handoff outputs/s8/handoff/S8-05-r1.md.
 
+**Round 2 (CC review of r1, 2026-10-18):** r1 is correct on real logs (this project's folder: 18 scored sessions, 91 trios, 14 corrections and 5 hold-backs, matching Your interventions) and two of three spot mutants are killed. One test gap (a spec gap, not a code bug): a mutant that prints the too-few line only when **both** sides are short survives, because no fixture has one side at 5 or more and the other below.
+
+1. **Test:** 5 scored before sessions and 2 scored after sessions → the too-few line `reportTooFew(5, 2)` is printed; and the mirror case, 2 before and 5 after → `reportTooFew(2, 5)`. No change to report.ts.
+2. Your three `Uncertain` items stand as built (file-name order for equal start times, `groupThousands` in `reportRate`, the flag on a single file).
+3. **Verification:** the S8-05 block; handoff outputs/s8/handoff/S8-05-r2.md (round-2 changes only).
+
 **After acceptance (CC):** the report on this project's Pi folder (frozen copy, S8-03 codes, `--relayed-specs`) and on one S5 before-folder without codes; check the Behavior section reads as approved.
 
 ## CC review and gate (not for the coder)
