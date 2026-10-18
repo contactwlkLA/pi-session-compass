@@ -1,6 +1,6 @@
 # pi-session-compass — Bug journal
 
-Revision: **0.16.0** · Updated: **2026-10-18**
+Revision: **0.17.0** · Updated: **2026-10-18**
 
 A live record of every bug found while building and running the harness: harness, pipeline, test, or environment. Add an entry when a bug is found; update its status, fix commit, and evidence when it changes. Never delete an entry; a closed bug stays as history. Pipeline behaviors that a stage is meant to change are listed separately under Pipeline findings.
 
@@ -68,6 +68,6 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.14.0 | 2026-10-18 | B24 (record stream left open after a limit stop) added; B16, B24, P4, P11 fixed (S7-04 T2). |
 | 0.15.0 | 2026-10-18 | B25 (Claude Code session start in the report) added and fixed. |
 | 0.16.0 | 2026-10-18 | B26 (Claude Code string prompts read as empty) added and fixed. |
+| 0.17.0 | 2026-10-18 | B27 (S5 frozen corpora no longer load after the trio reader change) added. |

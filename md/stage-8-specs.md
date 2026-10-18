@@ -1,6 +1,6 @@
 # Stage 8 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.6.0** · Status: **S8-01 approved; S8-02 done; S8-03 done; S8-04 ready (design and text approved by the user, 2026-10-18)**
+Project: **pi-session-compass** · Revision: **0.7.0** · Status: **S8-01 approved; S8-02 done; S8-03 done; S8-04 done (rubric revised by the user, 2026-10-18)**
 
 Date: **2026-10-18**
 
@@ -46,11 +46,13 @@ Measured on this project's logs: failed-run recall 104 of 114 before the last ma
 
 ### Lesson grades (S8-04)
 
+Rubric revised by the user, 2026-10-18 (S8-04 grading): a rule must work on its own, because the portrait stores only the rule text.
+
 | Grade | Meaning | Example (neutral) |
 |---|---|---|
-| good | supported by the user's reply, specific enough to change a future action, true beyond this task | the user is unhappy that the agent noticed a change outside its instructions and did not flag it → "Surface discretionary decisions as explicit choices needing confirmation at decision time" |
-| vague | supported, but no concrete trigger or action | the user says an external audit overrides a stale requirement → "Prefer authoritative evidence over stale documentation" |
-| wrong | not supported by the trio: a misread reply, a mispaired trio, or a one-off detail stated as a lasting rule | the user asks for an analysis of a new finding → a rule about confirming a no-write boundary |
+| good | supported by the user's reply, true beyond this task, and the rule alone tells a future agent the situation it applies to, what to do differently there, and why (the user's concern) | the user is unhappy that the agent noticed a change outside its instructions and did not flag it → "When you notice something outside your instructions that you could change, ask before changing it, because the user decides what is in scope" |
+| vague | supported, but the rule alone is missing the situation, the changed action, or the reason | the same trio → "Surface discretionary decisions as explicit choices needing confirmation at decision time" (it has an action, but no situation a future agent would recognize and no reason) |
+| wrong | not supported by the trio: a misread reply, a mispaired trio, a one-off detail stated as a lasting rule, or a rule drawn from the agent's own behavior rather than the user's reply | the user asks for an analysis of a new finding → a rule about confirming a no-write boundary |
 
 Sample: every rule when there are 30 or fewer, else 30 drawn with a fixed seed.
 
@@ -317,6 +319,5 @@ Review per planner-prompt.md Step 2 with 2–3 spot mutants (in `isFailed`, the 
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.4.0 | 2026-10-18 | S8-03 spec: score every prompt from the report's segments (user-approved design and text). |
-| 0.5.0 | 2026-10-18 | S8-03 audit answers. |
 | 0.6.0 | 2026-10-18 | S8-03 round 2: Claude Code string prompts (B26), trim overshoot direction, blank line, comment. |
+| 0.7.0 | 2026-10-18 | S8-04 spec and audit answers; lesson rubric revised by the user (situation, changed action, reason). |
