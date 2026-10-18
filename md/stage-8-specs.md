@@ -1,6 +1,6 @@
 # Stage 8 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.2.0** · Status: **S8-01 approved (user, 2026-10-18); S8-02 ready (command messages approved)**
+Project: **pi-session-compass** · Revision: **0.3.0** · Status: **S8-01 approved (user, 2026-10-18); S8-02 ready (command messages approved)**
 
 Date: **2026-10-18**
 
@@ -154,6 +154,14 @@ npm test
 npm run test:compass
 ```
 
+**Round 2 (CC review of r1, 2026-10-18):** r1 is accepted except one bug and two format nits. On this project's real logs the Pi numbers match the ledger exactly, and the three spot mutants are killed.
+
+1. **Bug (md/bugs.md B25):** every Claude Code session is labelled `1969-12-31 …` and sorted as if it started at epoch 0. A Claude Code log opens with records that carry no `timestamp` (`mode`, `permission-mode`), and `readSegments` takes the session start from the first record. Fix: the session start is the first record that carries a `timestamp` (Pi: still the header). The session id stays as it is.
+   - Test (fails on r1): a Claude Code log whose first two records are `{"type":"mode",…,"sessionId":…}` and `{"type":"permission-mode",…}` without `timestamp` gets the label date of the first timestamped record. Two such sessions are sorted by that start, not by file name.
+2. **Nit:** the accuracy line has no leading spaces. The indent in the approved block was layout. Update the rendering test.
+3. **Nit:** the Prompts, Turns, and Turns ending with a question columns use the thousands format too (`2,202`, not `2202`).
+4. **Verification:** the S8-02 block; handoff outputs/s8/handoff/S8-02-r2.md (round-2 changes only).
+
 ## CC review and gate (not for the coder)
 
 Review per planner-prompt.md Step 2 with 2–3 spot mutants (in `isFailed`, the episode rule, the Claude Code turn de-duplication); ledger entry in md/ledger.jsonl. Run the command on this project's Pi folder and Claude Code folder and check acceptance criterion 2. After acceptance the ledger's harness fields come from report.jsonl instead of ~/.claude/tools/pi-session-report.py.
@@ -164,3 +172,4 @@ Review per planner-prompt.md Step 2 with 2–3 spot mutants (in `isFailed`, the 
 |---|---|---|
 | 0.1.0 | 2026-10-18 | S8-01 definitions and report text (user-approved); S8-02 spec. |
 | 0.2.0 | 2026-10-18 | S8-02 audit answers; episode rule amended (change includes `--write` checks; an episode closes at its first pass). |
+| 0.3.0 | 2026-10-18 | S8-02 round 2: Claude Code session start (B25), two format nits. |
