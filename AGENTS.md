@@ -24,7 +24,7 @@ Once approved, text can be applied directly during implementation. Any subsequen
 
 # pi-session-compass — Agent operating rules
 
-Revision: **0.9.0** · 2026-10-15
+Revision: **0.10.0** · 2026-10-18
 
 Adds to the repository rules above. On conflict, follow the repository rules and ask the user.
 
@@ -36,6 +36,7 @@ Adds to the repository rules above. On conflict, follow the repository rules and
 - One session, one stage. State the authorized outcome, allowed edits, and completion evidence. Resolve material conflicts before dependent work.
 - **Unclear goal, scope, acceptance criterion, or authorization: ask one focused question and wait; never substitute an assumption.** Silence, a reversible action, or a proposal is not approval. Routine choices within clear scope may proceed. If the overall goal is unclear, pause implementation. Discover checkout and runtime facts before asking the user; mark unknown evidence as unknown.
 - Do not enter `./private`.
+- **Pi sessions start only on a task prompt.** If you are Pi and the session's first message names no task (for example, it carries only a skill), do not read md/stage.md or pick a task: reply with one line asking which task to run, and wait. Only Claude Code resumes work from md/stage.md.
 - **Coder sessions:** when you are given a task from a stage task-spec file (md/stage-3b.md or later), its "Coder rules" replace this file's session-start reads, 20-run flaky checks, status-board reporting, and handoffs; the repository rules above still apply. Claude Code runs those gates when it reviews.
 
 ## Execute and stop
@@ -82,6 +83,6 @@ Each document carries MAJOR.MINOR.PATCH in its header and history table, startin
 
 | Revision | Date | Change |
 |---|---|---|
+| 0.10.0 | 2026-10-18 | Pi sessions start only on a task prompt; only Claude Code resumes from md/stage.md. |
 | 0.9.0 | 2026-10-15 | Coder sessions follow the task spec's Coder rules instead of this file's session gates. |
 | 0.8.0 | 2026-10-14 | History tables keep their last three rows; git holds the rest. |
-| 0.7.0 | 2026-10-14 | Standing approvals (relaunch after a harness-only fix; commit and push after green suites) and push-notify when waiting on the user. |
