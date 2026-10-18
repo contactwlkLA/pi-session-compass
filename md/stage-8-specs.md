@@ -274,6 +274,7 @@ npm run test:compass
 - `reportLessonsLine` (approved in S8-01): `Graded by CC on a sample of <n> of <m> rules; spot-checked by the user: <yes|no>.`
 - `reportBadLessons`: `compass report: <file> is not a lessons file from compass labels.`
 - `reportBadGrades`: `compass report: <file> is not a grades file for <lessons file>.`
+- labels without a command (the existing `labelsMissingFlag` call in `main`): `compass labels: export, check, or lessons is required` (was `export or check`)
 
 **Tests.** Fixture values first, expected counts in a comment table, assertions from the table.
 
