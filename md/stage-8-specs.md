@@ -1,6 +1,6 @@
 # Stage 8 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.6.0** · Status: **S8-01 approved; S8-02 done; S8-03 ready (design and text approved by the user, 2026-10-18)**
+Project: **pi-session-compass** · Revision: **0.6.0** · Status: **S8-01 approved; S8-02 done; S8-03 done; S8-04 ready (design and text approved by the user, 2026-10-18)**
 
 Date: **2026-10-18**
 
@@ -239,6 +239,65 @@ npm run test:compass
 5. **Verification:** the S8-03 block; handoff outputs/s8/handoff/S8-03-r2.md (round-2 changes only).
 
 **After acceptance (CC):** two live runs, each with limits suggested by CC and confirmed by the user at launch (run type `evaluate`): this project's Pi folder (about 87 exchanges) and Claude Code folder (about 461). Then the report with `--codes` for each.
+
+## S8-04 — Lessons: rules with their trios, graded
+
+**Approved by the user, 2026-10-18 (design and text):** a new `labels lessons` command lists every extracted rule with its source trio and draws a seeded sample of 30; CC grades rules by hand in a grades file (good / vague / wrong, the S8-01 rubric); `report --lessons --grades` fills the Lessons section. Sessions graded: every finished Pi session of this project (frozen as fixtures/s8-pi) and, on its own, the last finished one. The Claude Code report keeps `not scored` (compass extracts rules from Pi logs only).
+
+**Audit (short):** write only `Blockers` and `Questions` (one line `none` each if so). Read only the Read list.
+
+**Read:** scripts/compass/labels.ts (whole: `export` is the model for the new command; reuse `textBlocks`, `toExtractMap`, `readJsonlObjects`, `flagValue`); scripts/compass/corpus-run.ts (`freezeMatches`, `loadSelected` with set `all`); scripts/compass/report.ts (`parseScores`, `joinReport`, `renderInterventions`, `renderMarkdown`, `renderJsonl`, `main`); scripts/compass/strings.ts (`// ── Labels and evaluation ──` and `// ── Session report ──`); tests/compass/labels.test.ts (`devCorpus` and the export tests); tests/compass/report.test.ts (the `--codes` tests).
+
+**Where and how (CC's plan):**
+
+1. **`labels.ts lessons`.** Usage `labels.js lessons --corpus <dir> --extract <extract.jsonl> --seed <text> --output <dir>`; all four flags required (`labelsMissingFlag`). Always the whole corpus (set `all`, no `--set`).
+   - Checks in this order, each refusing with exit 2 and nothing written: flags; `freezeMatches` (`scoreCorpusChanged`); the extract file parses through `readJsonlObjects` and `toExtractMap` and its keys agree with the corpus keys with full coverage (`agreesWithSet(..., true)`), else `labelsInputMismatch(TOOL, <extract file>, "all", <corpus>)`.
+   - **Rules:** corpus trios in trios.jsonl order; for each trio whose extract row has `outcome: "success"`, one rule per entry of `notes`, in order. `ruleKey` = `<trio key>#<n>`, `n` from 1. `failed` and `not_run` rows give no rules.
+   - **Sample:** `LESSON_SAMPLE_SIZE = 30` (a labels.ts constant). 30 rules or fewer → every rule; more → the 30 rules with the smallest `sha256Text(`${seed}\n${ruleKey}`)`, ties by `ruleKey`.
+   - **Output** (`--output` created if missing): `lessons.jsonl`, one line per rule in rule order: `ruleKey`, `key`, `sessionId`, `file`, `index` (from the corpus trio), `rule`, `sample` (boolean). `lessons.md`: `lessonsTitle`, a blank line, then for each trio with at least one rule: `sheetEntryHeader(file, index, key)`, one `lessonsRuleLine` per rule, a blank line, `textBlocks(text)`, a blank line. Then print `lessonsDone` to stdout and exit 0.
+   - `main`: accept `lessons` beside `export` and `check`.
+2. **Grades file (written by CC, read by report).** One line per graded rule: `ruleKey` (string), `grade` (`good` | `vague` | `wrong`), `userChecked` (boolean), `note` (string, optional).
+3. **`report.ts --lessons <lessons.jsonl> [--grades <grades.jsonl>]`.**
+   - `--grades` without `--lessons` → `labelsMissingFlag("report", "--lessons")`, exit 2, nothing written.
+   - Lessons file: every line parses and has string `ruleKey`, `key`, `sessionId`, `file`, `rule`, integer `index`, boolean `sample`; `ruleKey`s unique; else `reportBadLessons(file)`. Grades file: every line parses, its `ruleKey` is in the lessons file and unique in the grades file, `grade` is one of the three, `userChecked` is boolean, `note` absent or a string; else `reportBadGrades(gradesFile, lessonsFile)`. Both refuse with exit 2 and nothing written, like `--codes`.
+   - **Counted rules (m):** lessons lines whose `sessionId` is the id of a session in this report (a single-session report counts only that session's rules). **Graded (n):** counted rules with a grade line.
+   - **Lessons section:** no `--lessons`, m = 0, or n = 0 → heading and `not scored`, as now. Otherwise the heading, `reportLessonsColumns`, its separator row, then three rows in the order `good`, `vague`, `wrong`: the grade, the number of graded rules with it (`reportNumber`), and an example: the `rule` of the first such rule in lessons-file order, whitespace collapsed to single spaces and `|` written as `\|`; no rule with that grade → `reportNoExample`. Then a blank line and `reportLessonsLine(n, m, userChecked)`, where `userChecked` is true when every graded counted rule has `userChecked: true`. No `Total` row.
+   - **report.jsonl:** each session object and the total object gain `lessons`: `{ rules, graded, good, vague, wrong, userChecked }` over that session's (or all counted) rules, or `null` without `--lessons`.
+
+**Strings (approved by the user, 2026-10-18; exact):**
+
+- `lessonsTitle`: `# Lessons — <m> rules from <t> trios (<n> in the sample)` (`t` = trios with at least one rule)
+- `lessonsRuleLine`: `  - [<ruleKey>] <rule>`, followed by ` (sample)` when the rule is in the sample
+- `lessonsDone`: `compass labels: <m> rules, <n> in the sample → <output>/lessons.md`
+- `reportLessonsColumns`: `| Grade | Rules | Example |`; row labels `good`, `vague`, `wrong`
+- `reportNoExample`: `none`
+- `reportLessonsLine` (approved in S8-01): `Graded by CC on a sample of <n> of <m> rules; spot-checked by the user: <yes|no>.`
+- `reportBadLessons`: `compass report: <file> is not a lessons file from compass labels.`
+- `reportBadGrades`: `compass report: <file> is not a grades file for <lessons file>.`
+
+**Tests.** Fixture values first, expected counts in a comment table, assertions from the table.
+
+1. lessons (in labels.test.ts, corpora built with `devCorpus`): rule order and `ruleKey`s for a trio with 2 notes and one with 1; `failed` and `not_run` rows give no rules and no lessons.md entry; 30 or fewer rules → all `sample: true`; 31 or more → exactly 30, the same 30 on a second run with the same seed, a different set with another seed; an extract file missing one corpus trio → `labelsInputMismatch`, exit 2, no output files; lessons.md's title counts and ` (sample)` marks match lessons.jsonl.
+2. report join (in report.test.ts): a 2-session Pi fixture with a lessons file covering both sessions and a third session not in the report: m counts only the report's sessions; a single-session report counts only its rules; grades with every `userChecked: true` → `yes`, one `false` → `no`; a grade with no rules → `none`; a rule containing `|` and a newline renders escaped on one line; n = 0 → `not scored`; the Lessons section matches an expected string byte for byte; a bad lessons line, a grade outside the three, a grade for an unknown `ruleKey`, and a duplicate grade each refuse with exit 2 and nothing written; `--grades` alone → the missing-flag message; report.jsonl `lessons` objects for both sessions and the total.
+
+**Acceptance criteria:**
+
+1. Every test above passes; `npm test` and `npm run test:compass` pass in full.
+2. The new strings match the approved text byte for byte; no other user-facing string is added or changed.
+3. `labels export` and `labels check`, and the report without `--lessons`, behave as before (existing tests pass unchanged).
+4. No network, no model request, no change to src/.
+
+**Allowed scope:** scripts/compass/labels.ts, scripts/compass/report.ts, scripts/compass/strings.ts (the new strings only), tests/compass/labels.test.ts, tests/compass/report.test.ts.
+
+**Verification:**
+
+```
+npx vitest run --config vitest.compass.config.ts tests/compass/labels.test.ts tests/compass/report.test.ts
+npm test
+npm run test:compass
+```
+
+**After acceptance (CC):** a live extraction run on fixtures/s8-pi (`extract.ts --set all`, run type `evaluate`, limits suggested by CC and confirmed by the user at launch); `labels lessons` with seed `s8-lessons`; CC grades the sample and every rule of the last finished session (01a14dea); the user spot-checks; then the report on this project's Pi folder and on that session alone.
 
 ## CC review and gate (not for the coder)
 
