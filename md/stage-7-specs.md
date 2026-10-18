@@ -1,6 +1,6 @@
 # Stage 7 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.2.0** · Status: **Ready (stage-7-task.md approved by the user, 2026-10-17)**
+Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Ready (stage-7-task.md approved by the user, 2026-10-17)**
 
 Date: **2026-10-17**
 
@@ -54,11 +54,85 @@ npm test
 npm run test:compass
 ```
 
+## S7-02 — Text batch (user-approved text)
+
+Apply the user-approved text below exactly, byte for byte. Nothing else changes. Every string here was approved by the user on 2026-10-17; do not reword any of it.
+
+**Read:** src/schema.ts (`buildingBatchSize`, `debugDumpLimit`, `maintenanceBackfillBatchSize` descriptions); src/prompts.ts (lines 111 and 133); src/commands/status.ts (`getStatus`); src/work-state.ts (`loadWorkState`); src/gate-log.ts (`GATE_LOG_FILE`); README.md ("Recovery"); docs/CONFIGURATION.md; tests that assert these strings (grep for each before-text).
+
+**Changes:**
+
+1. **src/schema.ts descriptions** (before → after):
+   - `debugDumpLimit`: `Maximum debug dump files kept under <cwd>/.pi/portrait/debug/ (0 = no dumps).` → `Maximum debug dump files kept under ~/.pi/portrait/debug/ (0 = no dumps).`
+   - `buildingBatchSize`: `How many extraction trios to process per building LLM call.` → `How many extracted candidates to process per building LLM call.`
+   - `maintenanceBackfillBatchSize`: `How many rules to re-evaluate per maintenance backfill LLM call.` → `How many evicted rules to re-evaluate per maintenance backfill LLM call.`
+2. **src/prompts.ts:** delete the text ` <!-- approved -->` (leading space included) at the end of lines 111 and 133. No other prompt character changes.
+3. **src/commands/status.ts, `getStatus`:** two new lines.
+   - Right after the `State: …` line: `Gate: ${settings.gateMode} · ${n} checks logged`, where `n` is the number of lines in `path.join(portraitDir, GATE_LOG_FILE)`; `0` when the file is missing or unreadable (never throw).
+   - Right after the `  Rule limit: …` line: `  Pending candidates: ${loadWorkState(portraitDir).pendingCandidates.length}`; if `loadWorkState` throws, `  Pending candidates: unknown (snapshot unreadable)`.
+4. **README.md, section "Recovery":** append this paragraph after the existing last paragraph of the section:
+
+   ```
+   Before downgrading to an older version of the plugin, run `/portrait:collect` until `/portrait:status` shows no pending candidates: older versions keep the scan position but do not build pending candidates.
+   ```
+5. **docs/CONFIGURATION.md:** none of its rows change (they already say "extracted candidates" and "evicted rules"); check and report.
+6. **New file scripts/compass/README.md**, exactly:
+
+````
+# compass harness
+
+Development harness for measured runs of the portrait pipeline on one selected session file. It is not part of the plugin package.
+
+## Select a file and an output directory
+
+```bash
+node_modules/.bin/jiti scripts/compass/run.ts prepare --session <file.jsonl> --output outputs/<run>
+```
+
+`prepare` validates and hashes the file, freezes a copy under `fixtures/sessions/`, copies it into `<output>/sessions/`, counts its trios (`census.json`), and records the selection (`selection.json`, `manifest.json`). It makes no model request. Without `--output`, the run goes to `outputs/<run-id>`. `--scope all` scans your real session folders instead of one isolated file; use it only when you mean to.
+
+## Run
+
+```bash
+node_modules/.bin/jiti scripts/compass/run.ts execute --session <file.jsonl> --output outputs/<run> \
+  --run-type <type> --max-model-requests <n> --max-run-ms <ms> --limits-source <source> \
+  [--start-snapshot <dir>] [--gate-mode off|shadow|enforce] [--confirmed]
+```
+
+`execute` prepares the run the same way, then runs the pipeline on the isolated copy. Portrait state lives in `<output>/portrait/`, and the live `~/.pi/portrait` is never written. Before the first model request it shows the run type, limits, file, trio count, and output directory, and it stops when either limit is reached. Without `--confirmed` it asks on a terminal and refuses when it is not on one.
+
+## Inspect the selected paths
+
+`selection.json` names the source file, its frozen copy, and its sha256. `manifest.json` adds the limits and their source, the start snapshot, and the source commit. Results: `receipt.json`, `traces.jsonl`, `running-table.md`, `results-sheet.md`, and `portrait/gate-log.jsonl` when the gate is on.
+
+## Rescan
+
+Each run starts from its own output directory, so a rescan is a new `execute` with a new `--output`. Pass `--start-snapshot <dir>` to start every run from the same frozen portrait so the runs compare.
+````
+
+**Acceptance criteria:**
+
+1. The three schema descriptions equal the after-texts; any test asserting a before-text is updated (list each).
+2. `BUILDING_PROMPT` contains no `<!--`; a test asserts it, and that removing the two markers from the old text (git show HEAD:src/prompts.ts, or a copy of the old literal in the test) gives the new prompt exactly.
+3. New tests/status.test.ts (temp portrait dir from tests/setup.ts): with no gate log, `Gate: off · 0 checks logged`; with a 3-line gate log and `gateMode` `shadow`, `Gate: shadow · 3 checks logged`; with 2 pending candidates saved via `saveWorkState`, `  Pending candidates: 2`; with a corrupt snapshot, `  Pending candidates: unknown (snapshot unreadable)` and `getStatus` does not throw. Each new line sits at the stated position.
+4. README and scripts/compass/README.md match the text above byte for byte; `npm run lint:design-refs` passes.
+5. No other string, setting, or behavior changes.
+
+**Allowed scope:** src/schema.ts, src/prompts.ts, src/commands/status.ts, README.md, scripts/compass/README.md (new), tests/status.test.ts (new), tests that assert a changed string (adapt; list each).
+
+**Verification:**
+
+```
+npx vitest run tests/status.test.ts
+npm test
+npm run test:compass
+```
+
 ## CC review and gate (not for the coder)
 
 Review per planner-prompt.md Step 2; ledger entry in md/ledger.jsonl. Check: `candidateText` is read only by the harness; the B13 refusal makes no model request; B15 output matches the approved text byte for byte; B20 did not change src/; B21's report text is otherwise identical. Update md/bugs.md (status, fix commit, evidence) for each bug.
 
-Planner difficulty: S7-01 easy.
+Planner difficulty: S7-01 easy; S7-02 easy.
 
 ## Revision history
 
@@ -66,3 +140,4 @@ Planner difficulty: S7-01 easy.
 |---|---|---|
 | 0.1.0 | 2026-10-17 | S7-01 quick-fixes spec. |
 | 0.2.0 | 2026-10-17 | S7-01 audit answers. |
+| 0.3.0 | 2026-10-17 | S7-02 text-batch spec with the user-approved text. |
