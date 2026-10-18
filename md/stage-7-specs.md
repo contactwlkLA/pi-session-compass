@@ -1,6 +1,6 @@
 # Stage 7 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.6.0** · Status: **Ready (stage-7-task.md approved by the user, 2026-10-17)**
+Project: **pi-session-compass** · Revision: **0.7.0** · Status: **Ready (stage-7-task.md approved by the user, 2026-10-17)**
 
 Date: **2026-10-18**
 
@@ -297,16 +297,49 @@ npm test
 npm run test:compass
 ```
 
+## S7-04 T2 — Fixes from the investigations (P4, P11, B16)
+
+CC investigated S7-04 (md/bugs.md P2, P4, P11, B16, B23). The user approved three fixes on 2026-10-18. No user-facing text changes. **Test first:** for P4 and P11, write the failing test against the current code, confirm it fails for the stated reason, then fix.
+
+**Read:** src/collector.ts (`scanSessions`, the `results.length >= maxResults` return; `streamAndExtract` and its `maxTrios` / `"limit"` stop); src/pipeline.ts (`runPipelineLoop`'s scan loop and `remaining`); src/trio-detector.ts (`TrioDetector.process`); scripts/compass/census.ts (the line-tracking mirror of the detector); tests/trio-detector.test.ts; tests/scan-position.test.ts; tests/compass tests that compare the census with the detector; tests/cache-refresh.test.ts (`bootWithAppend`); src/index.ts (`process.on("exit", cleanupOnExit)`).
+
+**Changes:**
+
+1. **P4 — collect stops early.** When `streamAndExtract` stops at `maxTrios` before reaching the end of the file, `scanSessions` counts the current file in `remainingFiles` (it has unread trios). A file read to its end is not counted. With that, `runPipelineLoop` keeps scanning while the last file still has trios, up to `maxSequences`.
+   - Test (fails today): two session files, where the file scanned last holds two productive trios; one `runPipelineLoop` call with `maxSequences` ≥ 3 processes all three trios. Also: a file read to its end is not counted as remaining.
+2. **P11 — wrong pairing.** In `TrioDetector.process`, an assistant text that does not complete a trio clears the pending user text (`lastUser = null`), so a user turn is never paired with two agent texts that both came after it. Every other rule (continuation, approval, and extension filters; one trio per user turn) is unchanged. scripts/compass/census.ts mirrors the same rule so the census still agrees with the detector.
+   - Tests (fail today): `user, assistant A1, assistant A2` emits no trio; `assistant A0, user U, assistant A1, assistant A2` emits exactly one trio `(A0, U, A1)`; a scan restarted at A1 gives the same result as the uninterrupted scan (the restart case in md/bugs.md P11).
+   - Existing trio and census tests whose expected counts change because of this rule: update the expected values from the fixture (state old → new count and why in the handoff). Any other expectation change: stop and report.
+3. **B16 — MaxListeners warning.** In tests/cache-refresh.test.ts only: remove the `exit` listeners each boot adds (note `process.listeners("exit")` before booting and remove the new ones in `afterEach`). src/index.ts does not change.
+
+**Acceptance criteria:**
+
+1. P4 and P11 tests fail on the code before the fix and pass after; the handoff quotes the failing output.
+2. `npm test` output contains no `MaxListenersExceededWarning`.
+3. The census and the detector agree on every fixture the tests use.
+4. No user-facing string changes; no change to the gate, its policy hash, extraction, building, or snapshots beyond the two stated rules.
+5. In the audit, list every harness command that re-runs the detector against a frozen corpus (for example a freeze check in scripts/compass/corpus-run.ts) and what it does when the trios no longer match the frozen ones. Do not change those commands; CC decides.
+
+**Allowed scope:** src/collector.ts, src/trio-detector.ts, scripts/compass/census.ts, tests/trio-detector.test.ts, tests/scan-position.test.ts (or a new tests/collect-remaining.test.ts), tests/cache-refresh.test.ts, tests whose expected trio counts change under the P11 rule (adapt; list each with old → new).
+
+**Verification:**
+
+```
+npx vitest run tests/trio-detector.test.ts tests/scan-position.test.ts tests/cache-refresh.test.ts
+npm test
+npm run test:compass
+```
+
 ## CC review and gate (not for the coder)
 
 Review per planner-prompt.md Step 2; ledger entry in md/ledger.jsonl. Check: `candidateText` is read only by the harness; the B13 refusal makes no model request; B15 output matches the approved text byte for byte; B20 did not change src/; B21's report text is otherwise identical. Update md/bugs.md (status, fix commit, evidence) for each bug.
 
-Planner difficulty: S7-01 easy; S7-02 easy; S7-03 medium; S7-04 T1 easy.
+Planner difficulty: S7-01 easy; S7-02 easy; S7-03 medium; S7-04 T1 easy; S7-04 T2 medium.
 
 ## Revision history
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.4.0 | 2026-10-18 | S7-02 audit answers. |
 | 0.5.0 | 2026-10-18 | S7-03 spec: options A, B, and C with the user-approved text; audit answers. |
 | 0.6.0 | 2026-10-18 | S7-04 T1 spec: tests for the S7-03 mutant survivors. |
+| 0.7.0 | 2026-10-18 | S7-04 T2 spec: P4, P11, B16 fixes (user-approved). |
