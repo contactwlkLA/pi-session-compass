@@ -11,7 +11,7 @@ Select the first unchecked stage. A checked stage requires verified milestone ev
 - [x] **S5 — Quality and savings:** [stage-5-task.md](stage-5-task.md) · M5 · COMPLETE 2026-10-17 · pilot passed, scale-up failed checks 1 and 2 (3 of 29 corrections missed); user: ship off, add a gate log · evidence outputs/s5/pilot-report.md, outputs/s5/scale/scale-report.md
 - [x] **S6 — Settings, acceptance, and handoff:** [stage-6-task.md](stage-6-task.md) · M6 · COMPLETE 2026-10-17 · user accepted the handoff · gate delivered `off` · evidence md/handoff.md, outputs/s6/exit-checks.md, outputs/s6/speed-report.md
 - [ ] **S7 — Fixes and deferred cleanup:** [stage-7-task.md](stage-7-task.md) · M7 · IN_PROGRESS · task file approved 2026-10-17 · S7-01, S7-02, S7-03 done
-- [ ] **S8 — Session report:** [stage-8-task.md](stage-8-task.md) · M8 · NOT_STARTED · task file draft 2026-10-18, awaiting user approval
+- [ ] **S8 — Session report:** [stage-8-task.md](stage-8-task.md) · M8 · NOT_STARTED · task file approved 2026-10-18; starts after S7
 
 ## Continuation
 

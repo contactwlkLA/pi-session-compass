@@ -1,6 +1,6 @@
 # Stage 8 — Session report
 
-Project: **pi-session-compass** · Revision: **0.2.0** · Status: **Draft for user review**
+Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Approved (user, 2026-10-18)**
 
 Date: **2026-10-18**
 
@@ -55,3 +55,4 @@ Parent: [plan.md](plan.md) (parked ideas from 2026-10-14; lesson-quality and beh
 |---|---|---|
 | 0.1.0 | 2026-10-18 | Draft: session report (log analytics, interventions, lessons, behavior). |
 | 0.2.0 | 2026-10-18 | Input is one session file or one directory; Pi and Claude Code logs read separately, never paired (user). |
+| 0.3.0 | 2026-10-18 | Approved by the user. |
