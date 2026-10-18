@@ -1,6 +1,6 @@
 # Stage 8 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.7.0** · Status: **S8-01 approved; S8-02 done; S8-03 done; S8-04 done (rubric revised by the user, 2026-10-18)**
+Project: **pi-session-compass** · Revision: **0.7.0** · Status: **S8-01 approved; S8-02 done; S8-03 done; S8-04 done (rubric revised by the user); S8-05 ready (design and text approved by the user, 2026-10-18)**
 
 Date: **2026-10-18**
 
@@ -311,6 +311,60 @@ Now code the task; handoff outputs/s8/handoff/S8-04-r1.md.
 
 **After acceptance (CC):** a live extraction run on fixtures/s8-pi (`extract.ts --set all`, run type `evaluate`, limits suggested by CC and confirmed by the user at launch); `labels lessons` with seed `s8-lessons`; CC grades the sample and every rule of the last finished session (01a14dea); the user spot-checks; then the report on this project's Pi folder and on that session alone.
 
+## S8-05 — Behavior: rates by period
+
+**Approved by the user, 2026-10-18 (design and text):** the report computes Behavior from its own input and the S8-03 codes; no new live run. Today no development session has run with the portrait loaded, so the section mostly prints the too-few line; it measures once such sessions exist. Pi logs only; Claude Code keeps `not applicable`.
+
+**Audit (short):** write only `Blockers` and `Questions` (one line `none` each if so). Read only the Read list.
+
+**Read:** scripts/compass/report.ts (`SessionInput`, `readSegments`, `measureSession`, `flagsOf`, `joinSession`, `joinReport`, `renderInterventions`, `renderMarkdown` (the Behavior section), `renderJsonl`, `main`); scripts/compass/strings.ts (`// ── Session report ──`); tests/compass/report.test.ts (Pi fixture helpers and the `--codes` tests).
+
+**Where and how (CC's plan):**
+
+1. **Portrait flag per session.** `readSegments` notes, for Pi logs, whether any record in the file has `type: "custom"` and `customType: "portrait-cache"` (anywhere in the file, before or after the first prompt). `SessionInput` and `SessionReport` gain `portraitLoaded: boolean` (always `false` for Claude Code).
+2. **`--relayed-specs` (boolean flag, no value).** `parseArgv` stores a valueless flag as the string `"true"` (as for `--confirmed` elsewhere), so read it as `args["relayed-specs"] === "true"`; any other value is refused with `reportUsage`.
+3. **Period per session:** `before` when `portraitLoaded` is false; `after` when true and `--relayed-specs` is absent; `relayed` when true and `--relayed-specs` is given.
+4. **Rows (Pi with `--codes`).** Only scored sessions count (a session whose `joinSession` result has `interventions !== null`). Per period: Sessions = scored sessions in it; Trios = their exchanges (the entries of `codes`); corrections and hold-backs = exchanges whose flags have `correction` / `holdBack` true. Rates through `reportRate(k, t)`; a period with 0 trios shows `reportNotApplicable` in both rate cells.
+5. **Behavior section.**
+   - Claude Code: unchanged (`not applicable`). Pi without `--codes`: unchanged (`not scored`).
+   - Pi with `--codes`: the heading, `reportBehaviorColumns`, its separator row, then three rows in this order: `before`, `after`, `after (relayed specs)` (labels from strings), each `label | sessions | trios | correction rate | hold-back rate` (counts through `reportNumber`). Then, when the before row or the after row has fewer than `BEHAVIOR_MIN_SESSIONS` (a report.ts constant, 5) sessions, a blank line and `reportTooFew(beforeSessions, afterSessions)`. The relayed row never enters that check.
+6. **report.jsonl.** Each session object gains `period` (`"before"`, `"after"`, or `"relayed"`); the total object gains `behavior`: `null` without `--codes` or for Claude Code, else `{ before, after, relayed }`, each `{ sessions, trios, corrections, holdBacks }`.
+
+**Strings (approved by the user, 2026-10-18; exact):**
+
+- `reportBehaviorColumns`: `| Period | Sessions | Trios | Correction rate | Hold-back rate |`
+- row labels: `before`, `after`, `after (relayed specs)`
+- `reportRate`: `<p>% (<k> of <t>)`, `p` = 100 × k / t with one decimal (`(100 * k / t).toFixed(1)`), counts through `reportNumber`; example `11.4% (14 of 123)`
+- `reportTooFew`: `too few sessions to compare (<n> before, <m> after; 5 needed on each side)`
+- a period with no trios: the existing `reportNotApplicable`
+
+**Tests.** Fixture values first, expected counts in a comment table, assertions from the table.
+
+1. Portrait flag: a Pi log with a `portrait-cache` record before the first prompt, one with it after a prompt, and one without → true, true, false; a Claude Code log → false.
+2. Periods and rows: a Pi folder with 2 sessions without the record and 3 with it, all scored (fetch-free: write scores.jsonl from the report's own exchanges, as the `--codes` tests do); without the flag the after row counts the 3, the relayed row shows 0 sessions, 0 trios, `not applicable`; with `--relayed-specs` they move to the relayed row and the after row shows `not applicable`; correction and hold-back counts match the table; `reportRate(1, 3)` → `33.3% (1 of 3)`.
+3. Too-few: the fixture above prints `reportTooFew(2, 3)` (and `reportTooFew(2, 0)` with the flag); a fixture with 5 before and 5 after scored sessions prints no too-few line.
+4. A session with one unscored exchange is left out of every row.
+5. Unchanged: Claude Code `not applicable`; Pi without `--codes` `not scored`; the Behavior section of a fixture matches an expected string byte for byte; report.jsonl `period` and `behavior` for the fixture.
+
+**Acceptance criteria:**
+
+1. Every test above passes; `npm test` and `npm run test:compass` pass in full.
+2. The new strings match the approved text byte for byte; no other user-facing string is added or changed.
+3. The other sections and existing tests are unchanged.
+4. No network, no model request, no change to src/; report.ts imports nothing from src/.
+
+**Allowed scope:** scripts/compass/report.ts, scripts/compass/strings.ts (the new strings only), tests/compass/report.test.ts.
+
+**Verification:**
+
+```
+npx vitest run --config vitest.compass.config.ts tests/compass/report.test.ts
+npm test
+npm run test:compass
+```
+
+**After acceptance (CC):** the report on this project's Pi folder (frozen copy, S8-03 codes, `--relayed-specs`) and on one S5 before-folder without codes; check the Behavior section reads as approved.
+
 ## CC review and gate (not for the coder)
 
 Review per planner-prompt.md Step 2 with 2–3 spot mutants (in `isFailed`, the episode rule, the Claude Code turn de-duplication); ledger entry in md/ledger.jsonl. Run the command on this project's Pi folder and Claude Code folder and check acceptance criterion 2. After acceptance the ledger's harness fields come from report.jsonl instead of ~/.claude/tools/pi-session-report.py.
@@ -320,4 +374,4 @@ Review per planner-prompt.md Step 2 with 2–3 spot mutants (in `isFailed`, the 
 | Revision | Date | Change |
 |---|---|---|
 | 0.6.0 | 2026-10-18 | S8-03 round 2: Claude Code string prompts (B26), trim overshoot direction, blank line, comment. |
-| 0.7.0 | 2026-10-18 | S8-04 spec and audit answers; lesson rubric revised by the user (situation, changed action, reason). |
+| 0.7.0 | 2026-10-18 | S8-04 spec and audit answers; lesson rubric revised by the user (situation, changed action, reason); S8-05 spec. |
