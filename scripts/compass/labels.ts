@@ -2,16 +2,18 @@
 // SPDX-FileCopyrightText: 2026 avtc <tarasenkov@gmail.com>
 
 /**
- * Label sheets and label files over a frozen corpus: write a readable sheet of
- * the trios to label or check, and validate a labels file against the set it
- * belongs to. Offline — no network, no model, and no write outside the
- * requested output.
+ * Label sheets, label files, and lesson lists over a frozen corpus: write a
+ * readable sheet of the trios to label or check, validate a labels file
+ * against the set it belongs to, and write the rules of every successful
+ * extraction with their source trios and a seeded sample. Offline — no
+ * network, no model, and no write outside the requested output.
  *
  * Usage:
  *   node labels.js export --corpus <dir> --set dev|heldout --scores <scores.jsonl> \
  *     --extract <extract.jsonl> [--labels <labels.jsonl>] --select all|review \
  *     --seed <text> --output <file.md>
  *   node labels.js check --corpus <dir> --set dev|heldout --labels <labels.jsonl>
+ *   node labels.js lessons --corpus <dir> --extract <extract.jsonl> --seed <text> --output <dir>
  */
 
 import * as fs from "node:fs";
@@ -26,8 +28,10 @@ import { parseArgv, sha256File, sha256Text } from "./util.js";
 const TOOL = "labels";
 const COMMAND_EXPORT = "export";
 const COMMAND_CHECK = "check";
+const COMMAND_LESSONS = "lessons";
 const SELECTION_ALL = "all";
 const SELECTION_REVIEW = "review";
+const LESSON_SAMPLE_SIZE = 30;
 const BLOCK_CHARS = 800;
 const FENCE = "````";
 const REVIEW_SAMPLE_DIVISOR = 10;
@@ -261,6 +265,87 @@ function renderSheet(set: CorpusSet, selection: string, entries: SheetEntry[]): 
   return `${lines.join("\n")}\n`;
 }
 
+/** One extracted rule with the trio it came from. */
+interface LessonRule {
+  ruleKey: string;
+  key: string;
+  sessionId: string;
+  file: string;
+  index: number;
+  rule: string;
+  sample: boolean;
+}
+
+/** One rule per note of every successful extraction, in corpus and note order. */
+function lessonRules(selected: CorpusTrio[], extracts: Map<string, ExtractResultRow>): Omit<LessonRule, "sample">[] {
+  const rules: Omit<LessonRule, "sample">[] = [];
+  for (const trio of selected) {
+    const extract = extracts.get(trio.key);
+    if (extract === undefined || extract.outcome !== "success") continue;
+    for (const [position, rule] of extract.notes.entries()) {
+      rules.push({
+        ruleKey: `${trio.key}#${position + 1}`,
+        key: trio.key,
+        sessionId: trio.sessionId,
+        file: trio.file,
+        index: trio.index,
+        rule,
+      });
+    }
+  }
+  return rules;
+}
+
+/**
+ * The rule keys in the sample: every rule when there are at most 30, else the
+ * 30 with the smallest hash for the seed, ties by rule key.
+ */
+function sampledRuleKeys(rules: Array<{ ruleKey: string }>, seed: string): Set<string> {
+  if (rules.length <= LESSON_SAMPLE_SIZE) return new Set(rules.map((rule) => rule.ruleKey));
+  const sorted = [...rules].sort((a, b) => {
+    const hashA = sha256Text(`${seed}\n${a.ruleKey}`);
+    const hashB = sha256Text(`${seed}\n${b.ruleKey}`);
+    if (hashA !== hashB) return hashA < hashB ? -1 : 1;
+    return a.ruleKey < b.ruleKey ? -1 : 1;
+  });
+  return new Set(sorted.slice(0, LESSON_SAMPLE_SIZE).map((rule) => rule.ruleKey));
+}
+
+/** The text with every run of whitespace collapsed to one space. */
+function collapseSpaces(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function renderLessons(selected: CorpusTrio[], texts: InteractionSequence[], rules: LessonRule[]): string {
+  const trioCount = new Set(rules.map((rule) => rule.key)).size;
+  const sampleCount = rules.filter((rule) => rule.sample).length;
+  const lines: string[] = [strings.lessonsTitle(rules.length, trioCount, sampleCount), ""];
+  const byTrio = new Map<string, LessonRule[]>();
+  for (const rule of rules) {
+    const list = byTrio.get(rule.key);
+    if (list === undefined) byTrio.set(rule.key, [rule]);
+    else list.push(rule);
+  }
+  selected.forEach((trio, position) => {
+    const trioRules = byTrio.get(trio.key);
+    if (trioRules === undefined) return;
+    lines.push(strings.sheetEntryHeader(trio.file, trio.index, trio.key));
+    for (const rule of trioRules) {
+      lines.push(strings.lessonsRuleLine(rule.ruleKey, collapseSpaces(rule.rule), rule.sample));
+    }
+    lines.push("");
+    lines.push(...textBlocks(texts[position]));
+    lines.push("");
+  });
+  return `${lines.join("\n")}\n`;
+}
+
+/** The path as shown in the done line: the argument without trailing separators. */
+function shownOutput(outputArg: string): string {
+  const trimmed = outputArg.replace(/[\\/]+$/, "");
+  return trimmed === "" ? outputArg : trimmed;
+}
+
 /**
  * The review selection: every no_lesson label, every disagreement (a lesson
  * labeled with no extractor rules, or a no_lesson with rules), and a seeded
@@ -439,15 +524,58 @@ async function runCheck(args: Record<string, string | string[]>): Promise<number
   return 0;
 }
 
+async function runLessons(args: Record<string, string | string[]>): Promise<number> {
+  const flags = ["corpus", "extract", "seed", "output"];
+  for (const flag of flags) {
+    if (flagValue(args, flag) === null) {
+      process.stderr.write(`${strings.labelsMissingFlag(TOOL, `--${flag}`)}\n`);
+      return 2;
+    }
+  }
+  const corpusArg = flagValue(args, "corpus") as string;
+  const extractArg = flagValue(args, "extract") as string;
+  const seed = flagValue(args, "seed") as string;
+  const outputArg = flagValue(args, "output") as string;
+
+  const corpusDir = path.resolve(corpusArg);
+  const loaded = freezeMatches(corpusDir) ? loadSelected(corpusDir, SELECTION_ALL) : null;
+  if (loaded === null) {
+    process.stderr.write(`${strings.scoreCorpusChanged(corpusArg)}\n`);
+    return 2;
+  }
+  const { selected, texts } = loaded;
+  const setKeys = new Set(selected.map((row) => row.key));
+
+  const extractEntries = readJsonlObjects(extractArg);
+  const extracts = extractEntries === null ? null : toExtractMap(extractEntries);
+  if (extracts === null || !agreesWithSet(setKeys, extracts.keys(), true)) {
+    mismatch(TOOL, extractArg, SELECTION_ALL, corpusArg);
+    return 2;
+  }
+
+  const baseRules = lessonRules(selected, extracts);
+  const sampled = sampledRuleKeys(baseRules, seed);
+  const rules: LessonRule[] = baseRules.map((rule) => ({ ...rule, sample: sampled.has(rule.ruleKey) }));
+  const lines = rules.map((rule) => JSON.stringify(rule));
+  const output = path.resolve(outputArg);
+  fs.mkdirSync(output, { recursive: true });
+  fs.writeFileSync(path.join(output, "lessons.jsonl"), rules.length === 0 ? "" : `${lines.join("\n")}\n`, "utf-8");
+  fs.writeFileSync(path.join(output, "lessons.md"), renderLessons(selected, texts, rules), "utf-8");
+  process.stdout.write(`${strings.lessonsDone(rules.length, sampled.size, shownOutput(outputArg))}\n`);
+  return 0;
+}
+
 export async function main(argv: string[]): Promise<number> {
   const args = parseArgv(argv);
   const positional = args._;
   const command = Array.isArray(positional) ? positional[0] : undefined;
-  if (command !== COMMAND_EXPORT && command !== COMMAND_CHECK) {
-    process.stderr.write(`${strings.labelsMissingFlag(TOOL, `${COMMAND_EXPORT} or ${COMMAND_CHECK}`)}\n`);
+  if (command !== COMMAND_EXPORT && command !== COMMAND_CHECK && command !== COMMAND_LESSONS) {
+    const names = `${COMMAND_EXPORT}, ${COMMAND_CHECK}, or ${COMMAND_LESSONS}`;
+    process.stderr.write(`${strings.labelsMissingFlag(TOOL, names)}\n`);
     return 2;
   }
-  return command === COMMAND_EXPORT ? runExport(args) : runCheck(args);
+  if (command === COMMAND_EXPORT) return runExport(args);
+  return command === COMMAND_CHECK ? runCheck(args) : runLessons(args);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

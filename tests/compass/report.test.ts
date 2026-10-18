@@ -276,6 +276,7 @@ interface JsonlRow {
   questions: number;
   codes?: Record<string, boolean> | null;
   interventions?: Record<string, number> | null;
+  lessons?: Record<string, number | boolean> | null;
 }
 
 function readJsonl(outDir: string): JsonlRow[] {
@@ -1175,6 +1176,8 @@ describe("report — number grouping", () => {
       total: { ...row, skippedFiles: 0, sessions: 1 },
       exchanges: [],
       scores: null,
+      lessons: null,
+      grades: null,
     };
 
     const md = renderMarkdown(report);
@@ -1884,5 +1887,320 @@ describe("report — reply codes", () => {
       chatter: 0,
       correctionsFollowedByEdits: 1,
     });
+  });
+});
+
+describe("report — lessons", () => {
+  function lessonLine(ruleKey: string, sessionId: string, rule: string, sample: boolean): Record<string, unknown> {
+    return { ruleKey, key: "trio-key", sessionId, file: "sessions/a.jsonl", index: 1, rule, sample };
+  }
+
+  function writeLessons(rows: Record<string, unknown>[]): string {
+    const file = path.join(TEST_TMP, "lessons.jsonl");
+    fs.writeFileSync(file, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`, "utf-8");
+    return file;
+  }
+
+  function writeGrades(rows: Record<string, unknown>[]): string {
+    const file = path.join(TEST_TMP, "grades.jsonl");
+    fs.writeFileSync(file, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`, "utf-8");
+    return file;
+  }
+
+  function gradeRow(ruleKey: string, grade: string, userChecked: boolean): Record<string, unknown> {
+    return { ruleKey, grade, userChecked, note: "" };
+  }
+
+  const SESSION_A = "01a14cf6aaaaaaaa";
+  const SESSION_B = "02b2c3d4bbbbbbbb";
+  const SESSION_OUTSIDE = "03c3c3c3cccccccc";
+
+  /** Two sessions, one prompt after the first each: a (01a14cf6) and b (02b2c3d4). */
+  function twoSessionFolder(): string {
+    const logsDir = path.join(TEST_TMP, "logs");
+    writeLog(
+      logsDir,
+      "a.jsonl",
+      piSession(SESSION_A, [
+        piUser("one", "2026-10-18T10:00:00.000Z"),
+        piAssistant({
+          text: "reply",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:00:10.000Z",
+        }),
+        piUser("two", "2026-10-18T10:01:00.000Z"),
+        piAssistant({
+          text: "reply two",
+          toolCalls: [],
+          usage: null,
+          durationMs: 0,
+          timestamp: "2026-10-18T10:01:10.000Z",
+        }),
+      ]),
+    );
+    writeLog(
+      logsDir,
+      "b.jsonl",
+      piSession(SESSION_B, [
+        piUser("hello", "2026-10-18T11:00:00.000Z"),
+        piAssistant({ text: "hi", toolCalls: [], usage: null, durationMs: 0, timestamp: "2026-10-18T11:00:10.000Z" }),
+        piUser("go", "2026-10-18T11:01:00.000Z"),
+        piAssistant({ text: "yes", toolCalls: [], usage: null, durationMs: 0, timestamp: "2026-10-18T11:01:10.000Z" }),
+      ]),
+    );
+    return logsDir;
+  }
+
+  /**
+   * Fixture: sessions a and b; four lessons lines, the first for a session outside the report.
+   *   | ruleKey | session | grade | userChecked |
+   *   | c-reg4 | 03c3c3c3 (not in the report) | good | yes |
+   *   | a-reg1 | a | good | yes |
+   *   | a-reg2 | a | vague | yes |
+   *   | b-reg3 | b | wrong | no |
+   * Expected: a = 2 rules (1 good, 1 vague, checked), b = 1 rule (1 wrong, not checked),
+   * total 3 rules, 3 graded, 1 good / 1 vague / 1 wrong, spot-checked: no.
+   */
+  it("counts the report's rules by session and renders the grade table byte for byte", async () => {
+    const logsDir = twoSessionFolder();
+    const lessonsFile = writeLessons([
+      lessonLine("c-reg4", SESSION_OUTSIDE, "rule outside the report", true),
+      lessonLine("a-reg1", SESSION_A, "first good rule", true),
+      lessonLine("a-reg2", SESSION_A, "first vague rule", false),
+      lessonLine("b-reg3", SESSION_B, "first wrong rule", true),
+    ]);
+    const gradesFile = writeGrades([
+      gradeRow("c-reg4", "good", true),
+      gradeRow("a-reg1", "good", true),
+      gradeRow("a-reg2", "vague", true),
+      gradeRow("b-reg3", "wrong", false),
+    ]);
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code } = await capture(() =>
+      runReport(["--dir", logsDir, "--output", outDir, "--lessons", lessonsFile, "--grades", gradesFile]),
+    );
+
+    expect(code).toBe(0);
+    const expected = [
+      strings.reportLessonsHeading,
+      strings.reportLessonsColumns,
+      "| --- | --- | --- |",
+      "| good | 1 | first good rule |",
+      "| vague | 1 | first vague rule |",
+      "| wrong | 1 | first wrong rule |",
+      "",
+      strings.reportLessonsLine(3, 3, false),
+    ].join("\n");
+    expect(readMarkdown(outDir)).toContain(expected);
+    const rows = readJsonl(outDir);
+    expect(rows.filter((row) => row.level === "session").map((row) => row.lessons)).toEqual([
+      { rules: 2, graded: 2, good: 1, vague: 1, wrong: 0, userChecked: true },
+      { rules: 1, graded: 1, good: 0, vague: 0, wrong: 1, userChecked: false },
+    ]);
+    expect(rows[rows.length - 1].lessons).toEqual({
+      rules: 3,
+      graded: 3,
+      good: 1,
+      vague: 1,
+      wrong: 1,
+      userChecked: false,
+    });
+  });
+
+  /**
+   * Fixture: the same lessons file on a single-session report of a.
+   * Expected: 2 rules, 2 graded, the wrong row reads 0 and none, spot-checked yes.
+   */
+  it("counts only the single session's rules and says yes when every graded rule is checked", async () => {
+    const logsDir = twoSessionFolder();
+    const lessonsFile = writeLessons([
+      lessonLine("a-reg1", SESSION_A, "first good rule", true),
+      lessonLine("a-reg2", SESSION_A, "first vague rule", false),
+      lessonLine("b-reg3", SESSION_B, "first wrong rule", true),
+    ]);
+    const gradesFile = writeGrades([
+      gradeRow("a-reg1", "good", true),
+      gradeRow("a-reg2", "vague", true),
+      gradeRow("b-reg3", "wrong", false),
+    ]);
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code } = await capture(() =>
+      runReport([
+        "--session",
+        path.join(logsDir, "a.jsonl"),
+        "--output",
+        outDir,
+        "--lessons",
+        lessonsFile,
+        "--grades",
+        gradesFile,
+      ]),
+    );
+
+    expect(code).toBe(0);
+    const md = readMarkdown(outDir);
+    expect(md).toContain("| good | 1 | first good rule |");
+    expect(md).toContain("| vague | 1 | first vague rule |");
+    expect(md).toContain(`| wrong | 0 | ${strings.reportNoExample} |`);
+    expect(md).toContain(strings.reportLessonsLine(2, 2, true));
+    const rows = readJsonl(outDir);
+    expect(rows[rows.length - 1].lessons).toEqual({
+      rules: 2,
+      graded: 2,
+      good: 1,
+      vague: 1,
+      wrong: 0,
+      userChecked: true,
+    });
+  });
+
+  /** Fixture: one rule "a | b\nc" graded good. Expected: one line, the pipe escaped and the newline collapsed. */
+  it("renders a rule with a pipe and a newline on one table line", async () => {
+    const logsDir = twoSessionFolder();
+    const lessonsFile = writeLessons([lessonLine("a-reg1", SESSION_A, "a | b\nc", true)]);
+    const gradesFile = writeGrades([gradeRow("a-reg1", "good", true)]);
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code } = await capture(() =>
+      runReport([
+        "--session",
+        path.join(logsDir, "a.jsonl"),
+        "--output",
+        outDir,
+        "--lessons",
+        lessonsFile,
+        "--grades",
+        gradesFile,
+      ]),
+    );
+
+    expect(code).toBe(0);
+    expect(readMarkdown(outDir)).toContain("| good | 1 | a \\| b c |");
+    expect(readMarkdown(outDir)).not.toContain("a | b\nc");
+  });
+
+  /**
+   * Fixture: two lessons for a, no grades file. Expected: Lessons reads not scored;
+   * jsonl counts the rules with 0 graded and userChecked false.
+   */
+  it("reads not scored when nothing is graded", async () => {
+    const logsDir = twoSessionFolder();
+    const lessonsFile = writeLessons([
+      lessonLine("a-reg1", SESSION_A, "first rule", true),
+      lessonLine("a-reg2", SESSION_A, "second rule", false),
+    ]);
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code } = await capture(() =>
+      runReport(["--session", path.join(logsDir, "a.jsonl"), "--output", outDir, "--lessons", lessonsFile]),
+    );
+
+    expect(code).toBe(0);
+    expect(readMarkdown(outDir)).toContain(`${strings.reportLessonsHeading}\n${strings.reportNotScored}`);
+    const rows = readJsonl(outDir);
+    expect(rows[rows.length - 1].lessons).toEqual({
+      rules: 2,
+      graded: 0,
+      good: 0,
+      vague: 0,
+      wrong: 0,
+      userChecked: false,
+    });
+  });
+
+  /** Fixture: a report without --lessons. Expected: every jsonl lessons field is null. */
+  it("leaves the lessons object null without --lessons", async () => {
+    const logsDir = twoSessionFolder();
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code } = await capture(() => runReport(["--dir", logsDir, "--output", outDir]));
+
+    expect(code).toBe(0);
+    const rows = readJsonl(outDir).filter((row) => row.level !== "segment");
+    expect(rows).toHaveLength(3);
+    for (const row of rows) expect(row.lessons).toBeNull();
+  });
+
+  it("refuses a bad lessons line without writing anything", async () => {
+    const logsDir = twoSessionFolder();
+    const lessonsFile = writeLessons([{ ruleKey: 7 }]);
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code, err } = await capture(() =>
+      runReport(["--dir", logsDir, "--output", outDir, "--lessons", lessonsFile]),
+    );
+
+    expect(code).toBe(2);
+    expect(err).toBe(`${strings.reportBadLessons(lessonsFile)}\n`);
+    expect(fs.existsSync(path.join(outDir, "report.md"))).toBe(false);
+    expect(fs.existsSync(path.join(outDir, "report.jsonl"))).toBe(false);
+    expect(fs.existsSync(path.join(outDir, "exchanges.jsonl"))).toBe(false);
+  });
+
+  it("refuses a lessons file whose rule keys repeat", async () => {
+    const logsDir = twoSessionFolder();
+    const line = lessonLine("a-reg1", SESSION_A, "rule", true);
+    const lessonsFile = writeLessons([line, line]);
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code, err } = await capture(() =>
+      runReport(["--dir", logsDir, "--output", outDir, "--lessons", lessonsFile]),
+    );
+
+    expect(code).toBe(2);
+    expect(err).toBe(`${strings.reportBadLessons(lessonsFile)}\n`);
+  });
+
+  /**
+   * Fixture: one lesson for a; three bad grades files and one bad lessons line.
+   * Expected: each refusal prints its message, exits 2, and writes nothing.
+   */
+  it("refuses bad grades and bad lessons lines", async () => {
+    const logsDir = twoSessionFolder();
+    const goodLessons = writeLessons([lessonLine("a-reg1", SESSION_A, "rule", true)]);
+    const outDir = path.join(TEST_TMP, "out");
+    const cases: Array<{ lessons: string; grades: string; err: string }> = [];
+    const outside = writeGrades([gradeRow("a-reg1", "fine", true)]);
+    cases.push({
+      lessons: goodLessons,
+      grades: outside,
+      err: `${strings.reportBadGrades(outside, goodLessons)}\n`,
+    });
+    const unknown = writeGrades([gradeRow("z-reg9", "good", true)]);
+    cases.push({
+      lessons: goodLessons,
+      grades: unknown,
+      err: `${strings.reportBadGrades(unknown, goodLessons)}\n`,
+    });
+    const duplicate = writeGrades([gradeRow("a-reg1", "good", true), gradeRow("a-reg1", "vague", true)]);
+    cases.push({
+      lessons: goodLessons,
+      grades: duplicate,
+      err: `${strings.reportBadGrades(duplicate, goodLessons)}\n`,
+    });
+
+    for (const item of cases) {
+      const result = await capture(() =>
+        runReport(["--dir", logsDir, "--output", outDir, "--lessons", item.lessons, "--grades", item.grades]),
+      );
+      expect(result.code).toBe(2);
+      expect(result.err).toBe(item.err);
+      expect(fs.existsSync(path.join(outDir, "report.md"))).toBe(false);
+    }
+  });
+
+  it("refuses --grades without --lessons", async () => {
+    const gradesFile = writeGrades([gradeRow("a-reg1", "good", true)]);
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code, err } = await capture(() => runReport(["--grades", gradesFile, "--output", outDir]));
+
+    expect(code).toBe(2);
+    expect(err).toBe("compass report: --lessons is required\n");
+    expect(fs.existsSync(path.join(outDir, "report.md"))).toBe(false);
   });
 });

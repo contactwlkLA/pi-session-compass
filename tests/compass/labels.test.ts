@@ -525,7 +525,7 @@ describe("refusals", () => {
   it("refuses a missing subcommand with its message", async () => {
     const result = await capture(() => labelsMain([]));
     expect(result.code).toBe(2);
-    expect(result.err).toBe("compass labels: export or check is required\n");
+    expect(result.err).toBe("compass labels: export, check, or lessons is required\n");
   });
 
   it("refuses --select review without --labels", async () => {
@@ -706,6 +706,162 @@ describe("refusals", () => {
     );
     expect(result.code).toBe(2);
     expect(result.err).toBe(`${strings.scoreCorpusChanged(corpus)}\n`);
+  });
+});
+
+describe("lessons", () => {
+  function readLessons(outputDir: string): Record<string, unknown>[] {
+    return fs
+      .readFileSync(path.join(outputDir, "lessons.jsonl"), "utf-8")
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+  }
+
+  async function runLessons(
+    corpus: string,
+    extract: string,
+    seed: string,
+    output: string,
+  ): Promise<{ code: number; out: string; err: string }> {
+    return capture(() =>
+      labelsMain(["lessons", "--corpus", corpus, "--extract", extract, "--seed", seed, "--output", output]),
+    );
+  }
+
+  function sampledKeys(rows: Record<string, unknown>[]): string[] {
+    return rows.filter((row) => row.sample === true).map((row) => row.ruleKey as string);
+  }
+
+  /**
+   * Fixture: three trios with notes [], ["first\nrule  with  spaces", "second rule"], ["third rule"].
+   * Expected:
+   *   | trio | notes | rule keys |
+   *   | 1 | 0 | — |
+   *   | 2 | 2 | key2#1, key2#2 |
+   *   | 3 | 1 | key3#1 |
+   *   3 rules from 2 trios, all 3 sampled.
+   */
+  it("writes one rule per note of every successful trio, in trio order", async () => {
+    const { corpus, keys } = await devCorpus("lessons", trioRecords(sessionHeader("sess-lessons"), 3));
+    const extract = path.join(TEST_TMP, "extract.jsonl");
+    writeJsonl(extract, [
+      extractRow(keys[0], "success", [], 1, null),
+      extractRow(keys[1], "success", ["first\nrule  with  spaces", "second rule"], 1, null),
+      extractRow(keys[2], "success", ["third rule"], 1, null),
+    ]);
+    const output = path.join(TEST_TMP, "lessons-out");
+
+    const result = await runLessons(corpus, extract, "s", output);
+
+    expect(result.code).toBe(0);
+    expect(result.out).toBe(`compass labels: 3 rules, 3 in the sample → ${output}/lessons.md\n`);
+    const rows = readLessons(output);
+    expect(rows.map((row) => row.ruleKey)).toEqual([`${keys[1]}#1`, `${keys[1]}#2`, `${keys[2]}#1`]);
+    expect(rows.map((row) => row.rule)).toEqual(["first\nrule  with  spaces", "second rule", "third rule"]);
+    expect(rows.every((row) => row.sample === true)).toBe(true);
+    const corpusRows = readCorpusRows(corpus);
+    expect(rows.map((row) => [row.key, row.sessionId, row.file, row.index])).toEqual([
+      [keys[1], corpusRows[1].sessionId, corpusRows[1].file, corpusRows[1].index],
+      [keys[1], corpusRows[1].sessionId, corpusRows[1].file, corpusRows[1].index],
+      [keys[2], corpusRows[2].sessionId, corpusRows[2].file, corpusRows[2].index],
+    ]);
+
+    const sheet = fs.readFileSync(path.join(output, "lessons.md"), "utf-8");
+    expect(sheet).toContain("# Lessons — 3 rules from 2 trios (3 in the sample)");
+    expect(sheet.match(/^## /gm)).toHaveLength(2);
+    expect(sheet).toContain(`## ${corpusRows[1].file} · trio ${corpusRows[1].index} · ${keys[1]}`);
+    expect(sheet).not.toContain(`## ${corpusRows[0].file} · trio ${corpusRows[0].index} · ${keys[0]}`);
+    expect(sheet).toContain(`  - [${keys[1]}#1] first rule with spaces (sample)`);
+    expect(sheet).toContain(`  - [${keys[1]}#2] second rule (sample)`);
+    expect(sheet).toContain(`  - [${keys[2]}#1] third rule (sample)`);
+    expect(sheet.match(/````/g)).toHaveLength(12);
+  });
+
+  /** Fixture: success with 0 notes, failed with 2 notes, not_run with 1 note. Expected: no rules, no sheet entries. */
+  it("gives no rules for failed and not-run rows", async () => {
+    const { corpus, keys } = await devCorpus("lessons-none", trioRecords(sessionHeader("sess-lessons-none"), 3));
+    const extract = path.join(TEST_TMP, "extract.jsonl");
+    writeJsonl(extract, [
+      extractRow(keys[0], "success", [], 1, null),
+      extractRow(keys[1], "failed", ["lost one", "lost two"], 1, null),
+      extractRow(keys[2], "not_run", ["never asked"], 1, null),
+    ]);
+    const output = path.join(TEST_TMP, "lessons-out");
+
+    const result = await runLessons(corpus, extract, "s", output);
+
+    expect(result.code).toBe(0);
+    expect(result.out).toBe(`compass labels: 0 rules, 0 in the sample → ${output}/lessons.md\n`);
+    expect(fs.readFileSync(path.join(output, "lessons.jsonl"), "utf-8")).toBe("");
+    const sheet = fs.readFileSync(path.join(output, "lessons.md"), "utf-8");
+    expect(sheet).toBe("# Lessons — 0 rules from 0 trios (0 in the sample)\n\n");
+  });
+
+  /** Fixture: one trio with 30 notes. Expected: 30 rules, all sampled, title counts 30 and 30. */
+  it("samples every rule when there are 30 or fewer", async () => {
+    const { corpus, keys } = await devCorpus("lessons-thirty", trioRecords(sessionHeader("sess-lessons-thirty"), 1));
+    const extract = path.join(TEST_TMP, "extract.jsonl");
+    const notes = Array.from({ length: 30 }, (_, i) => `rule ${i + 1}`);
+    writeJsonl(extract, [extractRow(keys[0], "success", notes, 1, null)]);
+    const output = path.join(TEST_TMP, "lessons-out");
+
+    const result = await runLessons(corpus, extract, "s", output);
+
+    expect(result.code).toBe(0);
+    expect(result.out).toBe(`compass labels: 30 rules, 30 in the sample → ${output}/lessons.md\n`);
+    expect(sampledKeys(readLessons(output))).toHaveLength(30);
+    const sheet = fs.readFileSync(path.join(output, "lessons.md"), "utf-8");
+    expect(sheet).toContain("# Lessons — 30 rules from 1 trios (30 in the sample)");
+    expect(sheet.match(/\(sample\)/g)).toHaveLength(30);
+  });
+
+  /**
+   * Fixture: one trio with 31 notes.
+   * Expected: 31 rules, 30 sampled; the same 30 for the same seed; another set for another seed.
+   */
+  it("samples 30 of 31 rules by seed, the same 30 for the same seed", async () => {
+    const { corpus, keys } = await devCorpus(
+      "lessons-thirty-one",
+      trioRecords(sessionHeader("sess-lessons-thirty-one"), 1),
+    );
+    const extract = path.join(TEST_TMP, "extract.jsonl");
+    const notes = Array.from({ length: 31 }, (_, i) => `rule ${i + 1}`);
+    writeJsonl(extract, [extractRow(keys[0], "success", notes, 1, null)]);
+    const output = path.join(TEST_TMP, "lessons-out");
+
+    expect((await runLessons(corpus, extract, "s", output)).code).toBe(0);
+    const rows = readLessons(output);
+    const first = sampledKeys(rows);
+    expect(rows).toHaveLength(31);
+    expect(first).toHaveLength(30);
+
+    expect((await runLessons(corpus, extract, "s", output)).code).toBe(0);
+    expect(sampledKeys(readLessons(output))).toEqual(first);
+
+    expect((await runLessons(corpus, extract, "t", output)).code).toBe(0);
+    expect(sampledKeys(readLessons(output))).not.toEqual(first);
+
+    const sheet = fs.readFileSync(path.join(output, "lessons.md"), "utf-8");
+    expect(sheet).toContain("# Lessons — 31 rules from 1 trios (30 in the sample)");
+    expect(sheet.match(/\(sample\)/g)).toHaveLength(30);
+  });
+
+  /** Fixture: the extract covers two of the corpus's three trios. Expected: the mismatch refusal, no output. */
+  it("refuses an extract file that misses a corpus trio", async () => {
+    const { corpus, keys } = await devCorpus("lessons-missing", trioRecords(sessionHeader("sess-lessons-missing"), 3));
+    const extract = path.join(TEST_TMP, "extract.jsonl");
+    writeJsonl(
+      extract,
+      keys.slice(0, 2).map((key) => extractRow(key, "success", ["rule"], 1, null)),
+    );
+    const output = path.join(TEST_TMP, "lessons-out");
+
+    const result = await runLessons(corpus, extract, "s", output);
+
+    expect(result.code).toBe(2);
+    expect(result.err).toBe(`compass labels: ${extract} does not cover set all of ${corpus}\n`);
+    expect(fs.existsSync(output)).toBe(false);
   });
 });
 

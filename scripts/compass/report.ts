@@ -7,13 +7,15 @@
  * cost, Checks, and Agent questions sections measured per segment, plus
  * exchanges.jsonl: one line per prompt with agent text on both sides, for
  * compass score --exchanges. With --codes, the Your interventions section
- * counts the scores that command wrote back. The other sections say "not
- * scored" (Behavior says "not applicable" on Claude Code logs). Offline: no
- * model request, no network, nothing from src/.
+ * counts the scores that command wrote back; with --lessons and --grades, the
+ * Lessons section grades the rules the labels command listed. The remaining
+ * section says "not scored" (Behavior says "not applicable" on Claude Code
+ * logs). Offline: no model request, no network, nothing from src/.
  *
  * Usage:
  *   node_modules/.bin/jiti scripts/compass/report.ts \
- *     (--session <file.jsonl> | --dir <folder>) --output <dir> [--codes <scores.jsonl>]
+ *     (--session <file.jsonl> | --dir <folder>) --output <dir> [--codes <scores.jsonl>] \
+ *     [--lessons <lessons.jsonl> [--grades <grades.jsonl>]]
  */
 
 import * as fs from "node:fs";
@@ -199,6 +201,34 @@ export interface ScoreLine {
   key: string;
   verdict: string;
   answers: Record<string, number> | null;
+}
+
+/** One line of a lessons file, as --lessons reads it. */
+interface LessonLine {
+  ruleKey: string;
+  key: string;
+  sessionId: string;
+  file: string;
+  index: number;
+  rule: string;
+  sample: boolean;
+}
+
+/** One lesson grade, as --grades reads it. */
+interface GradeLine {
+  ruleKey: string;
+  grade: "good" | "vague" | "wrong";
+  userChecked: boolean;
+}
+
+/** A session's or the total's lessons counts. */
+interface LessonCounts {
+  rules: number;
+  graded: number;
+  good: number;
+  vague: number;
+  wrong: number;
+  userChecked: boolean;
 }
 
 /**
@@ -1025,15 +1055,15 @@ export function renderExchanges(bySession: ExchangeRecord[][]): string {
   return lines.length === 0 ? "" : `${lines.join("\n")}\n`;
 }
 
-/** A scores file as a key → line map; null when a line is unreadable or lacks key and verdict. */
-export function parseScores(file: string): Map<string, ScoreLine> | null {
+/** The file's JSON objects, one per non-empty line, or null when it is missing or unparseable. */
+function readJsonl(file: string): Record<string, unknown>[] | null {
   let raw: string;
   try {
     raw = fs.readFileSync(file, "utf-8");
   } catch {
     return null;
   }
-  const scores = new Map<string, ScoreLine>();
+  const entries: Record<string, unknown>[] = [];
   for (const line of raw.split("\n")) {
     if (line.trim() === "") continue;
     let parsed: unknown;
@@ -1044,6 +1074,17 @@ export function parseScores(file: string): Map<string, ScoreLine> | null {
     }
     const record = asRecord(parsed);
     if (record === null) return null;
+    entries.push(record);
+  }
+  return entries;
+}
+
+/** A scores file as a key → line map; null when a line is unreadable or lacks key and verdict. */
+export function parseScores(file: string): Map<string, ScoreLine> | null {
+  const entries = readJsonl(file);
+  if (entries === null) return null;
+  const scores = new Map<string, ScoreLine>();
+  for (const record of entries) {
     const key = asString(record.key);
     const verdict = asString(record.verdict);
     if (key === null || verdict === null) return null;
@@ -1058,6 +1099,52 @@ export function parseScores(file: string): Map<string, ScoreLine> | null {
     if (!scores.has(key)) scores.set(key, { key, verdict, answers: answers === null ? null : values });
   }
   return scores;
+}
+
+/** The lessons rows by rule key in file order, or null when a line is not a row or a key repeats. */
+function parseLessons(file: string): Map<string, LessonLine> | null {
+  const entries = readJsonl(file);
+  if (entries === null) return null;
+  const lines = new Map<string, LessonLine>();
+  for (const record of entries) {
+    const ruleKey = asString(record.ruleKey);
+    const key = asString(record.key);
+    const sessionId = asString(record.sessionId);
+    const sourceFile = asString(record.file);
+    const rule = asString(record.rule);
+    const index = asNumber(record.index);
+    if (ruleKey === null || key === null || sessionId === null || sourceFile === null || rule === null) return null;
+    if (index === null || !Number.isInteger(index)) return null;
+    if (typeof record.sample !== "boolean") return null;
+    if (lines.has(ruleKey)) return null;
+    lines.set(ruleKey, {
+      ruleKey,
+      key,
+      sessionId,
+      file: sourceFile,
+      index,
+      rule,
+      sample: record.sample,
+    });
+  }
+  return lines;
+}
+
+/** The grades by rule key, or null when a line is not a grade for a unique listed rule. */
+function parseGrades(file: string, lessons: Map<string, LessonLine>): Map<string, GradeLine> | null {
+  const entries = readJsonl(file);
+  if (entries === null) return null;
+  const grades = new Map<string, GradeLine>();
+  for (const record of entries) {
+    const ruleKey = asString(record.ruleKey);
+    const grade = record.grade;
+    if (ruleKey === null || !lessons.has(ruleKey) || grades.has(ruleKey)) return null;
+    if (grade !== "good" && grade !== "vague" && grade !== "wrong") return null;
+    if (typeof record.userChecked !== "boolean") return null;
+    if (record.note !== undefined && typeof record.note !== "string") return null;
+    grades.set(ruleKey, { ruleKey, grade, userChecked: record.userChecked });
+  }
+  return grades;
 }
 
 function emptyChecks(): CheckCountsByKind {
@@ -1252,6 +1339,8 @@ export interface FullReport {
   total: TotalReport;
   exchanges: ExchangeRecord[][];
   scores: Map<string, ScoreLine> | null;
+  lessons: Map<string, LessonLine> | null;
+  grades: Map<string, GradeLine> | null;
 }
 
 /** The five codes for one prompt: an answer at or above 0.5 is a yes. */
@@ -1419,6 +1508,58 @@ function renderInterventions(report: FullReport): string {
   ].join("\n\n");
 }
 
+/** The counted rules for a set of session ids, with their grades. */
+function lessonCounts(
+  lessonLines: LessonLine[],
+  grades: Map<string, GradeLine>,
+  sessionIds: Set<string>,
+): LessonCounts {
+  const counts: LessonCounts = { rules: 0, graded: 0, good: 0, vague: 0, wrong: 0, userChecked: true };
+  for (const line of lessonLines) {
+    if (!sessionIds.has(line.sessionId)) continue;
+    counts.rules++;
+    const grade = grades.get(line.ruleKey);
+    if (grade === undefined) continue;
+    counts.graded++;
+    if (grade.grade === "good") counts.good++;
+    if (grade.grade === "vague") counts.vague++;
+    if (grade.grade === "wrong") counts.wrong++;
+    if (!grade.userChecked) counts.userChecked = false;
+  }
+  counts.userChecked = counts.graded > 0 && counts.userChecked;
+  return counts;
+}
+
+/** A rule text as one table cell: whitespace collapsed and the column separator escaped. */
+function ruleCell(text: string): string {
+  return collapseWhitespace(text).replace(/\|/g, "\\|");
+}
+
+/** Lessons: the grade table when rules were counted and graded, the not-scored text otherwise. */
+function renderLessons(report: FullReport): string {
+  const notScored = [strings.reportLessonsHeading, strings.reportNotScored].join("\n");
+  if (report.lessons === null) return notScored;
+  const lessonLines = [...report.lessons.values()];
+  const grades = report.grades ?? new Map<string, GradeLine>();
+  const ids = new Set(report.sessions.map((session) => session.id));
+  const counts = lessonCounts(lessonLines, grades, ids);
+  if (counts.rules === 0 || counts.graded === 0) return notScored;
+  const rows = ["good", "vague", "wrong"].map((grade) => {
+    const graded = lessonLines.filter((line) => ids.has(line.sessionId) && grades.get(line.ruleKey)?.grade === grade);
+    const example = graded.length === 0 ? strings.reportNoExample : ruleCell(graded[0].rule);
+    return tableRow([grade, strings.reportNumber(graded.length), example]);
+  });
+  return [
+    [
+      strings.reportLessonsHeading,
+      strings.reportLessonsColumns,
+      separatorRow(strings.reportLessonsColumns),
+      ...rows,
+    ].join("\n"),
+    strings.reportLessonsLine(counts.graded, counts.rules, counts.userChecked),
+  ].join("\n\n");
+}
+
 /** The report.md body: the approved title and header, the seven sections, the footer. */
 export function renderMarkdown(report: FullReport): string {
   const totalLabel = strings.reportTotalRow;
@@ -1476,7 +1617,7 @@ export function renderMarkdown(report: FullReport): string {
   ].join("\n");
 
   const interventionsSection = renderInterventions(report);
-  const lessonsSection = [strings.reportLessonsHeading, strings.reportNotScored].join("\n");
+  const lessonsSection = renderLessons(report);
   const behaviorSection = [
     strings.reportBehaviorHeading,
     report.format === "pi" ? strings.reportNotScored : strings.reportNotApplicable,
@@ -1500,10 +1641,27 @@ export function renderMarkdown(report: FullReport): string {
   ].join("\n\n")}\n`;
 }
 
+/** Each session's lessons counts in report order, or nulls without --lessons. */
+function sessionLessonCounts(report: FullReport): Array<LessonCounts | null> {
+  if (report.lessons === null) return report.sessions.map(() => null);
+  const lines = [...report.lessons.values()];
+  const grades = report.grades ?? new Map<string, GradeLine>();
+  return report.sessions.map((session) => lessonCounts(lines, grades, new Set([session.id])));
+}
+
+/** The total object's lessons counts, or null without --lessons. */
+function totalLessonCounts(report: FullReport): LessonCounts | null {
+  if (report.lessons === null) return null;
+  const lines = [...report.lessons.values()];
+  const grades = report.grades ?? new Map<string, GradeLine>();
+  return lessonCounts(lines, grades, new Set(report.sessions.map((session) => session.id)));
+}
+
 /** The report.jsonl body: one object per segment, per session, and one total. */
 export function renderJsonl(report: FullReport): string {
   const lines: string[] = [];
   const joins = joinReport(report);
+  const lessonCountsBySession = sessionLessonCounts(report);
   report.sessions.forEach((session, position) => {
     const codes = joins[position].codes;
     for (const segment of session.segments) {
@@ -1535,6 +1693,7 @@ export function renderJsonl(report: FullReport): string {
         checks: session.checks,
         questions: session.questions,
         interventions: joins[position].interventions,
+        lessons: lessonCountsBySession[position],
       }),
     );
   });
@@ -1549,6 +1708,7 @@ export function renderJsonl(report: FullReport): string {
       checks: report.total.checks,
       questions: report.total.questions,
       interventions: totalInterventions(joins),
+      lessons: totalLessonCounts(report),
     }),
   );
   return `${lines.join("\n")}\n`;
@@ -1604,10 +1764,23 @@ export async function main(argv: string[]): Promise<number> {
   const sessionArg = typeof args.session === "string" ? args.session : null;
   const dirArg = typeof args.dir === "string" ? args.dir : null;
   const outputArg = typeof args.output === "string" ? args.output : null;
+  const lessonsArg = typeof args.lessons === "string" ? args.lessons : null;
+  const gradesArg = typeof args.grades === "string" ? args.grades : null;
+  if (gradesArg !== null && lessonsArg === null) return refuse(strings.labelsMissingFlag("report", "--lessons"));
   if (outputArg === null || (sessionArg === null) === (dirArg === null)) return refuse(strings.reportUsage);
   const codesArg = typeof args.codes === "string" ? args.codes : null;
   const scores = codesArg === null ? null : parseScores(codesArg);
   if (scores === null && codesArg !== null) return refuse(strings.reportBadCodes(codesArg));
+  let lessons: Map<string, LessonLine> | null = null;
+  let grades: Map<string, GradeLine> | null = null;
+  if (lessonsArg !== null) {
+    lessons = parseLessons(lessonsArg);
+    if (lessons === null) return refuse(strings.reportBadLessons(lessonsArg));
+    if (gradesArg !== null) {
+      grades = parseGrades(gradesArg, lessons);
+      if (grades === null) return refuse(strings.reportBadGrades(gradesArg, lessonsArg));
+    }
+  }
 
   const inputPath = sessionArg !== null ? sessionArg : String(dirArg);
   const inputDir = sessionArg !== null ? path.dirname(path.resolve(sessionArg)) : path.resolve(String(dirArg));
@@ -1660,6 +1833,8 @@ export async function main(argv: string[]): Promise<number> {
     total,
     exchanges,
     scores,
+    lessons,
+    grades,
   };
 
   fs.mkdirSync(outputResolved, { recursive: true });

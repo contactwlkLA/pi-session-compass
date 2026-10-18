@@ -190,6 +190,12 @@ export const strings = {
   sheetTitle: (set: string, trios: number, selection: string) =>
     `# Label sheet — ${set}, ${trios} trios (${selection})`,
   sheetEntryHeader: (file: string, index: number, key: string) => `## ${file} · trio ${index} · ${key}`,
+  lessonsTitle: (rules: number, trios: number, sample: number) =>
+    `# Lessons — ${rules} rules from ${trios} trios (${sample} in the sample)`,
+  lessonsRuleLine: (ruleKey: string, rule: string, sample: boolean) =>
+    `  - [${ruleKey}] ${rule}${sample ? " (sample)" : ""}`,
+  lessonsDone: (rules: number, sample: number, output: string) =>
+    `compass labels: ${rules} rules, ${sample} in the sample → ${output}/lessons.md`,
   sheetJev: (correction: number, preference: number, steering: number, confusion: number) =>
     `Jev: correction ${correction.toFixed(2)}, preference ${preference.toFixed(2)}, ` +
     `steering ${steering.toFixed(2)}, confusion ${confusion.toFixed(2)}`,
@@ -296,6 +302,13 @@ export const strings = {
   reportInterventionsColumns:
     "| Session | Approval | Correction | Hold-back | Task step | Chatter | Corrections followed by edits |",
   reportLessonsHeading: "## Lessons",
+  reportLessonsColumns: "| Grade | Rules | Example |",
+  reportNoExample: "none",
+  reportLessonsLine: (graded: number, rules: number, userChecked: boolean) =>
+    `Graded by CC on a sample of ${graded} of ${rules} rules; spot-checked by the user: ${userChecked ? "yes" : "no"}.`,
+  reportBadLessons: (file: string) => `compass report: ${file} is not a lessons file from compass labels.`,
+  reportBadGrades: (gradesFile: string, lessonsFile: string) =>
+    `compass report: ${gradesFile} is not a grades file for ${lessonsFile}.`,
   reportBehaviorHeading: "## Behavior",
   reportNotScored: "not scored",
   reportNotApplicable: "not applicable",
