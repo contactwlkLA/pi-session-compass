@@ -64,7 +64,11 @@ export async function censusFile(filePath: string): Promise<CensusResult> {
       prevAssistantLine = lineNo;
       continue;
     }
-    if (isAssistantWithText) prevAssistantLine = lineNo;
+    if (isAssistantWithText) {
+      prevAssistantLine = lineNo;
+      // The detector clears the pending user turn on every assistant text that completes no trio.
+      prevUserLine = 0;
+    }
     if (isUserCandidate) {
       const content = stripSkillBlocks(extractContent(msg.content));
       if (content && !isContinuation(content) && !isExtensionMessage(content)) prevUserLine = lineNo;

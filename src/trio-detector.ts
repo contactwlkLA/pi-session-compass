@@ -23,6 +23,8 @@ export interface SessionEntry {
  *
  * Emits a trio whenever it sees: assistant → user → assistant
  * where the user message is not a continuation, approval, or extension-generated message.
+ * An assistant text that completes no trio clears the pending user text, so a user turn
+ * is never paired with two agent texts that both came after it.
  */
 export class TrioDetector {
   private lastAssistant: string | null = null;
@@ -43,7 +45,8 @@ export class TrioDetector {
   /**
    * Process a single session entry. Returns the completed trio if one was found,
    * or null otherwise. After a trio is emitted, lastUser is cleared so each
-   * user message completes at most one trio.
+   * user message completes at most one trio; an assistant text that completes
+   * no trio clears it too.
    */
   process(entry: SessionEntry): { agentBefore: string; userFeedback: string; agentAfter: string } | null {
     this.assistantSetByLastRecord = false;
@@ -72,6 +75,8 @@ export class TrioDetector {
           this.assistantSetByLastRecord = true;
           return { agentBefore, userFeedback, agentAfter };
         }
+        // A user turn is never paired with two agent texts that both came after it.
+        this.lastUser = null;
         this.lastAssistant = text;
         this.assistantSetByLastRecord = true;
       }

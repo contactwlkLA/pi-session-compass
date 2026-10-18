@@ -241,6 +241,19 @@ describe("scan position across passes", () => {
     expect(await scanAll(file)).toEqual(expected);
   });
 
+  it("restarts at the last assistant record and matches an uninterrupted scan (user before the first assistant)", async () => {
+    const file = path.join(sessionDir, "user-first.jsonl");
+    writeSession(file, [HEADER, userRecord("U1 feedback before any assistant"), assistantRecord("A1 first plan")]);
+
+    // The pass over [U1, A1] examines nothing and saves its position at A1.
+    expect(await scanAll(file)).toEqual([]);
+
+    fs.appendFileSync(file, `${assistantRecord("A2 second plan")}\n`);
+    const expected = uninterrupted(file);
+    expect(expected).toEqual([]);
+    expect(await scanAll(file)).toEqual(expected);
+  });
+
   it("keeps saved positions on record starts across blank lines and CRLF endings", async () => {
     const file = path.join(sessionDir, "blank-crlf.jsonl");
     const lfSegment = [HEADER, assistantRecord("A1 first plan"), "", userRecord("U1 first feedback")].join("\n");

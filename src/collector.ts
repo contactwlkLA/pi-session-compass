@@ -78,6 +78,8 @@ function recordDigest(text: string): string {
 const FILE_START = 0;
 const NO_REVIEW_CONTEXT: null = null;
 const NO_DUMP_PATH: null = null;
+/** The record generator's result value when it is closed before its end. */
+const NO_RECORD_RESULT: undefined = undefined;
 const SCAN_ERROR_SOURCE = "scan error";
 
 /** Stops scanning one session file; the scan reports it and continues with other files. */
@@ -281,10 +283,12 @@ export async function scanSessions(
     state.scanSessionKB = sessionKB;
     setCachedPipelineState(state); // Immediate footer update at file boundary
 
-    // Stop early if we have enough results
+    // Stop early if we have enough results. A pass that stopped at its trio limit
+    // before the file's end leaves unread trios in this file, so the file stays in
+    // remainingFiles; a file read to its end is done.
     if (results.length >= maxResults) {
       state.triosProcessed = triosProcessed;
-      const remaining = allFiles.length - allFiles.indexOf(file) - 1;
+      const remaining = allFiles.length - allFiles.indexOf(file) - (scanResult.limitStopBeforeEnd ? 0 : 1);
       return { results, triosProcessed, totalKnownTrios, remainingFiles: remaining, stopReason: null };
     }
 
@@ -461,6 +465,8 @@ interface StreamAndExtractResult {
   resumeByte: number;
   boundaryDigest: string | undefined;
   sessionId: string | undefined;
+  /** Whether the pass stopped at its trio limit with at least one more complete record unread. */
+  limitStopBeforeEnd: boolean;
   /** Set when the pass ended at a failed trio; the saved position is then not updated from this result. */
   stopReason: ScanStopReason | null;
 }
@@ -639,76 +645,90 @@ async function streamAndExtract(opts: StreamAndExtractOptions): Promise<StreamAn
     return triosFound >= maxTrios ? "limit" : "continue";
   }
 
-  for await (const record of records) {
-    const recordBytes = record.length + 1; // +1 for newline
-    bytesRead += recordBytes;
+  try {
+    for (;;) {
+      const next = await records.next();
+      if (next.done) break;
+      const record = next.value;
+      const recordBytes = record.length + 1; // +1 for newline
+      bytesRead += recordBytes;
 
-    // Parse entry — SessionMessageEntry wraps AgentMessage inside a `message` field.
-    // Only parsing is guarded: extraction and checkpoint errors (including PAUSED) propagate.
-    let entry: SessionEntry & { id?: unknown };
-    try {
-      entry = JSON.parse(record.text);
-    } catch {
-      throw malformedRecordError(sessionFile, record.offset);
-    }
-    if (entry === null || typeof entry !== "object") throw malformedRecordError(sessionFile, record.offset);
-    if (entry.type === "message") {
-      const current: TrioRecord = { id: typeof entry.id === "string" ? entry.id : null, text: record.text };
-      // Captured before this record updates the detector's state: they are the trio's before and user records.
-      const beforeRecord = lastAssistantRecord;
-      const userRecord = lastUserRecord;
-      // Delegate trio detection to TrioDetector
-      const trio = detector.process(entry);
-      if (detector.lastRecordSetLastUser) lastUserRecord = current;
-      if (detector.lastRecordSetLastAssistant) {
-        lastAssistantRecord = current;
-        resumeByte = record.offset;
-        boundaryDigest = recordDigest(record.text);
+      // Parse entry — SessionMessageEntry wraps AgentMessage inside a `message` field.
+      // Only parsing is guarded: extraction and checkpoint errors (including PAUSED) propagate.
+      let entry: SessionEntry & { id?: unknown };
+      try {
+        entry = JSON.parse(record.text);
+      } catch {
+        throw malformedRecordError(sessionFile, record.offset);
       }
-      if (trio && beforeRecord && userRecord) {
-        const step = await tryExtractTrio(trio, [beforeRecord, userRecord, current]);
+      if (entry === null || typeof entry !== "object") throw malformedRecordError(sessionFile, record.offset);
+      if (entry.type === "message") {
+        const current: TrioRecord = { id: typeof entry.id === "string" ? entry.id : null, text: record.text };
+        // Captured before this record updates the detector's state: they are the trio's before and user records.
+        const beforeRecord = lastAssistantRecord;
+        const userRecord = lastUserRecord;
+        // Delegate trio detection to TrioDetector
+        const trio = detector.process(entry);
+        if (detector.lastRecordSetLastUser) lastUserRecord = current;
+        if (detector.lastRecordSetLastAssistant) {
+          lastAssistantRecord = current;
+          resumeByte = record.offset;
+          boundaryDigest = recordDigest(record.text);
+        }
+        if (trio && beforeRecord && userRecord) {
+          const step = await tryExtractTrio(trio, [beforeRecord, userRecord, current]);
+          onProgress(triosFound, bytesRead, bytesRead);
+          if (step === "limit") {
+            // One-record lookahead: the file has unread records when another complete
+            // record follows. The peek moves neither resumeByte nor bytesScanned.
+            const more = await records.next();
+            return {
+              triosFound,
+              totalNonEmpty: bytesRead,
+              bytesScanned: bytesRead,
+              resumeByte,
+              boundaryDigest,
+              sessionId,
+              limitStopBeforeEnd: !more.done,
+              stopReason: null,
+            };
+          }
+          if (step !== "continue") {
+            return {
+              triosFound,
+              totalNonEmpty: bytesRead,
+              bytesScanned: bytesRead,
+              resumeByte,
+              boundaryDigest,
+              sessionId,
+              limitStopBeforeEnd: false,
+              stopReason: step,
+            };
+          }
+        }
+      }
+
+      // Report progress every ~50 lines worth of bytes
+      if (bytesRead % (50 * 200) < recordBytes) {
+        // ~every 50 lines (avg 200 bytes/line)
         onProgress(triosFound, bytesRead, bytesRead);
-        if (step === "limit") {
-          return {
-            triosFound,
-            totalNonEmpty: bytesRead,
-            bytesScanned: bytesRead,
-            resumeByte,
-            boundaryDigest,
-            sessionId,
-            stopReason: null,
-          };
-        }
-        if (step !== "continue") {
-          return {
-            triosFound,
-            totalNonEmpty: bytesRead,
-            bytesScanned: bytesRead,
-            resumeByte,
-            boundaryDigest,
-            sessionId,
-            stopReason: step,
-          };
-        }
       }
     }
 
-    // Report progress every ~50 lines worth of bytes
-    if (bytesRead % (50 * 200) < recordBytes) {
-      // ~every 50 lines (avg 200 bytes/line)
-      onProgress(triosFound, bytesRead, bytesRead);
-    }
+    return {
+      triosFound,
+      totalNonEmpty: bytesRead,
+      bytesScanned: bytesRead,
+      resumeByte,
+      boundaryDigest,
+      sessionId,
+      limitStopBeforeEnd: false,
+      stopReason: null,
+    };
+  } finally {
+    // Every exit closes the record generator, which destroys the file's read stream.
+    await records.return(NO_RECORD_RESULT);
   }
-
-  return {
-    triosFound,
-    totalNonEmpty: bytesRead,
-    bytesScanned: bytesRead,
-    resumeByte,
-    boundaryDigest,
-    sessionId,
-    stopReason: null,
-  };
 }
 
 /** The `needsPostReview` candidates grouped by trioId, in stored order; `sourcePath` filters by source. */

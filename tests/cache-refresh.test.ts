@@ -27,8 +27,12 @@ const holder = vi.hoisted(() => ({ portraitDir: "", enabled: true, branch: [] as
 describe("portrait cache refresh on session_compact", () => {
   let tempHome: string;
   let portraitPath: string;
+  let bootExitListeners: Array<() => void>;
 
   beforeEach(async () => {
+    // Every boot adds a process exit listener; note the ones already there so afterEach
+    // can remove exactly the ones this test adds.
+    bootExitListeners = process.listeners("exit") as Array<() => void>;
     tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "portrait-d12-"));
     holder.portraitDir = path.join(tempHome, "portrait");
     holder.enabled = true;
@@ -81,6 +85,10 @@ describe("portrait cache refresh on session_compact", () => {
       clearAllTimers();
     } catch {
       // ignore — module graph may already be torn down
+    }
+    // Remove the process exit listeners the boots of this test added.
+    for (const listener of process.listeners("exit") as Array<() => void>) {
+      if (!bootExitListeners.includes(listener)) process.removeListener("exit", listener);
     }
     vi.doUnmock("../src/config.js");
     vi.doUnmock("../src/settings-ui.js");

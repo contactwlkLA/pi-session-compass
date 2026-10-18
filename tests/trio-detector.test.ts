@@ -77,6 +77,27 @@ describe("TrioDetector", () => {
     });
   });
 
+  describe("user before the first assistant text", () => {
+    it("emits no trio for user, assistant, assistant", () => {
+      const d = new TrioDetector();
+      expect(d.process(userEntry("U1 feedback before any assistant"))).toBeNull();
+      expect(d.process(assistantEntry("A1 first plan"))).toBeNull();
+      expect(d.process(assistantEntry("A2 second plan"))).toBeNull();
+    });
+
+    it("pairs the user with the assistant before it (A0, U, A1, A2 emits exactly one trio)", () => {
+      const d = new TrioDetector();
+      expect(d.process(assistantEntry("A0 earlier plan"))).toBeNull();
+      expect(d.process(userEntry("U feedback"))).toBeNull();
+      expect(d.process(assistantEntry("A1 reply"))).toEqual({
+        agentBefore: "A0 earlier plan",
+        userFeedback: "U feedback",
+        agentAfter: "A1 reply",
+      });
+      expect(d.process(assistantEntry("A2 later text"))).toBeNull();
+    });
+  });
+
   describe("one user message completes at most one trio", () => {
     it("clears lastUser after emitting a trio", () => {
       const d = new TrioDetector();
