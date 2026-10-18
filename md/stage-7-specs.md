@@ -1,8 +1,8 @@
 # Stage 7 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.4.0** · Status: **Ready (stage-7-task.md approved by the user, 2026-10-17)**
+Project: **pi-session-compass** · Revision: **0.5.0** · Status: **Ready (stage-7-task.md approved by the user, 2026-10-17)**
 
-Date: **2026-10-17**
+Date: **2026-10-18**
 
 Parent: [stage-7-task.md](stage-7-task.md) (fixed design 1–3).
 
@@ -133,16 +133,140 @@ npm test
 npm run test:compass
 ```
 
+## S7-03 — Settings in one place (user-approved text)
+
+The user chose all three options from the design note (outputs/s7/s7-03-design-note.md): A, then B and C, which read A's file. Every user-facing string below was approved by the user on 2026-10-18; apply it byte for byte and do not reword it. The three-space list indent of the fenced blocks below is not part of the text.
+
+**Read:** src/collector.ts (`DEFAULT_MAX_FILES_PER_CYCLE`, `DEFAULT_MAX_RESULTS`, `scanSessions`); src/pipeline.ts (the `scanSessions(portraitDir, pipelineState, 100, SINGLE_RESULT)` call); src/index.ts (`startLockPoll`, the `60_000`; command registration); src/llm-call.ts (`retryDelayMs`); src/footer.ts (`startStatusTimer`, the `5000`); src/gate-config.ts; src/config.ts; src/schema.ts (`PORTRAIT_SCHEMA`, `globalPath`); src/settings-ui.ts; src/commands/status.ts (header style); tests/settings-helpers.ts; tests/llm-call.test.ts (backoff tests); README.md ("Commands"); docs/CONFIGURATION.md.
+
+**Changes:**
+
+1. **A — new src/plugin-config.ts** in the style of src/gate-config.ts (file comment, an interface with a doc comment per value, one exported const `PLUGIN_CONFIG`):
+   - `filesPerScan: 100` — read by the `scanSessions` call in src/pipeline.ts in place of the literal `100`;
+   - `lockPollMs: 60_000` — read by `startLockPoll` in src/index.ts;
+   - `retryBackoffBaseMs: 1_000` and `retryBackoffCapMs: 10_000` — read by `retryDelayMs` in src/llm-call.ts (`Math.min(base * 2 ** attempt, cap)`);
+   - `footerRefreshMs: 5000` — read by `startStatusTimer` in src/footer.ts.
+   Delete the unused exports `DEFAULT_MAX_FILES_PER_CYCLE` and `DEFAULT_MAX_RESULTS` from src/collector.ts (grep first; if anything reads them, stop and report). No value changes; no behavior changes.
+2. **B — new src/commands/config.ts** exporting `getConfig(settingsFilePath: string): string`, and a new command in src/index.ts registered after `portrait:status`:
+
+   ```ts
+   pi.registerCommand("portrait:config", {
+     description: "Show every portrait setting and fixed value with its source",
+     handler: async (_args, ctx) => {
+       ctx.ui.notify(getConfig(PORTRAIT_SCHEMA.globalPath(undefined)), "info");
+     },
+   });
+   ```
+
+   `getConfig` returns exactly these lines, joined with `\n`:
+
+   ```
+   👤 Portrait Configuration
+   ──────────────────────
+   Settings (/portrait:settings, <settingsFilePath>):
+     <id>: <value> · <source>
+   Jev gate (fixed):
+     Model: jev-1.13.0
+     Endpoint: https://api.typesafe.ai/v1/systemone
+     Threshold: 0.3 (correction, preference, confusion)
+     Deadline: 5000 ms · retry wait 500 ms · failure limit 3
+     State cap: 32768 bytes
+   Collection (fixed):
+     Files per scan: 100
+     Lock poll: 60000 ms
+     Retry backoff: 1000 ms doubling, capped at 10000 ms
+     Footer refresh: 5000 ms
+   Environment:
+     PI_PORTRAIT_STATE_DIR: <dir> · <source>
+     PI_PORTRAIT_SESSION_DIRS: <dirs> · <source>
+     TYPESAFE_API_KEY: <set | not set>
+   ```
+
+   - The rule line under "──────" is the same 22 characters as in `getStatus`.
+   - **Settings:** one line per setting, in `PORTRAIT_SCHEMA.settings` order (21 lines), indented two spaces. `<value>` is `JSON.stringify` of the value from `getPortraitSettings()` (e.g. `null`, `"high"`, `180000`). `<source>` is `settings file` when the raw JSON object in `settingsFilePath` has that id as an own key, else `default`. A missing, unreadable, or non-object file means every source is `default`; `getConfig` never throws for it.
+   - **Jev gate and Collection lines:** every number and name comes from `GATE_CONFIG` and `PLUGIN_CONFIG` (no literals in config.ts); the threshold's parenthesis lists `GATE_CONFIG.routeQuestions` joined with `, `.
+   - **Environment:** `<dir>` is `getPortraitDir()`; `<dirs>` is `getSessionDirs()` joined with `path.delimiter`. `<source>` is `env` when `PI_PORTRAIT_STATE_DIR` (or `PI_PORTRAIT_SESSION_DIRS`) is a non-empty string in `process.env`, else `default`. `TYPESAFE_API_KEY` shows `set` when it is a non-empty string, else `not set`; the key's value is never printed.
+3. **README.md, "Commands" table:** add this row right after the `/portrait:settings` row:
+
+   ```
+   | `/portrait:config` | Show every setting with its value and source (default or settings file), the fixed gate and collection values, and the environment variables |
+   ```
+4. **C — docs/CONFIGURATION.md:** insert this section right before `## Setting types`, followed by one blank line:
+
+   ```
+   ## Fixed values and environment
+
+   These values are not in `/portrait:settings`. `/portrait:config` shows them with the settings.
+
+   ### Jev gate
+
+   Set in `src/gate-config.ts`; changing one changes the gate's policy hash.
+
+   | Value | Current | Meaning |
+   |---|---|---|
+   | Model | `jev-1.13.0` | Classifier release every gate request is pinned to |
+   | Endpoint | `https://api.typesafe.ai/v1/systemone` | Where every gate request is sent |
+   | Threshold | `0.3` | A trio is skipped when its correction, preference, and confusion answers are all at or below this |
+   | Deadline | 5 s | Total time one gate check may take, retry included |
+   | Retry wait | 0.5 s | Wait before the single retry when the response gives no Retry-After |
+   | Failure limit | 3 | Failed checks in a row after which the gate stops checking until the next collection run |
+   | State cap | 32 KB | A larger trio is extracted without a gate check |
+
+   ### Collection
+
+   Set in `src/plugin-config.ts`.
+
+   | Value | Current | Meaning |
+   |---|---|---|
+   | Files per scan | 100 | Session files one scan step reads before it returns |
+   | Lock poll | 60 s | How often an instance without the lock checks whether it can take it |
+   | Retry backoff | 1 s, doubling, capped at 10 s | Wait between retries of a failed LLM call |
+   | Footer refresh | 5 s | How often the status footer updates |
+
+   ### Environment
+
+   | Variable | Default | Meaning |
+   |---|---|---|
+   | `PI_PORTRAIT_STATE_DIR` | `~/.pi/portrait` | Where the portrait and its state are kept |
+   | `PI_PORTRAIT_SESSION_DIRS` | `~/.pi/agent/sessions` | Session folders to scan; separate several with `:` (`;` on Windows) |
+   | `TYPESAFE_API_KEY` | not set | API key for the Jev gate; needed by `shadow` and `enforce` |
+   ```
+
+**Acceptance criteria:**
+
+1. **A:** src/plugin-config.ts holds the five values; the four consumers read them; no literal `100` (scan call), `60_000`, `1_000`/`10_000` (backoff), or `5000` (footer) remains at those sites; the two dead exports are gone. The existing backoff tests pass unchanged (1, 2, 4, 8, 10 s).
+2. **B:** new tests/config.test.ts, temp files only (settings file in a temp dir; `setTestConfig` for the portrait dir; `setupTestSettings` for values; save and restore every env var a test sets):
+   - with no settings file: 21 setting lines in schema order, each `· default`, and `getConfig` does not throw;
+   - with a file holding `{"model": "p/m", "ruleLimit": 50}` and settings to match: `  model: "p/m" · settings file`, `  ruleLimit: 50 · settings file`, every other setting `· default`;
+   - with a file that is not valid JSON: every source `default`, no throw;
+   - the Jev gate and Collection lines equal the template above;
+   - `PI_PORTRAIT_STATE_DIR` unset → `· default`; `TYPESAFE_API_KEY` set to a sentinel → `  TYPESAFE_API_KEY: set` and the sentinel appears nowhere in the output; unset → `  TYPESAFE_API_KEY: not set`;
+   - the whole output for the no-file case matches the template line by line (header, rule, section headings, order).
+   Because src/config.ts reads `PI_PORTRAIT_STATE_DIR` once at load, the env-source test checks the source label only, not a changed dir.
+3. **C:** docs/CONFIGURATION.md and the README row match the text above byte for byte. A test (in tests/config.test.ts) reads docs/CONFIGURATION.md and asserts that the rows Model, Endpoint, Threshold, Failure limit, and Files per scan carry `GATE_CONFIG.model`, `GATE_CONFIG.endpoint`, `GATE_CONFIG.threshold`, `GATE_CONFIG.failureLimit`, and `PLUGIN_CONFIG.filesPerScan`, so the docs cannot drift from the code silently.
+4. `npm run lint:design-refs` passes; no source comment references a design doc or a former value.
+5. No other string, setting, value, or behavior changes. The policy hash is unchanged (src/gate-config.ts is read, not edited).
+
+**Allowed scope:** src/plugin-config.ts (new), src/collector.ts (delete the two exports), src/pipeline.ts, src/index.ts, src/llm-call.ts, src/footer.ts, src/commands/config.ts (new), README.md, docs/CONFIGURATION.md, tests/config.test.ts (new), tests that break only because an import moved (adapt; list each).
+
+**Verification:**
+
+```
+npx vitest run tests/config.test.ts tests/llm-call.test.ts
+npm test
+npm run test:compass
+```
+
 ## CC review and gate (not for the coder)
 
 Review per planner-prompt.md Step 2; ledger entry in md/ledger.jsonl. Check: `candidateText` is read only by the harness; the B13 refusal makes no model request; B15 output matches the approved text byte for byte; B20 did not change src/; B21's report text is otherwise identical. Update md/bugs.md (status, fix commit, evidence) for each bug.
 
-Planner difficulty: S7-01 easy; S7-02 easy.
+Planner difficulty: S7-01 easy; S7-02 easy; S7-03 medium.
 
 ## Revision history
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.2.0 | 2026-10-17 | S7-01 audit answers. |
 | 0.3.0 | 2026-10-17 | S7-02 text-batch spec with the user-approved text. |
 | 0.4.0 | 2026-10-18 | S7-02 audit answers. |
+| 0.5.0 | 2026-10-18 | S7-03 spec: options A, B, and C with the user-approved text. |

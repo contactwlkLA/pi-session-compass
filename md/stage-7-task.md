@@ -1,6 +1,6 @@
 # Stage 7 — Fixes and deferred cleanup
 
-Project: **pi-session-compass** · Revision: **0.4.0** · Status: **Approved (user, 2026-10-17)**
+Project: **pi-session-compass** · Revision: **0.5.0** · Status: **Approved (user, 2026-10-17)**
 
 Date: **2026-10-18**
 
@@ -14,7 +14,7 @@ Parent: [handoff.md](handoff.md) (open bugs and deferred work). Operating rules:
 |---|---|---|---|---|
 | S7-01 — Quick fixes | B11, B13, B14, B15, B20, B21 | Six small bugs fixed with tests | Pi | approve B15's new line (below) |
 | S7-02 — Text batch | D1, D2, D6, D5 note | Settings and status help, debug path, prompt markers removed, harness doc, downgrade note | CC drafts, Pi applies | one approval round for all text |
-| S7-03 — Settings in one place | D3 | Design note with two options, then the chosen one built | CC note, Pi codes | pick an option |
+| S7-03 — Settings in one place | D3 | Design note with options, then the chosen ones built | CC note, Pi codes | pick options |
 | S7-04 — Investigations | P4, B16, P11, B23, P2 | Each gets FIXED, WONTFIX, or a precise follow-up in bugs.md | CC, Pi for any fix | B23 live run limits, if needed |
 
 ## Fixed design
@@ -46,8 +46,8 @@ Parent: [handoff.md](handoff.md) (open bugs and deferred work). Operating rules:
 
 ### S7-03 — Settings in one place (CC note, user picks, Pi codes)
 
-- [ ] **1.** Design note (one page): option A, one config file in the style of src/gate-config.ts for models, limits, and cooldowns; option B, one settings screen listing every setting with its current value and source. Each option with what changes, its tests, and its risks.
-- [ ] **2.** The chosen option built and documented in docs/CONFIGURATION.md (protected text presented first).
+- [x] **1.** Design note (one page): option A, one config file in the style of src/gate-config.ts for models, limits, and cooldowns; option B, one settings screen listing every setting with its current value and source. Each option with what changes, its tests, and its risks. *Done 2026-10-18: outputs/s7/s7-03-design-note.md; CC added option C (docs only); the user chose A, B, and C and approved their text (stage-7-specs.md S7-03).*
+- [ ] **2.** The chosen options built and documented in docs/CONFIGURATION.md (protected text presented first): A, the internal constants in src/plugin-config.ts; B, `/portrait:config`; C, a fixed-values and environment section in docs/CONFIGURATION.md.
 
 ### S7-04 — Investigations (CC; Pi for any fix)
 
@@ -61,6 +61,6 @@ Parent: [handoff.md](handoff.md) (open bugs and deferred work). Operating rules:
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.2.0 | 2026-10-17 | Approved by the user, including B15's new line; S7-01 done. |
 | 0.3.0 | 2026-10-17 | S7-02 text approved; status shows gate checks and pending candidates; stop reason dropped. |
 | 0.4.0 | 2026-10-18 | S7-02 done. |
+| 0.5.0 | 2026-10-18 | S7-03: the user chose options A, B, and C. |
