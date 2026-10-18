@@ -1,8 +1,8 @@
 # Stage 7 — Fixes and deferred cleanup
 
-Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Approved (user, 2026-10-17)**
+Project: **pi-session-compass** · Revision: **0.4.0** · Status: **Approved (user, 2026-10-17)**
 
-Date: **2026-10-17**
+Date: **2026-10-18**
 
 Parent: [handoff.md](handoff.md) (open bugs and deferred work). Operating rules: [AGENTS.md](../AGENTS.md). Bugs: [bugs.md](bugs.md).
 
@@ -38,11 +38,11 @@ Parent: [handoff.md](handoff.md) (open bugs and deferred work). Operating rules:
 
 ### S7-02 — Text batch (CC drafts, user approves once, Pi applies)
 
-- [ ] **D2a** Debug path: the `debugDumpLimit` description says `<cwd>/.pi/portrait/debug/`; the dumps go to `~/.pi/portrait/debug/` (src/schema.ts).
-- [ ] **D2b** Remove the two `<!-- approved -->` markers inside the builder prompt (src/prompts.ts lines 111 and 133). They are sent to the model as prompt text. Check: the prompt equals the old one minus those two markers; no other prompt change.
-- [ ] **D1** Settings and status help text: candidate-batch units for `buildingBatchSize` and `maintenanceBackfillBatchSize`; `/portrait:status` shows the gate mode with the number of logged checks, and the pending candidates. The last run's stop reason is dropped (it is not stored today; user, 2026-10-17). Text approved 2026-10-17 (stage-7-specs.md S7-02).
-- [ ] **D6** Harness doc for selecting an input file, an independent output directory, the selected paths, and an explicit rescan. Proposed home: a new scripts/compass/README.md (the harness is not part of the plugin), not the product README.
-- [ ] **D5 note** README Recovery gains one line: before downgrading to an older version, run `/portrait:collect` until nothing is pending, because older versions do not build pending candidates.
+- [x] **D2a** Debug path: the `debugDumpLimit` description says `<cwd>/.pi/portrait/debug/`; the dumps go to `~/.pi/portrait/debug/` (src/schema.ts).
+- [x] **D2b** Remove the two `<!-- approved -->` markers inside the builder prompt (src/prompts.ts lines 111 and 133). They are sent to the model as prompt text. Check: the prompt equals the old one minus those two markers; no other prompt change.
+- [x] **D1** Settings and status help text: candidate-batch units for `buildingBatchSize` and `maintenanceBackfillBatchSize`; `/portrait:status` shows the gate mode with the number of logged checks, and the pending candidates. The last run's stop reason is dropped (it is not stored today; user, 2026-10-17). Text approved 2026-10-17 (stage-7-specs.md S7-02).
+- [x] **D6** Harness doc for selecting an input file, an independent output directory, the selected paths, and an explicit rescan. Proposed home: a new scripts/compass/README.md (the harness is not part of the plugin), not the product README.
+- [x] **D5 note** README Recovery gains one line: before downgrading to an older version, run `/portrait:collect` until nothing is pending, because older versions do not build pending candidates.
 
 ### S7-03 — Settings in one place (CC note, user picks, Pi codes)
 
@@ -61,6 +61,6 @@ Parent: [handoff.md](handoff.md) (open bugs and deferred work). Operating rules:
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.1.0 | 2026-10-17 | Draft: quick fixes, text batch, settings in one place, investigations; D4 and D5 out of scope. |
 | 0.2.0 | 2026-10-17 | Approved by the user, including B15's new line; S7-01 done. |
 | 0.3.0 | 2026-10-17 | S7-02 text approved; status shows gate checks and pending candidates; stop reason dropped. |
+| 0.4.0 | 2026-10-18 | S7-02 done. |

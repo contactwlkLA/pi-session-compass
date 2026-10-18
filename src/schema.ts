@@ -144,7 +144,7 @@ export const PORTRAIT_SCHEMA: SettingsSchema = {
     {
       id: "buildingBatchSize",
       label: "Building batch size",
-      description: "How many extraction trios to process per building LLM call.",
+      description: "How many extracted candidates to process per building LLM call.",
       type: "number",
       defaultValue: 1,
       min: 1,
@@ -162,7 +162,7 @@ export const PORTRAIT_SCHEMA: SettingsSchema = {
     {
       id: "debugDumpLimit",
       label: "Debug dump limit",
-      description: "Maximum debug dump files kept under <cwd>/.pi/portrait/debug/ (0 = no dumps).",
+      description: "Maximum debug dump files kept under ~/.pi/portrait/debug/ (0 = no dumps).",
       type: "number",
       defaultValue: 0,
       min: 0,
@@ -203,7 +203,7 @@ export const PORTRAIT_SCHEMA: SettingsSchema = {
     {
       id: "maintenanceBackfillBatchSize",
       label: "Maintenance backfill batch size",
-      description: "How many rules to re-evaluate per maintenance backfill LLM call.",
+      description: "How many evicted rules to re-evaluate per maintenance backfill LLM call.",
       type: "number",
       defaultValue: 20,
       min: 1,

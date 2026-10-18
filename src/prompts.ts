@@ -108,7 +108,7 @@ For each candidate, decide exactly one action:
   topic — compare individual rules. If no less valuable rule is found,
   append at the end.
   Set beforePosition: N = before rule N,
-  or "C1" = before candidate C1 from this batch. Omit beforePosition to append at the end. Positions are stable — inserting candidates does not renumber existing entries. <!-- approved -->
+  or "C1" = before candidate C1 from this batch. Omit beforePosition to append at the end. Positions are stable — inserting candidates does not renumber existing entries.
   If the candidate makes existing rules redundant — same behavioral
   directive, no unique guidance lost — set evictPositions to an array
   of those rule numbers. Do NOT evict rules that merely overlap in
@@ -130,7 +130,7 @@ For each candidate, decide exactly one action:
 Return structured JSON:
 {
   "decisions": [
-    { "candidate": "C1", "action": "insert", "beforePosition": 6, "evictPositions": [12, 15] }, <!-- approved -->
+    { "candidate": "C1", "action": "insert", "beforePosition": 6, "evictPositions": [12, 15] },
     { "candidate": "C2", "action": "merge", "mergePosition": 7, "text": "Investigate root causes and build proper architecture instead of quick fixes or patching each consumer" },
     { "candidate": "C3", "action": "skip" }
   ]

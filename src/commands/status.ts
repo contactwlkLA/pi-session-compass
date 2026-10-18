@@ -2,11 +2,26 @@
 // SPDX-FileCopyrightText: 2026 avtc <tarasenkov@gmail.com>
 
 import "../globals.js";
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getPortraitDir } from "../config.js";
+import { GATE_LOG_FILE } from "../gate-log.js";
 import { getPortraitSettings } from "../settings-ui.js";
 import { loadPortraitState, parsePortraitRules, readDropped, readEvicted, readPortrait } from "../storage.js";
+import { loadWorkState } from "../work-state.js";
+
+/** Lines in the gate log; 0 when the file is missing or unreadable. */
+function countGateLogLines(portraitDir: string): number {
+  try {
+    return fs
+      .readFileSync(path.join(portraitDir, GATE_LOG_FILE), "utf-8")
+      .split("\n")
+      .filter((line) => line.length > 0).length;
+  } catch {
+    return 0;
+  }
+}
 
 export function getStatus(): string {
   const portraitDir = getPortraitDir();
@@ -34,15 +49,24 @@ export function getStatus(): string {
       ? `${pipelineState.triosProcessed}/${pipelineState.totalKnownTrios} (${Math.round((pipelineState.triosProcessed / pipelineState.totalKnownTrios) * 100)}%)`
       : "0/0";
 
+  let pendingLabel: string;
+  try {
+    pendingLabel = String(loadWorkState(portraitDir).pendingCandidates.length);
+  } catch {
+    pendingLabel = "unknown (snapshot unreadable)";
+  }
+
   const lines = [
     "👤 Portrait Profiling",
     "──────────────────────",
     `Lock: ${lockStatus}`,
     `State: ${stateLabel}`,
+    `Gate: ${settings.gateMode} · ${countGateLogLines(portraitDir)} checks logged`,
     "",
     "Storage:",
     `  Portrait entries: ${activeRules.length} active, ${evicted.length} evicted, ${dropped.length} dropped`,
     `  Rule limit: ${activeRules.length}/${settings.ruleLimit}`,
+    `  Pending candidates: ${pendingLabel}`,
     "",
     "Files:",
     `  ${path.join(portraitDir, "portrait.md")}`,

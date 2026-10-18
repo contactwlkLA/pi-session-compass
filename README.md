@@ -94,6 +94,8 @@ Collection progress (scan positions and pending candidates) is saved as snapshot
 
 To undo a bad portrait by hand, copy `portrait.md`, `evicted.md`, and `dropped.md` back from the `files/` folder of the newest snapshot (the one named in `snapshots/CURRENT`), or restore them from the portrait's git history, then run `/reload`. Nothing is restored automatically, so your own edits to the portrait are never overwritten.
 
+Before downgrading to an older version of the plugin, run `/portrait:collect` until `/portrait:status` shows no pending candidates: older versions keep the scan position but do not build pending candidates.
+
 ## Debug
 
 Set `debugDumpLimit` to a positive number (e.g. `30`) to keep the most recent debug dumps under `~/.pi/portrait/debug/` (`0` = disabled, the default); older files are deleted automatically when the limit is exceeded. Each dump captures the full prompt and the LLM's response for one operation, so you can trace any rule back to the session interaction that produced it:
