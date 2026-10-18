@@ -1,6 +1,6 @@
 # Stage 8 — Session report
 
-Project: **pi-session-compass** · Revision: **0.3.0** · Status: **Approved (user, 2026-10-18)**
+Project: **pi-session-compass** · Revision: **0.4.0** · Status: **Approved (user, 2026-10-18)**
 
 Date: **2026-10-18**
 
@@ -11,7 +11,7 @@ Parent: [plan.md](plan.md) (parked ideas from 2026-10-14; lesson-quality and beh
 | Task | Covers | Outcome | Who | Your part |
 |---|---|---|---|---|
 | S8-01 — Metric definitions | every section | One page: each metric, its counting rule, and a real example from your sessions; the report's headings and labels | CC drafts | approve the definitions and the text |
-| S8-02 — Log analytics | Effort, Tokens and cost, Checks, Bugs from reviews | `report` command, offline, per session and in total | Pi | none |
+| S8-02 — Log analytics | Effort, Tokens and cost, Checks, Agent questions | `report` command, offline, per session and in total | Pi | none |
 | S8-03 — Your interventions | corrections, hold-backs, approvals | Reply codes joined into the report | Pi; CC runs | confirm the Jev run's limits |
 | S8-04 — Lessons | what compass learned, and its quality | Each extracted rule with its source trio; a graded sample | CC grades, Pi joins | spot-check the grades |
 | S8-05 — Behavior | before vs after the portrait loaded | Correction and hold-back rates on development sessions, with counts | CC | none |
@@ -24,7 +24,6 @@ Parent: [plan.md](plan.md) (parked ideas from 2026-10-14; lesson-quality and beh
 | Tokens and cost | input / output / cache read, peak context, cost | assistant `usage` (cost where the log records it) |
 | Checks | test, lint, and typecheck runs; failed runs; failures later fixed | bash tool calls and their results |
 | Agent questions | turns that end by asking you something | final assistant text |
-| Bugs from reviews | bugs the agents found and fixed inside the session: failed checks later fixed, and review findings followed by edits | the same session's log only (rule and a CC-checked sample in S8-01) |
 | Your interventions | corrections, hold-backs, approvals, task steps | reply codes (scripts/compass/questions/reply-codes-v1.json, Jev) |
 | Lessons | rules extracted per session, each with its trio; grade good / vague / wrong | extraction cache (extract.ts) or a run's results sheet |
 | Behavior | correction and hold-back rate per session, before and after the first `portrait-cache` entry | reply codes + Pi log custom entries (Pi sessions only) |
@@ -41,8 +40,8 @@ Parent: [plan.md](plan.md) (parked ideas from 2026-10-14; lesson-quality and beh
 
 ## Tasks
 
-- [ ] **S8-01** Metric definitions and report text (CC): each metric's counting rule with a real example; the "bugs from reviews" rule checked by CC on a sample from Pi and Claude Code sessions (precision and recall stated); the grading rubric for lessons; the report template. User approves.
-- [ ] **S8-02** `report` command, log sections (Pi): `--session <file>` or `--dir <folder>`; Pi and Claude Code log formats; Effort, Tokens and cost, Checks, Agent questions, Bugs from reviews; per session and total; markdown and JSONL; tests on frozen fixture logs of both formats. The ledger switches to it.
+- [x] **S8-01** Metric definitions and report text (CC): each metric's counting rule with a real example; the "bugs from reviews" rule checked by CC on a sample from Pi and Claude Code sessions (precision and recall stated); the grading rubric for lessons; the report template. User approves. *Done 2026-10-18: approved by the user (stage-8-specs.md S8-01). Changes: failed checks later fixed move into Checks; review findings are counted under Your interventions as corrections followed by edits; Behavior adds an after (relayed specs) row for this project's Pi sessions.*
+- [ ] **S8-02** `report` command, log sections (Pi): `--session <file>` or `--dir <folder>`; Pi and Claude Code log formats; Effort, Tokens and cost, Checks, Agent questions; per session and total; markdown and JSONL; tests on synthetic logs of both formats built in the tests. The ledger switches to it.
 - [ ] **S8-03** Interventions (Pi, then a CC live run): the report reads score.ts reply-code output for the same folder; run type `evaluate`, limits suggested and user-confirmed at launch.
 - [ ] **S8-04** Lessons (CC grades, Pi joins): rules joined to their source trios; CC grades a sample against the S8-01 rubric; the user spot-checks; the report shows grade counts with examples.
 - [ ] **S8-05** Behavior (CC): before/after rates on development sessions only, with counts and the honest-gap rule; written into the report.
@@ -53,6 +52,6 @@ Parent: [plan.md](plan.md) (parked ideas from 2026-10-14; lesson-quality and beh
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.1.0 | 2026-10-18 | Draft: session report (log analytics, interventions, lessons, behavior). |
 | 0.2.0 | 2026-10-18 | Input is one session file or one directory; Pi and Claude Code logs read separately, never paired (user). |
 | 0.3.0 | 2026-10-18 | Approved by the user. |
+| 0.4.0 | 2026-10-18 | S8-01 approved; Bugs from reviews folded into Checks and Your interventions; Behavior adds relayed-spec sessions. |
