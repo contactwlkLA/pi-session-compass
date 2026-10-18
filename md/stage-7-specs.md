@@ -247,6 +247,11 @@ The user chose all three options from the design note (outputs/s7/s7-03-design-n
 4. `npm run lint:design-refs` passes; no source comment references a design doc or a former value.
 5. No other string, setting, value, or behavior changes. The policy hash is unchanged (src/gate-config.ts is read, not edited).
 
+**Audit answers (CC, 2026-10-18; part of this spec; outputs/s7/handoff/S7-03-audit.md):**
+
+1. **Non-object file:** yes, a JSON array (or any value that is not a plain object) counts as not an object: every source is `default`.
+2. **`PI_SETTINGS_PORTRAIT`:** out of scope; `getConfig` reads only `settingsFilePath`. No change for it.
+
 **Allowed scope:** src/plugin-config.ts (new), src/collector.ts (delete the two exports), src/pipeline.ts, src/index.ts, src/llm-call.ts, src/footer.ts, src/commands/config.ts (new), README.md, docs/CONFIGURATION.md, tests/config.test.ts (new), tests that break only because an import moved (adapt; list each).
 
 **Verification:**
@@ -269,4 +274,4 @@ Planner difficulty: S7-01 easy; S7-02 easy; S7-03 medium.
 |---|---|---|
 | 0.3.0 | 2026-10-17 | S7-02 text-batch spec with the user-approved text. |
 | 0.4.0 | 2026-10-18 | S7-02 audit answers. |
-| 0.5.0 | 2026-10-18 | S7-03 spec: options A, B, and C with the user-approved text. |
+| 0.5.0 | 2026-10-18 | S7-03 spec: options A, B, and C with the user-approved text; audit answers. |
