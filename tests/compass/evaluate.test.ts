@@ -296,13 +296,13 @@ describe("policy counts", () => {
     // Scored at 0.5 on all four: trio 1 (steering 0.9) and trio 3 are kept;
     // trios 2 and 4 are rejected. The fallback and the unstarted trio are not.
     // Lesson trios: 1, 2, 3, 6 → rejected among them: trio 2 → kept 3 of 4 (75%).
-    // Correction labels: trios 2 and 5 → one miss (trio 2) → bound 1 / 4.
+    // Correction labels: trios 2 and 5 → correctionTrios 2; one miss (trio 2) → bound 1 / 2.
     // Extraction saved: trio 2 (3 attempts, 100/50) + trio 4 (2 attempts, 30/10).
     // Gate cost: four scored trios at 12 in / 3 out.
     expect(result.code).toBe(0);
     expect(result.out).toBe(
       "Policy strict on dev: rejected 2 of 6 · lesson kept 3 of 4 (75%) · correction misses 1 · " +
-        "miss bound 1 / 4 · extraction saved 5 requests, 130 in / 60 out tokens · gate cost 48 in / 12 out tokens\n",
+        "miss bound 1 / 2 · extraction saved 5 requests, 130 in / 60 out tokens · gate cost 48 in / 12 out tokens\n",
     );
     expect(result.err).toBe("");
 
@@ -317,7 +317,7 @@ describe("policy counts", () => {
     expect(report.correctionTrios).toBe(2);
     expect(report.correctionMisses).toBe(1);
     expect(report.missedCorrectionKeys).toEqual([fixture.keys[1]]);
-    expect(report.missBound).toBe("1 / 4");
+    expect(report.missBound).toBe("1 / 2");
     expect(report.extractionSaved).toEqual({ requests: 5, inputTokens: 130, outputTokens: 60 });
     expect(report.gateCost).toEqual({ inputTokens: 48, outputTokens: 12 });
   });
@@ -338,7 +338,7 @@ describe("policy counts", () => {
     expect(result.code).toBe(0);
     expect(result.out).toBe(
       "Policy open on dev: rejected 0 of 6 · lesson kept 4 of 4 (100%) · correction misses 0 · " +
-        "miss bound 3 / 4 · extraction saved 0 requests, 0 in / 0 out tokens · gate cost 48 in / 12 out tokens\n",
+        "miss bound 3 / 2 · extraction saved 0 requests, 0 in / 0 out tokens · gate cost 48 in / 12 out tokens\n",
     );
   });
 
@@ -359,7 +359,7 @@ describe("policy counts", () => {
     expect(result.code).toBe(0);
     expect(result.out).toBe(
       "Policy steering-only on dev: rejected 3 of 6 · lesson kept 2 of 4 (50%) · correction misses 1 · " +
-        "miss bound 1 / 4 · extraction saved 6 requests, 140 in / 65 out tokens · gate cost 48 in / 12 out tokens\n",
+        "miss bound 1 / 2 · extraction saved 6 requests, 140 in / 65 out tokens · gate cost 48 in / 12 out tokens\n",
     );
   });
 });

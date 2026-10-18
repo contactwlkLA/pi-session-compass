@@ -16,6 +16,7 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, type vi } from "vitest";
 import { buildPortrait } from "../src/builder.js";
 import { initGit, resetGitExec, setGitExec } from "../src/git.js";
+import { type BuildEvent, setInstrumentHooks } from "../src/instrument.js";
 import { callPortraitLlm } from "../src/llm-call.js";
 import { installRecordingGit } from "./git-recorder.js";
 import { setupTestSettings, teardownTestSettings } from "./settings-helpers.js";
@@ -49,6 +50,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setInstrumentHooks({});
   teardownTestSettings();
   fs.rmSync(portraitDir, { recursive: true, force: true });
 });
@@ -140,5 +142,21 @@ describe("buildPortrait whole-batch validation", () => {
     );
     expect(fs.readFileSync(path.join(portraitDir, "portrait.md"), "utf-8")).toContain("NEW1");
     expect(recording.getLatestCommit(portraitDir)).toContain("1 rule added");
+  });
+});
+
+describe("build event candidateText", () => {
+  it("resolves the candidate's text onto the emitted decision", async () => {
+    writeTestPortrait(portraitDir, ["rule 1"]);
+    const events: BuildEvent[] = [];
+    setInstrumentHooks({ onBuild: (event) => events.push(event) });
+    mockCallPortraitLlm.mockResolvedValueOnce({
+      decisions: [{ action: "insert", candidate: "C1", beforePosition: 1 }],
+    });
+
+    await buildPortrait(portraitDir, ["candidate one"], undefined);
+
+    expect(events).toHaveLength(1);
+    expect(events[0].decisions).toEqual([{ action: "insert", candidate: "C1", candidateText: "candidate one" }]);
   });
 });

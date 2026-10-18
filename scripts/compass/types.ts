@@ -18,9 +18,9 @@ export interface GateRunConfig {
   model: string;
 }
 
-export type RunType = "smoke" | "baseline" | "compare" | "evaluate" | "collect";
+export type RunType = "smoke" | "baseline" | "compare" | "probe" | "evaluate" | "collect";
 
-export const RUN_TYPES: RunType[] = ["smoke", "baseline", "compare", "evaluate", "collect"];
+export const RUN_TYPES: RunType[] = ["smoke", "baseline", "compare", "probe", "evaluate", "collect"];
 
 export type Scope = "all" | "file";
 

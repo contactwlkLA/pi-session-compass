@@ -98,7 +98,7 @@ export interface BootOptions {
 
 interface BuildRecord {
   index: number;
-  decisions: { action: string; candidate?: string; text?: string }[];
+  decisions: { action: string; candidate?: string; text?: string; candidateText?: string }[];
   inserted: number;
   evicted: number;
   rulesAfter: string[];
@@ -564,7 +564,7 @@ function writeSheet(
   builds.forEach((build) => {
     lines.push(strings.sheetBuildHeader(build.index), `${strings.sheetColBuilder}:`);
     for (const decision of build.decisions) {
-      const label = decision.text ?? decision.candidate ?? strings.sheetNoText;
+      const label = decision.text ?? decision.candidateText ?? decision.candidate ?? strings.sheetNoText;
       lines.push(`  - [${decision.action}] ${label}`);
     }
     lines.push(`${strings.sheetColPortrait}: ${strings.sheetPortraitDiff(build.inserted, build.evicted)}`, "");

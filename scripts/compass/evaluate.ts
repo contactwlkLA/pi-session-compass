@@ -174,8 +174,8 @@ function lessonPercent(counts: Counts): number {
 
 function missBound(counts: Counts): string {
   return counts.correctionMisses === 0
-    ? `${MISS_BOUND_NUMERATOR} / ${counts.lessonTrios}`
-    : `${counts.correctionMisses} / ${counts.lessonTrios}`;
+    ? `${MISS_BOUND_NUMERATOR} / ${counts.correctionTrios}`
+    : `${counts.correctionMisses} / ${counts.correctionTrios}`;
 }
 
 /** The set's trios, labels, scores, and extract rows, or the files that disagree with the set. */

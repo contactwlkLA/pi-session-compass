@@ -41,12 +41,14 @@ function gateConfig(mode: GateRunConfig["mode"], source: GateRunConfig["source"]
 type ScriptEvent =
   | { kind: "attempt" }
   | { kind: "gate"; event: Record<string, unknown> }
-  | { kind: "trio"; event: Record<string, unknown> };
+  | { kind: "trio"; event: Record<string, unknown> }
+  | { kind: "build"; event: Record<string, unknown> };
 
 interface MockHooks {
   onGateAttempt?: () => boolean;
   onGateResult?: (event: unknown) => void;
   onTrioExamined?: (event: unknown) => void;
+  onBuild?: (event: unknown) => void;
 }
 
 const loopState = vi.hoisted(() => ({
@@ -106,6 +108,8 @@ vi.mock("../../src/pipeline.js", () => ({
         loopState.attemptDecisions.push(hooks?.onGateAttempt?.() ?? true);
       } else if (entry.kind === "gate") {
         hooks?.onGateResult?.(entry.event);
+      } else if (entry.kind === "build") {
+        hooks?.onBuild?.(entry.event);
       } else {
         trios++;
         hooks?.onTrioExamined?.(entry.event);
@@ -135,6 +139,11 @@ function scoredGate(overrides: Record<string, unknown>): Record<string, unknown>
 
 function trioExamined(notes: number): Record<string, unknown> {
   return { sessionPath: SESSION, notes, notesText: notes > 0 ? ["extracted rule"] : [] };
+}
+
+/** One build event as src/builder.ts emits it: decisions may carry the resolved candidate text. */
+function buildEvent(decisions: Record<string, unknown>[]): Record<string, unknown> {
+  return { decisions, inserted: 0, evicted: 0 };
 }
 
 function writePortrait(dir: string, rules: string[]): void {
@@ -414,6 +423,41 @@ describe("sheet entries", () => {
     expect(table).toContain("Covered: 2 of 26 eligible trios");
     const rows = table.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| Trio ref"));
     expect(rows).toHaveLength(1);
+  });
+
+  it("shows the candidate text for an insert or skip and the merged text for a merge", async () => {
+    const outputDir = path.join(TEST_TMP, "build-labels");
+
+    const exitCode = await bootRun(
+      outputDir,
+      gateConfig("off", "settings"),
+      [
+        [
+          { kind: "trio", event: trioExamined(1) },
+          {
+            kind: "build",
+            event: buildEvent([
+              { action: "insert", candidate: "C1", candidateText: "always ask before deleting" },
+              { action: "merge", candidate: "C2", text: "merged rule text", candidateText: "candidate two" },
+              { action: "skip", candidate: "C3", candidateText: "skipped candidate text" },
+              // An unresolvable candidate ID carries no text — the ID itself is the label.
+              { action: "skip", candidate: "C9" },
+            ]),
+          },
+        ],
+      ],
+      LIMITS,
+    );
+
+    expect(exitCode).toBe(0);
+    const sheet = readSheet(outputDir);
+    expect(sheet).toContain("- [insert] always ask before deleting");
+    expect(sheet).toContain("- [merge] merged rule text");
+    expect(sheet).toContain("- [skip] skipped candidate text");
+    expect(sheet).toContain("- [skip] C9");
+    // The candidate ID never replaces the resolved text when both are present.
+    expect(sheet).not.toContain("- [insert] C1");
+    expect(sheet).not.toContain("- [skip] C3");
   });
 
   it("keeps a rejected trio's gate event off the trio that follows it", async () => {

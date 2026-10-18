@@ -153,11 +153,15 @@ export async function buildPortrait(
           skipPersist: options?.skipPersist,
         });
         emitBuild({
-          decisions: response.decisions.map((d) => ({
-            action: d.action,
-            ...(d.candidate ? { candidate: d.candidate } : {}),
-            ...(d.text ? { text: d.text } : {}),
-          })),
+          decisions: response.decisions.map((d) => {
+            const candidateText = d.candidate ? resolveCandidateText(d.candidate, candidates) : undefined;
+            return {
+              action: d.action,
+              ...(d.candidate ? { candidate: d.candidate } : {}),
+              ...(d.text ? { text: d.text } : {}),
+              ...(candidateText !== undefined ? { candidateText } : {}),
+            };
+          }),
           inserted: applied.inserted,
           evicted: applied.evicted,
         });

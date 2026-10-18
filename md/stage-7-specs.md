@@ -1,6 +1,6 @@
 # Stage 7 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.1.0** · Status: **Ready (stage-7-task.md approved by the user, 2026-10-17)**
+Project: **pi-session-compass** · Revision: **0.2.0** · Status: **Ready (stage-7-task.md approved by the user, 2026-10-17)**
 
 Date: **2026-10-17**
 
@@ -33,7 +33,15 @@ Six independent small bugs from md/bugs.md. Fix each with a test; change nothing
 6. B21: the held-out-shaped fixture with 4 lesson trios of which 2 carry `correction: true` and no misses reports `3 / 2`; with one miss, `1 / 2`. Update the existing evaluate test expectations (`1 / 4`, `3 / 4`) only if their fixtures' correction count differs from their lesson count, and list each under `Done`.
 7. No other user-facing string added or changed; no change to gate, extraction, building decisions, snapshots, or scan behavior.
 
-**Allowed scope:** src/instrument.ts, src/builder.ts (the `emitBuild` call only), scripts/compass/pipeline-boot.ts, scripts/compass/snapshot.ts, scripts/compass/strings.ts (`confirmLimits` only), scripts/compass/types.ts, scripts/compass/evaluate.ts, tests/reload-lifecycle.test.ts, and the tests/compass/*.test.ts files that cover these (adapt or add; list each).
+**Audit answers (CC, 2026-10-17; part of this spec; numbers refer to outputs/s7/handoff/S7-01-audit.md):**
+
+1. **Question 1: option (b).** Add tests/builder.test.ts to the allowed scope for one test that drives `buildPortrait` with the existing LLM mock and asserts the emitted event: an insert of `C1` carries `candidateText`, an unresolvable `C9` carries none.
+2. **Noise (B11): as you plan.** Add `candidateText?: string` to `BuildRecord.decisions` in pipeline-boot.ts; spread `candidateText` only when it resolves.
+3. **Risk (B13): yes.** Reject arrays and any non-string value (`Array.isArray`, per-value `typeof === "string"`); `{}` stays as it is.
+4. **Noise (B21): as you read it.** Use the existing dev fixture; update its expectations to `1 / 2` and `3 / 2` and list them under `Done`.
+5. **Risks (B20) and the rest: as you plan.** Assert "held" between `session_start` and `session_shutdown`, and "released" with `tryAcquireSqliteMutex` after shutdown; delete and restore `PI_SUBAGENT_PARENT_PID`. Half-minute rounding (`105000 ms` → `1.8 min`) is fine; note it in the handoff.
+
+**Allowed scope:** src/instrument.ts, src/builder.ts (the `emitBuild` call only), scripts/compass/pipeline-boot.ts, scripts/compass/snapshot.ts, scripts/compass/strings.ts (`confirmLimits` only), scripts/compass/types.ts, scripts/compass/evaluate.ts, tests/reload-lifecycle.test.ts, tests/builder.test.ts (one added test, audit answer 1), and the tests/compass/*.test.ts files that cover these (adapt or add; list each).
 
 **Constraints:** no change to md/compass.md; no new setting; no new dependency.
 
@@ -57,3 +65,4 @@ Planner difficulty: S7-01 easy.
 | Revision | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-17 | S7-01 quick-fixes spec. |
+| 0.2.0 | 2026-10-17 | S7-01 audit answers. |

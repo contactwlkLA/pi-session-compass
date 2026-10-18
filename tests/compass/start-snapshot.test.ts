@@ -120,6 +120,20 @@ describe("verifySnapshot", () => {
     expectSnapshotError(() => verifySnapshot(snap), strings.startSnapshotNoHashes(snap));
   });
 
+  it("refuses an unparseable hashes.json with the approved mismatch string", () => {
+    const snap = path.join(TEST_TMP, "corrupt-hashes");
+    fs.mkdirSync(snap, { recursive: true });
+    fs.writeFileSync(path.join(snap, "hashes.json"), "{not json", "utf-8");
+    expectSnapshotError(() => verifySnapshot(snap), strings.startSnapshotMismatch("hashes.json", snap));
+  });
+
+  it("refuses a hashes.json that is not an object of string values", () => {
+    const snap = path.join(TEST_TMP, "array-hashes");
+    fs.mkdirSync(snap, { recursive: true });
+    fs.writeFileSync(path.join(snap, "hashes.json"), "[1,2]", "utf-8");
+    expectSnapshotError(() => verifySnapshot(snap), strings.startSnapshotMismatch("hashes.json", snap));
+  });
+
   it("refuses a missing snapshot directory", () => {
     const snap = path.join(TEST_TMP, "absent");
     expectSnapshotError(() => verifySnapshot(snap), strings.startSnapshotNotFound(snap));
@@ -283,6 +297,24 @@ describe("executeRun --start-snapshot refusals", () => {
     const { code, printed } = await refusal(baseArgs(snap, path.join(TEST_TMP, "run-refuse-3")));
     expect(code).toBe(2);
     expect(printed).toBe(`${strings.startSnapshotNotFound(snap)}\n`);
+  });
+
+  it("refuses a corrupt hashes.json with the approved string and no stack trace", async () => {
+    const { snap } = frozenSnapshot("corrupt-exec");
+    fs.writeFileSync(path.join(snap, "hashes.json"), "{not json", "utf-8");
+
+    const { code, printed } = await refusal(baseArgs(snap, path.join(TEST_TMP, "run-refuse-4")));
+    expect(code).toBe(2);
+    expect(printed).toBe(`${strings.startSnapshotMismatch("hashes.json", snap)}\n`);
+  });
+
+  it("refuses a hashes.json that is not an object of string values", async () => {
+    const { snap } = frozenSnapshot("array-exec");
+    fs.writeFileSync(path.join(snap, "hashes.json"), "[1,2]", "utf-8");
+
+    const { code, printed } = await refusal(baseArgs(snap, path.join(TEST_TMP, "run-refuse-5")));
+    expect(code).toBe(2);
+    expect(printed).toBe(`${strings.startSnapshotMismatch("hashes.json", snap)}\n`);
   });
 });
 

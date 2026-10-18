@@ -110,7 +110,19 @@ export function verifySnapshot(dir: string): Record<string, string> {
   if (!fs.existsSync(hashesPath)) {
     throw new SnapshotError(strings.startSnapshotNoHashes(dir));
   }
-  const hashes = JSON.parse(fs.readFileSync(hashesPath, "utf-8")) as Record<string, string>;
+  let hashes: Record<string, string>;
+  try {
+    const parsed: unknown = JSON.parse(fs.readFileSync(hashesPath, "utf-8"));
+    const isStringMap =
+      typeof parsed === "object" &&
+      parsed !== null &&
+      !Array.isArray(parsed) &&
+      Object.values(parsed).every((value) => typeof value === "string");
+    if (!isStringMap) throw new Error("hashes.json is not an object of string values");
+    hashes = parsed as Record<string, string>;
+  } catch {
+    throw new SnapshotError(strings.startSnapshotMismatch("hashes.json", dir));
+  }
   for (const [name, expected] of Object.entries(hashes)) {
     if (name === ".git/HEAD") {
       let actual: string;

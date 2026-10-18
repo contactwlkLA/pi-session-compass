@@ -22,8 +22,13 @@ const holder = vi.hoisted(() => ({ portraitDir: "" }));
 
 describe("lock lifecycle across /reload (session_shutdown release)", () => {
   let tempHome: string;
+  let savedSubagentPid: string | undefined;
 
   beforeEach(async () => {
+    // The session_start guard skips the collector when PI_SUBAGENT_PARENT_PID is set; the
+    // lock tests need the real TUI path, so clear it for this file and restore after.
+    savedSubagentPid = process.env.PI_SUBAGENT_PARENT_PID;
+    delete process.env.PI_SUBAGENT_PARENT_PID;
     // Idempotent wiring guard (isolate:false shares globalThis): ensure this file can boot
     // the extension fresh regardless of suite ordering, otherwise the entry may no-op.
     delete (globalThis as { __avtcPiPortraitWired?: boolean }).__avtcPiPortraitWired;
@@ -66,6 +71,8 @@ describe("lock lifecycle across /reload (session_shutdown release)", () => {
   });
 
   afterEach(async () => {
+    if (savedSubagentPid === undefined) delete process.env.PI_SUBAGENT_PARENT_PID;
+    else process.env.PI_SUBAGENT_PARENT_PID = savedSubagentPid;
     // Release any held mutex from the (possibly leaked) globalThis state so Windows can delete
     // the temp lock DBs. Under the bug (session_shutdown doesn't release), the leaked
     // connection keeps the file open and rmSync throws EPERM without this.
@@ -115,6 +122,7 @@ describe("lock lifecycle across /reload (session_shutdown release)", () => {
   }
 
   const fakeCtx = {
+    mode: "tui",
     ui: { notify() {}, select() {} },
     cwd: process.cwd(),
     model: undefined,
@@ -127,14 +135,23 @@ describe("lock lifecycle across /reload (session_shutdown release)", () => {
 
   it("releases the instance lock on session_shutdown so /reload can re-acquire it", async () => {
     const emit = await bootExtension();
+    const lockPath = path.join(holder.portraitDir, "instance.lock.sqlite");
 
     // First boot: acquireLock succeeds (no contention).
     await emit("session_start", { reason: "startup" });
     const state0 = (globalThis as { __piPortrait?: { lockPollTimer: NodeJS.Timeout | null } }).__piPortrait;
     expect(state0?.lockPollTimer).toBeNull(); // acquired — no lock poll running
+    // The mutex is actually held: a competing acquire on the same path must fail.
+    expect(await tryAcquireSqliteMutex(lockPath)).toBeNull();
 
     // /reload tears the session down — must release the held mutex.
     await emit("session_shutdown", {});
+
+    // Released: the lock file no longer has a holder (the state object is deleted by shutdown,
+    // so the mutex probe is the observable).
+    const afterRelease = await tryAcquireSqliteMutex(lockPath);
+    expect(afterRelease).not.toBeNull();
+    afterRelease?.release();
 
     // Reloaded session must be able to re-acquire the SAME lock file. If session_shutdown did
     // NOT release the mutex, the leaked connection keeps the write lock and acquireLock returns

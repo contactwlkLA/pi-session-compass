@@ -47,6 +47,11 @@ describe("A1 confirmLimits", () => {
   it("converts ms to minutes without a trailing .0", () => {
     expect(strings.confirmLimits(5, 900_000)).toBe("Limits: 5 model requests · 900000 ms (15 min) wall clock");
     expect(strings.confirmLimits(5, 90_000)).toBe("Limits: 5 model requests · 90000 ms (1.5 min) wall clock");
+    expect(strings.confirmLimits(5, 5_400_000)).toBe("Limits: 5 model requests · 5400000 ms (90 min) wall clock");
+  });
+
+  it("rounds minutes to one decimal", () => {
+    expect(strings.confirmLimits(100, 100_000)).toBe("Limits: 100 model requests · 100000 ms (1.7 min) wall clock");
   });
 });
 

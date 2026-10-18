@@ -29,7 +29,7 @@ export const strings = {
   confirmHeader: "compass harness — start-of-run confirmation",
   confirmRunType: (runType: string) => `Run type: ${runType}`,
   confirmLimits: (requests: number, runMs: number) =>
-    `Limits: ${requests} model requests · ${runMs} ms (${runMs / 60_000} min) wall clock`,
+    `Limits: ${requests} model requests · ${runMs} ms (${Math.round(runMs / 6000) / 10} min) wall clock`,
   confirmLimitSource: (source: string) => `Limit source: ${LIMIT_SOURCE_LABELS[source] ?? source}`,
   confirmModel: (model: string, thinking: string) => `Model: ${model} · thinking: ${thinking}`,
   confirmGate: (mode: string, hash: string) =>

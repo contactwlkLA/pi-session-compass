@@ -67,6 +67,12 @@ describe("parseLimits", () => {
     expect(() => parseLimits({ ...validArgs(), "limits-source": "vibes" })).toThrow(LimitError);
   });
 
+  it("accepts the probe run type with UNSET stored suggestions", () => {
+    const limits = parseLimits({ ...validArgs(), "run-type": "probe" });
+    expect(limits.runType).toBe("probe");
+    expect(suggestedLimits("probe")).toBeNull();
+  });
+
   it("stored table suggestions exist for smoke and are UNSET for baseline", () => {
     expect(suggestedLimits("smoke")).toEqual({ maxModelRequests: 5, maxRunMs: 900_000, source: "compass-table" });
     expect(suggestedLimits("baseline")).toBeNull();

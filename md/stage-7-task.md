@@ -27,14 +27,14 @@ Parent: [handoff.md](handoff.md) (open bugs and deferred work). Operating rules:
 
 ### S7-01 — Quick fixes (Pi)
 
-- [ ] **B11** Harness results sheet: an `insert` line shows the candidate's rule text, not `C1` (scripts/compass/pipeline-boot.ts, the sheet label).
-- [ ] **B13** A corrupt `hashes.json` in a start snapshot gives the existing snapshot refusal and exit code, not a stack trace (scripts/compass/snapshot.ts). No new text.
-- [ ] **B14** Add `probe` to `RUN_TYPES` (scripts/compass/types.ts), matching the compass.md table.
-- [ ] **B15** The confirmation line rounds minutes to one decimal. Protected text, proposed:
+- [x] **B11** Harness results sheet: an `insert` line shows the candidate's rule text, not `C1` (scripts/compass/pipeline-boot.ts, the sheet label).
+- [x] **B13** A corrupt `hashes.json` in a start snapshot gives the existing snapshot refusal and exit code, not a stack trace (scripts/compass/snapshot.ts). No new text.
+- [x] **B14** Add `probe` to `RUN_TYPES` (scripts/compass/types.ts), matching the compass.md table.
+- [x] **B15** The confirmation line rounds minutes to one decimal. Protected text, proposed:
   - Before: `Limits: 100 model requests · 100000 ms (1.6666666666666667 min) wall clock`
   - After: `Limits: 100 model requests · 100000 ms (1.7 min) wall clock` (whole numbers stay whole: `5400000 ms (90 min)`)
-- [ ] **B20** tests/reload-lifecycle.test.ts: give the fake context `mode: "tui"` so the test really holds the lock. If it then fails, stop and report: that is a lock bug, not a test fix.
-- [ ] **B21** `evaluate policy`: the correction-miss bound uses the number of `correction: true` trios (held-out: `3 / 17`, not `3 / 30`).
+- [x] **B20** tests/reload-lifecycle.test.ts: give the fake context `mode: "tui"` so the test really holds the lock. If it then fails, stop and report: that is a lock bug, not a test fix.
+- [x] **B21** `evaluate policy`: the correction-miss bound uses the number of `correction: true` trios (held-out: `3 / 17`, not `3 / 30`).
 
 ### S7-02 — Text batch (CC drafts, user approves once, Pi applies)
 
@@ -62,4 +62,4 @@ Parent: [handoff.md](handoff.md) (open bugs and deferred work). Operating rules:
 | Revision | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-17 | Draft: quick fixes, text batch, settings in one place, investigations; D4 and D5 out of scope. |
-| 0.2.0 | 2026-10-17 | Approved by the user, including B15's new line. |
+| 0.2.0 | 2026-10-17 | Approved by the user, including B15's new line; S7-01 done. |

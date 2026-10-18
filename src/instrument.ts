@@ -22,7 +22,13 @@ export interface TrioExaminedEvent {
 
 /** One building LLM call's decisions plus their applied effect. */
 export interface BuildEvent {
-  decisions: { action: "insert" | "merge" | "skip"; candidate?: string; text?: string }[];
+  decisions: {
+    action: "insert" | "merge" | "skip";
+    candidate?: string;
+    text?: string;
+    /** The candidate's rule text, when the decision names a candidate that resolves. Instrumentation only. */
+    candidateText?: string;
+  }[];
   inserted: number;
   evicted: number;
 }
