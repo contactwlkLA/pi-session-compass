@@ -1,6 +1,6 @@
 # Stage 8 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.4.0** · Status: **S8-01 approved; S8-02 done; S8-03 ready (design and text approved by the user, 2026-10-18)**
+Project: **pi-session-compass** · Revision: **0.5.0** · Status: **S8-01 approved; S8-02 done; S8-03 ready (design and text approved by the user, 2026-10-18)**
 
 Date: **2026-10-18**
 
@@ -219,6 +219,16 @@ npm test
 npm run test:compass
 ```
 
+**Audit answers (CC, 2026-10-18; outputs/s8/handoff/S8-03-audit.md):**
+
+1. **Blocker 1 (summary.json):** as you propose. In exchanges mode, write the same object without `corpus`, `set`, and `corpusFreeze`, and add `exchanges: <file>` and `prompts: <n>`. Every other field stays.
+2. **Blocker 2 (duplicate keys):** as you propose. The report keeps the first exchange per key (sessions in start-time order, then file name) and drops later duplicates, so its exchanges file is always valid input for score. Add a test with two copies of one log.
+3. **Columns line:** yes, `reportInterventionsColumns` with the S8-01 approved columns; counts through `reportNumber`; a `Total` row only with 2+ sessions, as in the other sections.
+4. **Segment codes in an unscored session:** `null` on every segment of a session that is not scored, so `codes` and `interventions` agree.
+5. **Claude Code session id:** take it from the first record that carries a string `sessionId` (Pi: the header, unchanged). Add a test with a leading record that has none.
+6. **Trim:** as you read it. Room = cap minus the size with both agent texts empty; `agentAfter` at most a quarter; on overshoot shrink `agentAfter` first, then `agentBefore`, re-measuring. An exchange whose prompt fits but leaves no room for either text is still written (`trimmed: true`, both texts empty); only a prompt that does not fit alone is skipped.
+7. **Text-less segments:** track "segment has agent text of its own" separately, as you note, so a text-less segment never borrows its predecessor's text.
+
 **After acceptance (CC):** two live runs, each with limits suggested by CC and confirmed by the user at launch (run type `evaluate`): this project's Pi folder (about 87 exchanges) and Claude Code folder (about 461). Then the report with `--codes` for each.
 
 ## CC review and gate (not for the coder)
@@ -229,6 +239,6 @@ Review per planner-prompt.md Step 2 with 2–3 spot mutants (in `isFailed`, the 
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.2.0 | 2026-10-18 | S8-02 audit answers; episode rule amended (change includes `--write` checks; an episode closes at its first pass). |
 | 0.3.0 | 2026-10-18 | S8-02 round 2: Claude Code session start (B25), two format nits. |
 | 0.4.0 | 2026-10-18 | S8-03 spec: score every prompt from the report's segments (user-approved design and text). |
+| 0.5.0 | 2026-10-18 | S8-03 audit answers. |
