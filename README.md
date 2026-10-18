@@ -127,7 +127,7 @@ Cached portrait rules are refreshed from disk on `/reload`.
 
 ## How It Works
 
-Portrait dreaming learns from **interaction trios** in your session history — an agent response, your correction or flag, and the agent's improved response. From each trio it extracts a short **behavioral principle**, ranks it against your existing portrait, and keeps the most valuable ones. The portrait is then appended to the system prompt on every agent turn, so the agent anticipates your corrections before it responds. Run `/portrait:maintenance` any time to deduplicate, resolve contradictions, generalize over-specific rules, and drop harmful ones.
+Portrait dreaming learns from **interaction trios** in your session history — an agent response, your correction or flag, and the agent's improved response. From each trio it extracts a **rule** that says when it applies, what to do differently, and why, ranks it against your existing portrait, and keeps the most valuable ones. The portrait is then appended to the system prompt on every agent turn, so the agent anticipates your corrections before it responds. Run `/portrait:maintenance` any time to deduplicate, resolve contradictions, generalize over-specific rules, and drop harmful ones.
 
 ## Full suite
 

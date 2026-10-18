@@ -10,12 +10,14 @@ positive way: increasing the quality, correctness, or depth of its output.
 Each sequence shows what the agent produced, how the user responded,
 and what the agent did next.
 
-Decide first: does this sequence reveal a lesson worth extracting? Return no
-rules if the lesson only applies to this one decision, approval, or
-acknowledgment, or if the rule would harm output in other situations (e.g.
-favors speed over correctness or skips necessary steps). Otherwise extract one
-rule per independent lesson. Lessons are independent when each demands a
-behavior the others do not.
+Decide first: does this sequence reveal a lesson worth extracting? The lesson
+must come from the user's reply: never draw a rule from what the agent did or
+said on its own. Return no rules if the reply is an approval, an
+acknowledgment, the next task step, or a pasted spec or task instructions; if
+the lesson only applies to this one decision; or if the rule would harm output
+in other situations (e.g. favors speed over correctness or skips necessary
+steps). Otherwise extract one rule per independent lesson. Lessons are
+independent when each demands a behavior the others do not.
 Each rule must be a single line — no line breaks, no multi-line formatting.
 
 The lesson is the gap between what the agent produced and what the user wanted.
@@ -27,27 +29,29 @@ Look for:
   correctness vs speed, generality vs specificity)
 
 Rules MUST apply across many situations, not just the one shown.
-Strip away the specific domain, files, and technologies — keep only
-the reusable behavioral principle.
-Write short behavioral principles, not conditional "when X, do Y" rules.
-The agent will recognize when to apply the rule at runtime;
-the rule just needs to tell it WHAT to do differently.
+Strip away the specific domain, files, and technologies, but describe the
+situation in general terms. The portrait stores only the rule text, so each
+rule must stand on its own and say three things: the situation a future agent
+will recognize ("When ..."), what to do differently there, and why — the
+user's concern behind the reply ("because ...").
 
 Before returning a rule, draft 3-5 variants at different levels of abstraction —
 from specific to generic. Then pick the one that best follows the criteria above
 and refine it if needed. Return only the final rule.
 
 Examples of well-extracted rules:
-"Investigate root causes and build proper architecture instead of quick ad-hoc fixes"
-"Prefer fixing the source over patching each consumer"
-"Question assumptions before committing to an approach"
+"When you notice something outside your instructions that you could change, ask before changing it, because the user decides what is in scope"
+"When a bug shows up in several consumers, fix the shared source instead of patching each consumer, because separate patches drift apart and hide the cause"
+"When an approach rests on an assumption you have not checked, check it before building on it, because rework after the fact costs the user more"
 
 Produce a summary of the interaction:
 - What the agent did (agentBefore): compressed to the key action and intent
 - What the user said (userFeedback): preserve original intent, strip large pasted blocks
 - What the agent did next (agentAfter): compressed to the key response
 
-Re-validate your rules against the summary before returning them.`;
+Re-validate your rules against the summary before returning them: each rule
+names a situation, a changed action, and a reason, and the user's reply
+supports all three.`;
 
 export const POST_EXTRACTION_PROMPT = `You review and refine behavior rules that will be permanently injected into
 an AI agent's system prompt. These rules MUST improve the agent's behavior and
@@ -58,29 +62,31 @@ correctness, or depth of its output.
 You receive rules alongside a summarized interaction that produced them. Use
 the interaction to validate that each rule captures the lesson correctly and at
 the right abstraction level. If the rule over-generalized (lost a key trigger,
-action, or scope that was the actual lesson), tighten it. If the rule is already
-well-formed, return it unchanged.
+action, or scope that was the actual lesson) or is missing its situation,
+changed action, or reason, tighten it from the interaction. If the rule is
+already well-formed, return it unchanged.
 
 Each rule must be a single line — no line breaks, no multi-line formatting.
 
 Rules MUST apply across many situations, not tied to specific domain or context.
-Strip away the specific domain, files, and technologies — keep only
-the reusable behavioral principle.
-Write short behavioral principles, not conditional "when X, do Y" rules.
-The agent will recognize when to apply the rule at runtime;
-the rule just needs to tell it WHAT to do differently.
+Strip away the specific domain, files, and technologies, but describe the
+situation in general terms. The portrait stores only the rule text, so each
+rule must stand on its own and say three things: the situation a future agent
+will recognize ("When ..."), what to do differently there, and why — the
+user's concern behind the reply ("because ...").
 
 For each rule, decide: keep, rewrite, or drop.
-Drop rules whose lesson only applies to one specific situation, and rules
-that would harm output in other situations.
+Drop rules whose lesson only applies to one specific situation, rules the
+user's reply does not support, and rules that would harm output in other
+situations.
 Only rewrite a rule if it violates a quality gate above and can be fixed.
 Otherwise return it unchanged. Do not swap synonyms or rephrase for the sake
 of rephrasing.
 
 Examples of well-extracted rules:
-"Investigate root causes and build proper architecture instead of quick ad-hoc fixes"
-"Prefer fixing the source over patching each consumer"
-"Question assumptions before committing to an approach"`;
+"When you notice something outside your instructions that you could change, ask before changing it, because the user decides what is in scope"
+"When a bug shows up in several consumers, fix the shared source instead of patching each consumer, because separate patches drift apart and hide the cause"
+"When an approach rests on an assumption you have not checked, check it before building on it, because rework after the fact costs the user more"`;
 
 export const BUILDING_PROMPT = `You maintain a ranked list of anticipation rules (a "portrait") that help
 an agent produce better output by anticipating what the user will flag or
@@ -120,7 +126,8 @@ For each candidate, decide exactly one action:
   adds unique guidance the other lacks. Fold them into one rule instead
   of inserting a duplicate or dropping a nuance. Set mergePosition to the
   existing rule number to fold into, and text to the single-line combined
-  rule that preserves every unique directive from both. That existing
+  rule that preserves every unique directive from both, with the
+  situation and reason of each. That existing
   rule is replaced by text; the candidate is not inserted separately.
   Optionally set evictPositions to fold additional overlapping rules into
   the same text. Do NOT merge rules that are merely related — only when
@@ -131,7 +138,7 @@ Return structured JSON:
 {
   "decisions": [
     { "candidate": "C1", "action": "insert", "beforePosition": 6, "evictPositions": [12, 15] },
-    { "candidate": "C2", "action": "merge", "mergePosition": 7, "text": "Investigate root causes and build proper architecture instead of quick fixes or patching each consumer" },
+    { "candidate": "C2", "action": "merge", "mergePosition": 7, "text": "When a bug shows up in several consumers, find the root cause and fix the shared source instead of quick fixes or per-consumer patches, because patches drift apart and hide the cause" },
     { "candidate": "C3", "action": "skip" }
   ]
 }`;
@@ -147,20 +154,21 @@ You receive the current portrait rules. Analyze ALL rules and produce a cleaned 
 For each rule, decide:
 - Keep as-is: rule is good, general, non-contradictory
 - Merge: two or more rules share the same behavioral directive → keep the best one, drop the rest
-- Generalize: rule is overly specific → rewrite to strip domain specifics while preserving the lesson
+- Generalize: rule is overly specific → rewrite to strip domain specifics while preserving the lesson, its situation, and its reason
 - Remove: rule is harmful, contradictory, or one-time noise, use numbers from original list
 
 For contradictions: keep the rule that increases quality, correctness, or
 depth of the output.
 
-Do NOT remove rules just because they seem conditional — conditional rules
-may still be valid behavioral principles.
+Do NOT remove or shorten a rule because it states when it applies and why —
+those parts are what let the agent use it. Do not invent a situation or reason
+a rule does not already state.
 Do NOT swap synonyms or rephrase for the sake of rephrasing.
 Only rewrite a rule if it violates a quality gate and can be fixed.
 
 Quality gates:
 - Must apply across many situations, not tied to specific domain or context
-- Must be a short behavioral principle, not a conditional "when X, do Y" rule
+- Must keep the situation it applies to and the reason, when it states them
 - Must not harm output in other situations
 - Must not be one-time noise or a single bug-fix lesson
 
