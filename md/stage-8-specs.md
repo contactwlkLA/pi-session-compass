@@ -1,6 +1,6 @@
 # Stage 8 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.1.0** · Status: **S8-01 approved (user, 2026-10-18); S8-02 ready (command messages approved)**
+Project: **pi-session-compass** · Revision: **0.2.0** · Status: **S8-01 approved (user, 2026-10-18); S8-02 ready (command messages approved)**
 
 Date: **2026-10-18**
 
@@ -36,7 +36,7 @@ CC measured each fuzzy rule by hand on this project's Pi and Claude Code logs (o
 | | Kind | test: `vitest`, `jest`, `pytest`, `npm test`, `npm run test…`, `cargo test`, `go test`; lint: `biome`, `eslint`, `ruff`, `npm run lint…`, `knip`, `jscpd`; typecheck: `tsc`, `mypy`, `pyright`, `npm run typecheck` (first match in that order) | same |
 | | Failed | the result is an error (Pi `isError`; Claude Code `is_error`), or its text matches a failure marker: `N failed` (N ≥ 1), `FAIL`, a line starting with `×` or `✗`, `error TS`, `Found N error(s)` (N ≥ 1), a non-zero exit line (`exit code N`, `Exit code N`, `Command exited with code N`, `exit=N`, `EXIT:N`, N ≥ 1) | same |
 | | Expected failure | a failed run whose most recent agent text before the call (last 600 characters) matches: `should fail`, `must fail`, `expect… to fail`, `confirm … fails`, `fails before`, `fails on the current`, `test-first`, `test first`, `mutant`, `reproduc`, `before the fix`, `failing test` (case-insensitive) | same |
-| | Fixed in session | an episode (a failed, not expected run; following failed runs of the same kind join the episode) followed later in the same session by a change (an edit or write tool call, or a bash call that is not a check and contains `--write`, `--fix`, or `sed -i`) and then a passing run of the same kind | same |
+| | Fixed in session | an episode (a failed, not expected run; following failed runs of the same kind join the episode) closes at the first later passing run of the same kind; it is fixed when a change lies between its first failure and that pass. A change is an edit or write tool call, or any bash call whose cleaned command contains `--write`, `--fix`, or `sed -i` (a check included: a passing `biome check --write` is both the change and the pass) | same |
 | Agent questions | Turns ending with a question | segments whose last agent text has a line ending in `?` among its last 3 non-empty lines | same |
 | Your interventions | codes | S8-03 | S8-03 |
 | Lessons | grades | S8-04 | S8-04 |
@@ -128,6 +128,15 @@ Errors go to stderr with exit code 2; nothing is written to `--output` on an err
 9. Read-only: the input files' bytes and mtimes are unchanged after a run.
 10. Malformed and partial lines: a log whose last line is cut mid-JSON reports `skippedLines: 1` and still measures the rest.
 
+**Audit answers (CC, 2026-10-18; outputs/s8/handoff/S8-02-audit.md):**
+
+1. **Blocker 1:** agreed; the rules table is amended (a change is any edit/write call or any bash call with `--write`, `--fix`, or `sed -i`, checks included).
+2. **Episode edge:** as you propose. An episode closes at the first passing run of its kind and is fixed only when a change lies between its first failure and that pass, so `fail → pass → edit → pass` is 0 fixed. A single call that is both the change and the passing run counts as fixed. Add both cases to test 5.
+3. **Not-scored sections and legend:** as you plan. `## Your interventions`, `not scored`, the accuracy line; `## Lessons`, `not scored`; `## Behavior`, `not scored` (Pi) or `not applicable` (Claude Code). The two legend lines are template documentation, not printed. The file ends with `Counted from the session logs; no number is reported by an agent.` (no `Footer: ` prefix). `Generated:` is `YYYY-MM-DD`.
+4. **Pi timing:** confirmed on a real log: assistant and `toolResult` message records carry `message.durationMs` (140 and 174 in the current session), whatever the installed types declare. Wall time uses the record-level ISO `timestamp`.
+5. **Claude Code prompts:** `type === "user" && origin?.kind === "human"`, skipping records with a `tool_result` block and `isMeta` records. In the measured logs slash commands, meta records, and interruptions have no `origin`, and task notifications have `origin.kind === "task-notification"`, so that test is enough. Do not add the leading-`/` rule: a typed prompt may start with a path.
+6. **Risks 3 and 8:** as you plan (anchored markers; file-name order breaks start-time ties).
+
 **Acceptance criteria:**
 
 1. Every test above passes; `npm test` and `npm run test:compass` pass in full.
@@ -154,3 +163,4 @@ Review per planner-prompt.md Step 2 with 2–3 spot mutants (in `isFailed`, the 
 | Revision | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-10-18 | S8-01 definitions and report text (user-approved); S8-02 spec. |
+| 0.2.0 | 2026-10-18 | S8-02 audit answers; episode rule amended (change includes `--write` checks; an episode closes at its first pass). |
