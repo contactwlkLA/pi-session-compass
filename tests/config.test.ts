@@ -159,6 +159,16 @@ describe("getConfig environment lines", () => {
     expect(line).toBe(`  PI_PORTRAIT_SESSION_DIRS: ${sessionDirs.join(path.delimiter)} · env`);
   });
 
+  it("labels an empty env value as default (only non-empty values count as env)", () => {
+    process.env.PI_PORTRAIT_STATE_DIR = "";
+    process.env.PI_PORTRAIT_SESSION_DIRS = "";
+
+    const lines = getConfig(settingsFile).split("\n");
+
+    expect(lines).toContain(`  PI_PORTRAIT_STATE_DIR: ${portraitDir} · default`);
+    expect(lines).toContain(`  PI_PORTRAIT_SESSION_DIRS: ${sessionDirs.join(path.delimiter)} · default`);
+  });
+
   it("shows the key as set without ever printing it", () => {
     process.env.TYPESAFE_API_KEY = SENTINEL_KEY;
 

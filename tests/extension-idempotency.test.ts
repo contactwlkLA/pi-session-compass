@@ -6,6 +6,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { PLUGIN_CONFIG } from "../src/plugin-config.js";
 import { setTestConfig } from "./setup.js";
 
 /**
@@ -18,7 +19,7 @@ import { setTestConfig } from "./setup.js";
  * The mock-pi shape + module mocks (config/settings-ui/sqlite-mutex) mirror cache-refresh.test.ts
  * so the first call wires against a temp dir without throwing.
  *
- * PERFORMANCE: the 4 tests only exercise the globalThis wiring guard and the registered handlers
+ * PERFORMANCE: the tests only exercise the globalThis wiring guard and the registered handlers
  * — they do NOT need a freshly-re-evaluated module graph per test. Importing the (mocked) extension
  * ONCE in beforeAll and sharing it across tests avoids ~4 full graph evaluations
  * (maintenance-core → builder → llm-call → collector …), cutting this file from ~3.3s to ~1s.
@@ -32,6 +33,7 @@ describe("extension entry idempotent wiring guard", () => {
   // Shared, mocked extension module — imported once in beforeAll (see below).
   let mod: typeof import("../src/index.js");
   let tempHome: string;
+  let savedSubagentPid: string | undefined;
 
   beforeAll(async () => {
     // Ensure a clean wiring flag before the first import (isolate:false shares globalThis).
@@ -69,6 +71,10 @@ describe("extension entry idempotent wiring guard", () => {
   });
 
   beforeEach(() => {
+    // The session_start guard skips the collector when PI_SUBAGENT_PARENT_PID is set; the
+    // session_start tests need the real TUI path, so clear it here and restore after.
+    savedSubagentPid = process.env.PI_SUBAGENT_PARENT_PID;
+    delete process.env.PI_SUBAGENT_PARENT_PID;
     // Ensure a clean wiring flag for every case (vitest isolate:false shares globalThis).
     delete (globalThis as { __avtcPiPortraitWired?: boolean }).__avtcPiPortraitWired;
     // Re-point the central config mock at this file's temp portrait dir for every case (setup.ts
@@ -81,7 +87,10 @@ describe("extension entry idempotent wiring guard", () => {
   });
 
   afterEach(() => {
-    // Kill initFooter's status interval + any startLockPoll interval via the shared module.
+    if (savedSubagentPid === undefined) delete process.env.PI_SUBAGENT_PARENT_PID;
+    else process.env.PI_SUBAGENT_PARENT_PID = savedSubagentPid;
+    // Kill any startLockPoll interval via the shared module. It does NOT stop initFooter's
+    // status interval; the timer tests clear that one via footer.clearFooterCtx().
     try {
       mod.clearAllTimers();
     } catch {
@@ -93,26 +102,50 @@ describe("extension entry idempotent wiring guard", () => {
   });
 
   /**
-   * Minimal mock pi capturing pi.on handlers (same shape as cache-refresh.test.ts). Handlers
-   * accumulate per event into an array, mirroring real pi's `list.push(handler)` (see
-   * dist/core/extensions/loader.js) so multiple handlers for the same event all fire.
+   * Minimal mock pi capturing pi.on handlers and registerCommand calls (same shape as
+   * cache-refresh.test.ts). Handlers accumulate per event into an array, mirroring real pi's
+   * `list.push(handler)` (see dist/core/extensions/loader.js) so multiple handlers for the same
+   * event all fire. Commands are recorded by name so a test can assert on the registration.
    */
   function makeMockPi(): {
     pi: ExtensionAPI;
     handlers: Map<string, Array<(event: unknown, ctx: ExtensionContext) => unknown>>;
+    commands: Map<string, { description: string; handler: (args: unknown, ctx: ExtensionContext) => unknown }>;
   } {
     const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => unknown>>();
+    const commands = new Map<
+      string,
+      { description: string; handler: (args: unknown, ctx: ExtensionContext) => unknown }
+    >();
     const pi = {
       on(event: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) {
         const list = handlers.get(event) ?? [];
         list.push(handler);
         handlers.set(event, list);
       },
-      registerCommand() {},
+      registerCommand(
+        name: string,
+        options: { description: string; handler: (args: unknown, ctx: ExtensionContext) => unknown },
+      ) {
+        commands.set(name, options);
+      },
       appendEntry() {},
     } as unknown as ExtensionAPI;
-    return { pi, handlers };
+    return { pi, handlers, commands };
   }
+
+  /** Session context for driving session_start (same shape as reload-lifecycle's fakeCtx). */
+  const fakeCtx = {
+    mode: "tui",
+    ui: { notify() {}, select() {} },
+    cwd: process.cwd(),
+    model: undefined,
+    modelRegistry: undefined,
+    sessionManager: {
+      getSessionId: () => "s1",
+      getBranch: () => [],
+    },
+  } as unknown as ExtensionContext;
 
   it("wires on the first call without throwing", () => {
     const { pi, handlers } = makeMockPi();
@@ -174,5 +207,48 @@ describe("extension entry idempotent wiring guard", () => {
     mod.default(thirdPi);
     expect(g.__avtcPiPortraitWired).toBe(true);
     expect(thirdHandlers.has("session_start")).toBe(true);
+  });
+
+  it("registers portrait:config with the approved description", () => {
+    const { pi, commands } = makeMockPi();
+    mod.default(pi);
+
+    const registered = commands.get("portrait:config");
+    expect(registered).toBeDefined();
+    expect(registered?.description).toBe("Show every portrait setting and fixed value with its source");
+    expect(typeof registered?.handler).toBe("function");
+  });
+
+  it("schedules the lock poll with PLUGIN_CONFIG.lockPollMs when the instance lock is unavailable", async () => {
+    const { pi, handlers } = makeMockPi();
+    mod.default(pi);
+    const footer = await import("../src/footer.js");
+    const setIntervalSpy = vi.spyOn(global, "setInterval");
+    try {
+      // The mutex mock reports contention, so session_start must fall back to the lock poll.
+      for (const handler of handlers.get("session_start") ?? []) {
+        await handler({ reason: "startup" }, fakeCtx);
+      }
+      const state = (globalThis as { __piPortrait?: { lockPollTimer: NodeJS.Timeout | null } }).__piPortrait;
+      expect(state?.lockPollTimer).toBeTruthy();
+      expect(setIntervalSpy.mock.calls.map((call) => call[1])).toContain(PLUGIN_CONFIG.lockPollMs);
+    } finally {
+      setIntervalSpy.mockRestore();
+      mod.clearAllTimers();
+      footer.clearFooterCtx();
+    }
+  });
+
+  it("starts the status timer with PLUGIN_CONFIG.footerRefreshMs", async () => {
+    const footer = await import("../src/footer.js");
+    footer.clearFooterCtx();
+    const setIntervalSpy = vi.spyOn(global, "setInterval");
+    try {
+      footer.initFooter();
+      expect(setIntervalSpy.mock.calls.map((call) => call[1])).toContain(PLUGIN_CONFIG.footerRefreshMs);
+    } finally {
+      setIntervalSpy.mockRestore();
+      footer.clearFooterCtx();
+    }
   });
 });

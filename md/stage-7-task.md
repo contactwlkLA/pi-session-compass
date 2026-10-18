@@ -52,7 +52,7 @@ Parent: [handoff.md](handoff.md) (open bugs and deferred work). Operating rules:
 
 ### S7-04 — Investigations (CC; Pi for any fix)
 
-- [ ] **T1** Tests for the S7-03 spot-mutant survivors (no source change): an empty `PI_PORTRAIT_*` env var shows `· default`; `portrait:config` is registered with its approved description; the lock poll and the footer timer use `PLUGIN_CONFIG.lockPollMs` and `PLUGIN_CONFIG.footerRefreshMs`. Each new test kills its mutant (CC re-runs the mutants at review).
+- [x] **T1** Tests for the S7-03 spot-mutant survivors (no source change): an empty `PI_PORTRAIT_*` env var shows `· default`; `portrait:config` is registered with its approved description; the lock poll and the footer timer use `PLUGIN_CONFIG.lockPollMs` and `PLUGIN_CONFIG.footerRefreshMs`. Each new test kills its mutant (CC re-runs the mutants at review). *Done 2026-10-18: 4 tests, 4 of 4 mutants killed (outputs/s7/handoff/S7-04-T1-r1.md).*
 - [ ] **P4** Offline test: does a manual collect over two files stop after the first productive trio of the last file? If yes, fix in the scan loop (spec'd as its own Pi task); if no, mark FIXED with the test.
 - [ ] **B16** Find the test that adds the listeners; fix the leak or raise the limit in that test only.
 - [ ] **P11** Decide what the correct pairing is for a user record before a file's first assistant text; test the detector against it; fix or mark WONTFIX with the reason.
