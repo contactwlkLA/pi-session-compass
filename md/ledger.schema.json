@@ -65,6 +65,20 @@
             }
           },
 
+          "mutants": {
+            "type": "array",
+            "description": "REVIEWER: spot mutants run at review (planner-prompt.md Step 2). Empty array = none run.",
+            "items": {
+              "type": "object",
+              "required": ["mutant", "result"],
+              "properties": {
+                "mutant": { "type": "string", "description": "What was broken, with file" },
+                "result": { "enum": ["killed", "survived", "equivalent"], "description": "equivalent = the mutant cannot change behavior, so no test can kill it" },
+                "note": { "type": "string" }
+              }
+            }
+          },
+
           "discipline": {
             "type": "object",
             "description": "REVIEWER: mechanical checks against the diff and transcript. Count, do not judge.",

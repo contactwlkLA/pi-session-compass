@@ -1,6 +1,6 @@
 # Stage 7 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.5.0** · Status: **Ready (stage-7-task.md approved by the user, 2026-10-17)**
+Project: **pi-session-compass** · Revision: **0.6.0** · Status: **Ready (stage-7-task.md approved by the user, 2026-10-17)**
 
 Date: **2026-10-18**
 
@@ -264,16 +264,47 @@ npm test
 npm run test:compass
 ```
 
+## S7-04 T1 — Tests for the S7-03 mutant survivors
+
+CC ran 12 spot mutants on S7-03 (ledger, S7-03 `mutants`). Four that survived are test gaps; this task adds one test for each. **Tests only: no file under src/ changes.** If a test cannot be written without a src/ change, stop and report it in the audit.
+
+**Read:** src/commands/config.ts (`envSource`); src/index.ts (`startLockPoll`, the `portrait:config` registration); src/footer.ts (`initFooter`, `startStatusTimer`); src/plugin-config.ts; tests/config.test.ts; tests/extension-idempotency.test.ts (`makeMockPi`); tests/reload-lifecycle.test.ts (how a test makes the instance lock unavailable, if it does).
+
+**The four mutants each new test must kill** (CC re-runs them at review):
+
+| # | Mutant | New test |
+|---|---|---|
+| M3 | config.ts `envSource`: `value.length > 0` → `value.length >= 0` | `PI_PORTRAIT_SESSION_DIRS` set to `""` → the line ends `· default` |
+| M12 | index.ts: `"portrait:config"` registered under another name | the mock pi records `registerCommand(name, options)`; after wiring, `portrait:config` is registered with the description `Show every portrait setting and fixed value with its source` |
+| M9 | index.ts `startLockPoll`: `PLUGIN_CONFIG.lockPollMs` → `1_000` | when the instance lock is unavailable at session start, a `setInterval` is scheduled with `PLUGIN_CONFIG.lockPollMs` (spy on `setInterval`, or fake timers) |
+| M10 | footer.ts: `PLUGIN_CONFIG.footerRefreshMs` → `1000` | starting the footer schedules a `setInterval` with `PLUGIN_CONFIG.footerRefreshMs` |
+
+**Acceptance criteria:**
+
+1. Each of the four mutants, applied alone, makes at least one test fail; with no mutant every test passes.
+2. The tests compare against `PLUGIN_CONFIG` values, not literals; spies, fake timers, and env vars are restored after each test.
+3. No file under src/ changes; no existing test's assertion is weakened.
+
+**Allowed scope:** tests/config.test.ts, tests/extension-idempotency.test.ts, one new test file for the timer checks if that reads better (name it in the handoff).
+
+**Verification:**
+
+```
+npx vitest run tests/config.test.ts tests/extension-idempotency.test.ts
+npm test
+npm run test:compass
+```
+
 ## CC review and gate (not for the coder)
 
 Review per planner-prompt.md Step 2; ledger entry in md/ledger.jsonl. Check: `candidateText` is read only by the harness; the B13 refusal makes no model request; B15 output matches the approved text byte for byte; B20 did not change src/; B21's report text is otherwise identical. Update md/bugs.md (status, fix commit, evidence) for each bug.
 
-Planner difficulty: S7-01 easy; S7-02 easy; S7-03 medium.
+Planner difficulty: S7-01 easy; S7-02 easy; S7-03 medium; S7-04 T1 easy.
 
 ## Revision history
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.3.0 | 2026-10-17 | S7-02 text-batch spec with the user-approved text. |
 | 0.4.0 | 2026-10-18 | S7-02 audit answers. |
 | 0.5.0 | 2026-10-18 | S7-03 spec: options A, B, and C with the user-approved text; audit answers. |
+| 0.6.0 | 2026-10-18 | S7-04 T1 spec: tests for the S7-03 mutant survivors. |

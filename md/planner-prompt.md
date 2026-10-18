@@ -1,6 +1,6 @@
 # Planner / Reviewer prompt (for Opus 5.5)
 
-Revision: **0.1.0** · Updated: **2026-10-15**
+Revision: **0.2.0** · Updated: **2026-10-18**
 
 Paste everything below the line into the planner session at the start of stage three.
 
@@ -51,7 +51,8 @@ Work through this in order, using the diff and test output, not the prose summar
 5. **Constraint check.** Count violations of the explicit constraints in the spec.
 6. **Verification check.** Were all required commands run? Set `verification_run` to `all`, `some`, or `none` based on the transcript or pasted output.
 7. **Acceptance criteria.** Evaluate each criterion. Record each failure as a finding.
-8. **Verdict.** One of: `accepted`, `rejected_quality`, `rejected_scope`, `rejected_incomplete`, `abandoned`. Accept only if every acceptance criterion is met and there are no open blocker or major findings. Minor findings and nits do not block acceptance but are still recorded.
+8. **Spot mutants.** Break the changed code 2–3 times by hand (flip a condition, revert the fix, hard-code a value the change wires up, rename what the change registers), run the full vitest suite after each, and restore the file with `git checkout`. Record each in `mutants`. A surviving mutant that is not equivalent is a `minor` `test_gap` finding; when the spec's criteria did not ask for that test, it is a spec gap: record it in `notes`, not against the coder, and add the test to a follow-up task.
+9. **Verdict.** One of: `accepted`, `rejected_quality`, `rejected_scope`, `rejected_incomplete`, `abandoned`. Accept only if every acceptance criterion is met and there are no open blocker or major findings. Minor findings and nits do not block acceptance but are still recorded.
 
 ### Finding severity
 

@@ -1,6 +1,6 @@
 # Stage 7 — Fixes and deferred cleanup
 
-Project: **pi-session-compass** · Revision: **0.5.0** · Status: **Approved (user, 2026-10-17)**
+Project: **pi-session-compass** · Revision: **0.6.0** · Status: **Approved (user, 2026-10-17)**
 
 Date: **2026-10-18**
 
@@ -22,6 +22,7 @@ Parent: [handoff.md](handoff.md) (open bugs and deferred work). Operating rules:
 1. **One Pi session per task**, specs in a new stage-7-specs.md written per task, audit first (stage-3b.md Coder rules). Both full suites after each task; commit and push under standing approval (b).
 2. **No behavior change** to the gate, extraction, building, snapshots, or scan except where a task names it.
 3. **Protected text** is presented exact before/after and applied only after approval; S7-02 batches it into one round.
+4. **Spot mutants at every review** (planner-prompt.md Step 2, user 2026-10-18): 2–3 hand mutants per task, recorded in the ledger.
 
 ## Tasks
 
@@ -51,6 +52,7 @@ Parent: [handoff.md](handoff.md) (open bugs and deferred work). Operating rules:
 
 ### S7-04 — Investigations (CC; Pi for any fix)
 
+- [ ] **T1** Tests for the S7-03 spot-mutant survivors (no source change): an empty `PI_PORTRAIT_*` env var shows `· default`; `portrait:config` is registered with its approved description; the lock poll and the footer timer use `PLUGIN_CONFIG.lockPollMs` and `PLUGIN_CONFIG.footerRefreshMs`. Each new test kills its mutant (CC re-runs the mutants at review).
 - [ ] **P4** Offline test: does a manual collect over two files stop after the first productive trio of the last file? If yes, fix in the scan loop (spec'd as its own Pi task); if no, mark FIXED with the test.
 - [ ] **B16** Find the test that adds the listeners; fix the leak or raise the limit in that test only.
 - [ ] **P11** Decide what the correct pairing is for a user record before a file's first assistant text; test the detector against it; fix or mark WONTFIX with the reason.
@@ -61,6 +63,6 @@ Parent: [handoff.md](handoff.md) (open bugs and deferred work). Operating rules:
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.3.0 | 2026-10-17 | S7-02 text approved; status shows gate checks and pending candidates; stop reason dropped. |
 | 0.4.0 | 2026-10-18 | S7-02 done. |
 | 0.5.0 | 2026-10-18 | S7-03: the user chose options A, B, and C; built. |
+| 0.6.0 | 2026-10-18 | Spot mutants at every review; S7-04 T1 adds the tests for the S7-03 survivors. |
