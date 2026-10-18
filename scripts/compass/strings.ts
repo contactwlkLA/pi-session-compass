@@ -310,6 +310,13 @@ export const strings = {
   reportBadGrades: (gradesFile: string, lessonsFile: string) =>
     `compass report: ${gradesFile} is not a grades file for ${lessonsFile}.`,
   reportBehaviorHeading: "## Behavior",
+  reportBehaviorColumns: "| Period | Sessions | Trios | Correction rate | Hold-back rate |",
+  reportPeriodBefore: "before",
+  reportPeriodAfter: "after",
+  reportPeriodRelayed: "after (relayed specs)",
+  reportRate: (k: number, t: number) => `${((100 * k) / t).toFixed(1)}% (${groupThousands(k)} of ${groupThousands(t)})`,
+  reportTooFew: (before: number, after: number) =>
+    `too few sessions to compare (${groupThousands(before)} before, ${groupThousands(after)} after; 5 needed on each side)`,
   reportNotScored: "not scored",
   reportNotApplicable: "not applicable",
   reportNotRecorded: "not recorded",

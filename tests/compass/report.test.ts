@@ -4,8 +4,9 @@
 /**
  * Session report: the segment metrics for Pi and Claude Code logs, the check
  * classifiers, episode closing, question detection, the rendered report
- * files, the refusal paths, and read-only handling. Every log is built in a
- * temp directory from small record helpers; no real session log is read.
+ * files, the Behavior rates, the refusal paths, and read-only handling. Every
+ * log is built in a temp directory from small record helpers; no real session
+ * log is read.
  */
 
 import * as fs from "node:fs";
@@ -244,6 +245,41 @@ function writeLog(dir: string, name: string, records: Record<string, unknown>[])
   return file;
 }
 
+interface NPromptSessionSpec {
+  id: string;
+  letter: string;
+  portrait: "none" | "header" | "after-first-prompt";
+  prompts: number;
+  minute: number;
+}
+
+/** A Pi session of `prompts` prompt/reply turns; the letter keeps its exchanges distinct. */
+function nPromptSession(spec: NPromptSessionSpec): Record<string, unknown>[] {
+  const stamp = (second: number): string => new Date(Date.UTC(2026, 9, 18, 10, spec.minute, second)).toISOString();
+  const portraitRecord = (): Record<string, unknown> => ({
+    type: "custom",
+    customType: "portrait-cache",
+    timestamp: stamp(0),
+    data: { content: "portrait" },
+  });
+  const records: Record<string, unknown>[] = [];
+  if (spec.portrait === "header") records.push(portraitRecord());
+  for (let turn = 1; turn <= spec.prompts; turn++) {
+    records.push(piUser(`${spec.letter} prompt ${turn}`, stamp(turn * 3 - 3)));
+    records.push(
+      piAssistant({
+        text: `${spec.letter} reply ${turn}`,
+        toolCalls: [],
+        usage: null,
+        durationMs: 0,
+        timestamp: stamp(turn * 3 - 2),
+      }),
+    );
+  }
+  if (spec.portrait === "after-first-prompt") records.splice(2, 0, portraitRecord());
+  return piSession(spec.id, records);
+}
+
 async function capture(run: () => Promise<number>): Promise<{ code: number; out: string; err: string }> {
   const outSpy = vi.spyOn(process.stdout, "write").mockReturnValue(true);
   const errSpy = vi.spyOn(process.stderr, "write").mockReturnValue(true);
@@ -277,6 +313,8 @@ interface JsonlRow {
   codes?: Record<string, boolean> | null;
   interventions?: Record<string, number> | null;
   lessons?: Record<string, number | boolean> | null;
+  period?: string | null;
+  behavior?: Record<string, { sessions: number; trios: number; corrections: number; holdBacks: number }> | null;
 }
 
 function readJsonl(outDir: string): JsonlRow[] {
@@ -1161,6 +1199,7 @@ describe("report — number grouping", () => {
       format: "pi",
       generatedDate: "2026-10-18",
       skippedFiles: 0,
+      relayedSpecs: false,
       sessions: [
         {
           ...row,
@@ -1170,6 +1209,7 @@ describe("report — number grouping", () => {
           file: "logs/a.jsonl",
           format: "pi",
           skippedLines: 0,
+          portraitLoaded: false,
           segments: [],
         },
       ],
@@ -2202,5 +2242,309 @@ describe("report — lessons", () => {
     expect(code).toBe(2);
     expect(err).toBe("compass report: --lessons is required\n");
     expect(fs.existsSync(path.join(outDir, "report.md"))).toBe(false);
+  });
+});
+
+describe("report — behavior", () => {
+  const ID_A = "01a14cf6aaaaaaa1";
+  const ID_B = "01a14cf6aaaaaaa2";
+  const ID_G = "01a14cf6aaaaaaa3";
+  const ID_C = "01a14cf6aaaaaaa4";
+  const ID_D = "01a14cf6aaaaaaa5";
+  const ID_E = "01a14cf6aaaaaaa6";
+  const ID_F = "01a14cf6aaaaaaa7";
+
+  function writeSessions(dir: string, specs: NPromptSessionSpec[]): void {
+    for (const spec of specs) writeLog(dir, `${spec.letter}.jsonl`, nPromptSession(spec));
+  }
+
+  /** The scores a fixture needs, written from the report's own exchanges, one answer set per session id. */
+  async function scoresFrom(
+    logsDir: string,
+    outDir: string,
+    overrides: Record<string, Record<string, number>>,
+  ): Promise<string> {
+    await capture(() => runReport(["--dir", logsDir, "--output", outDir]));
+    return writeScores(
+      readExchanges(outDir).map((exchange) => ({
+        key: exchange.key,
+        verdict: "scored",
+        answers: codeAnswers(overrides[exchange.sessionId] ?? {}),
+      })),
+    );
+  }
+
+  /** Two-prompt session pairs: a/b before, c/d/e after, plus the quiet g and the unscored f. */
+  function baseSpecs(): NPromptSessionSpec[] {
+    return [
+      { id: ID_A, letter: "a", portrait: "none", prompts: 2, minute: 0 },
+      { id: ID_B, letter: "b", portrait: "none", prompts: 2, minute: 1 },
+      { id: ID_G, letter: "g", portrait: "none", prompts: 1, minute: 2 },
+      { id: ID_C, letter: "c", portrait: "header", prompts: 2, minute: 3 },
+      { id: ID_D, letter: "d", portrait: "header", prompts: 2, minute: 4 },
+      { id: ID_E, letter: "e", portrait: "header", prompts: 2, minute: 5 },
+    ];
+  }
+
+  /**
+   * Fixture: sessions a, b (no portrait, two prompts), g (no portrait, one prompt, so no
+   * exchange), c, d, e (portrait, two prompts). Every log's header carries the same start
+   * time, so the report orders them by file name: a, b, c, d, e, g.
+   * Answers: a and c correction, e hold-back.
+   * Expected rows:
+   *   | period | sessions | trios | corrections | hold-backs |
+   *   | before | 2 | 2 | 1 | 0 |
+   *   | after | 3 | 3 | 1 | 1 |
+   *   | relayed | 0 | 0 | - | - |
+   * With --relayed-specs the after row becomes 0 sessions and the relayed row 3 / 3 / 1 / 1.
+   */
+  it("rates corrections and hold-backs by period", async () => {
+    const logsDir = path.join(TEST_TMP, "behavior");
+    writeSessions(logsDir, baseSpecs());
+    const first = path.join(TEST_TMP, "behavior-first");
+    const scoresFile = await scoresFrom(logsDir, first, {
+      [ID_A]: { correction: 0.9 },
+      [ID_C]: { correction: 0.9 },
+      [ID_E]: { hold_back: 0.9 },
+    });
+    const firstRows = readJsonl(first);
+    expect(firstRows[firstRows.length - 1].behavior).toBeNull();
+    expect(strings.reportRate(1, 3)).toBe("33.3% (1 of 3)");
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code } = await capture(() => runReport(["--dir", logsDir, "--output", outDir, "--codes", scoresFile]));
+
+    expect(code).toBe(0);
+    const expected = [
+      "## Behavior",
+      "| Period | Sessions | Trios | Correction rate | Hold-back rate |",
+      "| --- | --- | --- | --- | --- |",
+      "| before | 2 | 2 | 50.0% (1 of 2) | 0.0% (0 of 2) |",
+      "| after | 3 | 3 | 33.3% (1 of 3) | 33.3% (1 of 3) |",
+      "| after (relayed specs) | 0 | 0 | not applicable | not applicable |",
+      "",
+      "too few sessions to compare (2 before, 3 after; 5 needed on each side)",
+    ].join("\n");
+    expect(readMarkdown(outDir)).toContain(expected);
+    const rows = readJsonl(outDir);
+    expect(rows.filter((row) => row.level === "session").map((row) => row.period)).toEqual([
+      "before",
+      "before",
+      "after",
+      "after",
+      "after",
+      "before",
+    ]);
+    expect(rows[rows.length - 1].behavior).toEqual({
+      before: { sessions: 2, trios: 2, corrections: 1, holdBacks: 0 },
+      after: { sessions: 3, trios: 3, corrections: 1, holdBacks: 1 },
+      relayed: { sessions: 0, trios: 0, corrections: 0, holdBacks: 0 },
+    });
+
+    const flaggedDir = path.join(TEST_TMP, "out-flagged");
+    const flagged = await capture(() =>
+      runReport(["--dir", logsDir, "--output", flaggedDir, "--codes", scoresFile, "--relayed-specs"]),
+    );
+
+    expect(flagged.code).toBe(0);
+    const flaggedExpected = [
+      "## Behavior",
+      "| Period | Sessions | Trios | Correction rate | Hold-back rate |",
+      "| --- | --- | --- | --- | --- |",
+      "| before | 2 | 2 | 50.0% (1 of 2) | 0.0% (0 of 2) |",
+      "| after | 0 | 0 | not applicable | not applicable |",
+      "| after (relayed specs) | 3 | 3 | 33.3% (1 of 3) | 33.3% (1 of 3) |",
+      "",
+      "too few sessions to compare (2 before, 0 after; 5 needed on each side)",
+    ].join("\n");
+    expect(readMarkdown(flaggedDir)).toContain(flaggedExpected);
+    const flaggedRows = readJsonl(flaggedDir);
+    expect(flaggedRows.filter((row) => row.level === "session").map((row) => row.period)).toEqual([
+      "before",
+      "before",
+      "relayed",
+      "relayed",
+      "relayed",
+      "before",
+    ]);
+    expect(flaggedRows[flaggedRows.length - 1].behavior).toEqual({
+      before: { sessions: 2, trios: 2, corrections: 1, holdBacks: 0 },
+      after: { sessions: 0, trios: 0, corrections: 0, holdBacks: 0 },
+      relayed: { sessions: 3, trios: 3, corrections: 1, holdBacks: 1 },
+    });
+  });
+
+  /**
+   * Fixture: five before and five after sessions, two prompts each, all scored low.
+   * Expected: before 5 sessions / 5 trios and after 5 / 5, no too-few line.
+   */
+  it("compares five before and five after sessions without the too-few line", async () => {
+    const logsDir = path.join(TEST_TMP, "fifty");
+    const specs: NPromptSessionSpec[] = [];
+    for (let i = 0; i < 5; i++) {
+      specs.push({ id: `01a14cf6bbbbbb0${i}`, letter: `p${i}`, portrait: "none", prompts: 2, minute: i * 2 });
+      specs.push({ id: `02b2c3d4cccccc0${i}`, letter: `q${i}`, portrait: "header", prompts: 2, minute: i * 2 + 1 });
+    }
+    writeSessions(logsDir, specs);
+    const scoresFile = await scoresFrom(logsDir, path.join(TEST_TMP, "fifty-first"), {});
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code } = await capture(() => runReport(["--dir", logsDir, "--output", outDir, "--codes", scoresFile]));
+
+    expect(code).toBe(0);
+    const markdown = readMarkdown(outDir);
+    expect(markdown).toContain("| before | 5 | 5 | 0.0% (0 of 5) | 0.0% (0 of 5) |");
+    expect(markdown).toContain("| after | 5 | 5 | 0.0% (0 of 5) | 0.0% (0 of 5) |");
+    expect(markdown).not.toContain("too few sessions");
+  });
+
+  /**
+   * Fixture: five before and two after sessions, then the mirror (two before, five after),
+   * two prompts each, all scored low.
+   * Expected: the first prints its too-few line for (5 before, 2 after), the mirror for
+   * (2 before, 5 after); one side at five is never enough on its own.
+   */
+  it("prints the too-few line when only one side is short", async () => {
+    const build = (name: string, beforeCount: number, afterCount: number): string => {
+      const logsDir = path.join(TEST_TMP, name);
+      const specs: NPromptSessionSpec[] = [];
+      for (let i = 0; i < beforeCount; i++)
+        specs.push({ id: `01a14cf6dddddd0${i}`, letter: `p${i}`, portrait: "none", prompts: 2, minute: i * 2 });
+      for (let i = 0; i < afterCount; i++)
+        specs.push({ id: `02b2c3d4eeeeee0${i}`, letter: `q${i}`, portrait: "header", prompts: 2, minute: i * 2 + 1 });
+      writeSessions(logsDir, specs);
+      return logsDir;
+    };
+    const cases = [
+      {
+        name: "five-before-two-after",
+        before: 5,
+        after: 2,
+        tooFew: strings.reportTooFew(5, 2),
+        beforeRow: "| before | 5 | 5 | 0.0% (0 of 5) | 0.0% (0 of 5) |",
+        afterRow: "| after | 2 | 2 | 0.0% (0 of 2) | 0.0% (0 of 2) |",
+      },
+      {
+        name: "two-before-five-after",
+        before: 2,
+        after: 5,
+        tooFew: strings.reportTooFew(2, 5),
+        beforeRow: "| before | 2 | 2 | 0.0% (0 of 2) | 0.0% (0 of 2) |",
+        afterRow: "| after | 5 | 5 | 0.0% (0 of 5) | 0.0% (0 of 5) |",
+      },
+    ];
+    for (const item of cases) {
+      const logsDir = build(item.name, item.before, item.after);
+      const scoresFile = await scoresFrom(logsDir, path.join(TEST_TMP, `${item.name}-first`), {});
+      const outDir = path.join(TEST_TMP, `${item.name}-out`);
+      const { code } = await capture(() => runReport(["--dir", logsDir, "--output", outDir, "--codes", scoresFile]));
+      expect(code).toBe(0);
+      const markdown = readMarkdown(outDir);
+      expect(markdown).toContain(item.beforeRow);
+      expect(markdown).toContain(item.afterRow);
+      expect(markdown).toContain(item.tooFew);
+    }
+  });
+
+  /**
+   * Fixture: sessions a, b before and c, d, e after, scored; f (after, three prompts) has no
+   * scores. Expected: after 3 sessions / 3 trios, f in no row; the too-few line still shows.
+   */
+  it("leaves a session with an unscored exchange out of every row", async () => {
+    const logsDir = path.join(TEST_TMP, "unscored");
+    writeSessions(logsDir, [...baseSpecs(), { id: ID_F, letter: "f", portrait: "header", prompts: 3, minute: 6 }]);
+    const first = path.join(TEST_TMP, "unscored-first");
+    await capture(() => runReport(["--dir", logsDir, "--output", first]));
+    const scoresFile = writeScores(
+      readExchanges(first)
+        .filter((exchange) => exchange.sessionId !== ID_F)
+        .map((exchange) => ({ key: exchange.key, verdict: "scored", answers: codeAnswers({}) })),
+    );
+    const outDir = path.join(TEST_TMP, "out");
+
+    const { code } = await capture(() => runReport(["--dir", logsDir, "--output", outDir, "--codes", scoresFile]));
+
+    expect(code).toBe(0);
+    expect(readMarkdown(outDir)).toContain("| after | 3 | 3 | 0.0% (0 of 3) | 0.0% (0 of 3) |");
+    const rows = readJsonl(outDir);
+    expect(rows[rows.length - 1].behavior).toEqual({
+      before: { sessions: 2, trios: 2, corrections: 0, holdBacks: 0 },
+      after: { sessions: 3, trios: 3, corrections: 0, holdBacks: 0 },
+      relayed: { sessions: 0, trios: 0, corrections: 0, holdBacks: 0 },
+    });
+  });
+
+  /** A value on the boolean flag is a usage error: exit 2, nothing written. */
+  it("refuses a value on --relayed-specs", async () => {
+    const logsDir = path.join(TEST_TMP, "relayed-bad");
+    writeSessions(logsDir, [{ id: ID_A, letter: "a", portrait: "none", prompts: 2, minute: 0 }]);
+    const outDir = path.join(TEST_TMP, "out-bad");
+
+    const { code, err } = await capture(() => runReport(["--dir", logsDir, "--output", outDir, "--relayed-specs=no"]));
+
+    expect(code).toBe(2);
+    expect(err).toBe(`${strings.reportUsage}\n`);
+    expect(fs.existsSync(path.join(outDir, "report.md"))).toBe(false);
+  });
+});
+
+describe("report — portrait flag", () => {
+  /**
+   * Expected: the flag is true when a Pi log carries a portrait-cache record, wherever it
+   * sits, and false without one or on a Claude Code log. Claude Code logs have no period
+   * and no Behavior counts in report.jsonl.
+   */
+  it("notes a portrait-cache record anywhere in a Pi log and never on Claude Code", async () => {
+    const dir = path.join(TEST_TMP, "portrait");
+    const header = writeLog(
+      dir,
+      "header.jsonl",
+      nPromptSession({ id: "01a14cf6aaaaaaa1", letter: "a", portrait: "header", prompts: 1, minute: 0 }),
+    );
+    const later = writeLog(
+      dir,
+      "later.jsonl",
+      nPromptSession({ id: "01a14cf6aaaaaaa2", letter: "b", portrait: "after-first-prompt", prompts: 2, minute: 1 }),
+    );
+    const plain = writeLog(
+      dir,
+      "plain.jsonl",
+      nPromptSession({ id: "01a14cf6aaaaaaa3", letter: "c", portrait: "none", prompts: 1, minute: 2 }),
+    );
+    const ccLog = writeLog(
+      dir,
+      "cc.jsonl",
+      ccSession("cccccccc-1111-2222-3333-444444444444", [
+        ccUser({ text: "hi", originKind: "human", isMeta: false, timestamp: "2026-10-18T12:00:00.000Z" }),
+        ccAssistant({
+          messageId: "msg_1",
+          text: "hello",
+          toolUses: [],
+          usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0 },
+          timestamp: "2026-10-18T12:00:01.000Z",
+        }),
+      ]),
+    );
+
+    expect((await readSegments(header, "pi")).portraitLoaded).toBe(true);
+    expect((await readSegments(later, "pi")).portraitLoaded).toBe(true);
+    expect((await readSegments(plain, "pi")).portraitLoaded).toBe(false);
+    expect((await readSegments(ccLog, "claude-code")).portraitLoaded).toBe(false);
+
+    const outDir = path.join(TEST_TMP, "out");
+    const { code } = await capture(() => runReport(["--session", ccLog, "--output", outDir]));
+
+    expect(code).toBe(0);
+    const rows = readJsonl(outDir);
+    expect(rows.filter((row) => row.level === "session").map((row) => row.period)).toEqual([null]);
+    expect(rows[rows.length - 1].behavior).toBeNull();
+
+    const flaggedDir = path.join(TEST_TMP, "out-flagged");
+    const flagged = await capture(() => runReport(["--session", ccLog, "--output", flaggedDir, "--relayed-specs"]));
+
+    expect(flagged.code).toBe(0);
+    const flaggedRows = readJsonl(flaggedDir);
+    expect(flaggedRows.filter((row) => row.level === "session").map((row) => row.period)).toEqual([null]);
+    expect(readMarkdown(flaggedDir)).toContain(`${strings.reportBehaviorHeading}\n${strings.reportNotApplicable}`);
   });
 });

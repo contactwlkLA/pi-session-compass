@@ -1,6 +1,6 @@
 # Stage 8 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.7.0** · Status: **S8-01 approved; S8-02 done; S8-03 done; S8-04 done (rubric revised by the user); S8-05 ready (design and text approved by the user, 2026-10-18)**
+Project: **pi-session-compass** · Revision: **0.7.0** · Status: **S8-01 approved; S8-02 done; S8-03 done; S8-04 done (rubric revised by the user); S8-05 done (2026-10-18)**
 
 Date: **2026-10-18**
 
@@ -389,4 +389,4 @@ Review per planner-prompt.md Step 2 with 2–3 spot mutants (in `isFailed`, the 
 | Revision | Date | Change |
 |---|---|---|
 | 0.6.0 | 2026-10-18 | S8-03 round 2: Claude Code string prompts (B26), trim overshoot direction, blank line, comment. |
-| 0.7.0 | 2026-10-18 | S8-04 spec and audit answers; lesson rubric revised by the user (situation, changed action, reason); S8-05 spec. |
+| 0.7.0 | 2026-10-18 | S8-04 spec and audit answers; lesson rubric revised by the user (situation, changed action, reason); S8-05 spec, audit answers, round 2. |

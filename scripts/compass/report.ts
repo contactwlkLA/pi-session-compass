@@ -8,14 +8,15 @@
  * exchanges.jsonl: one line per prompt with agent text on both sides, for
  * compass score --exchanges. With --codes, the Your interventions section
  * counts the scores that command wrote back; with --lessons and --grades, the
- * Lessons section grades the rules the labels command listed. The remaining
- * section says "not scored" (Behavior says "not applicable" on Claude Code
- * logs). Offline: no model request, no network, nothing from src/.
+ * Lessons section grades the rules the labels command listed; with --codes, the
+ * Behavior section rates corrections and hold-backs by period, counting a
+ * portrait-loaded session as an ordinary after run or, with --relayed-specs, as
+ * a relayed-spec run. Offline: no model request, no network, nothing from src/.
  *
  * Usage:
  *   node_modules/.bin/jiti scripts/compass/report.ts \
  *     (--session <file.jsonl> | --dir <folder>) --output <dir> [--codes <scores.jsonl>] \
- *     [--lessons <lessons.jsonl> [--grades <grades.jsonl>]]
+ *     [--lessons <lessons.jsonl> [--grades <grades.jsonl>]] [--relayed-specs]
  */
 
 import * as fs from "node:fs";
@@ -86,6 +87,7 @@ export interface SessionReport extends MeasuredRow {
   file: string;
   format: LogFormat;
   skippedLines: number;
+  portraitLoaded: boolean;
   segments: SegmentReport[];
 }
 
@@ -145,6 +147,7 @@ export interface SessionInput {
   file: string;
   format: LogFormat;
   skippedLines: number;
+  portraitLoaded: boolean;
   segments: SegmentInput[];
   costUsd: number | null;
 }
@@ -464,6 +467,7 @@ interface BuilderState {
   startTimestamp: string;
   startMs: number;
   costUsd: number | null;
+  portraitLoaded: boolean;
   sawStart: boolean;
 }
 
@@ -484,6 +488,7 @@ function newBuilder(format: LogFormat): BuilderState {
     startTimestamp: "",
     startMs: 0,
     costUsd: null,
+    portraitLoaded: false,
     sawStart: false,
   };
 }
@@ -845,6 +850,8 @@ export async function readSegments(file: string, format: LogFormat): Promise<Ses
     }
     state.order++;
     const timestampMs = timestampOf(record);
+    if (format === "pi" && record.type === "custom" && record.customType === "portrait-cache")
+      state.portraitLoaded = true;
     if (state.sessionId === "") {
       const recordId = format === "pi" ? (state.order === 1 ? asString(record.id) : null) : asString(record.sessionId);
       if (recordId !== null) state.sessionId = recordId;
@@ -873,6 +880,7 @@ export async function readSegments(file: string, format: LogFormat): Promise<Ses
     file,
     format,
     skippedLines: state.skippedLines,
+    portraitLoaded: state.portraitLoaded,
     segments: state.segments.map(toSegmentInput),
     costUsd: state.costUsd,
   };
@@ -1307,6 +1315,7 @@ export function measureSession(input: SessionInput): SessionReport {
     file: input.file,
     format: input.format,
     skippedLines: input.skippedLines,
+    portraitLoaded: input.portraitLoaded,
     segments,
     effort: row.effort,
     tokens: row.tokens,
@@ -1335,6 +1344,7 @@ export interface FullReport {
   format: LogFormat;
   generatedDate: string;
   skippedFiles: number;
+  relayedSpecs: boolean;
   sessions: SessionReport[];
   total: TotalReport;
   exchanges: ExchangeRecord[][];
@@ -1560,6 +1570,85 @@ function renderLessons(report: FullReport): string {
   ].join("\n\n");
 }
 
+export type Period = "before" | "after" | "relayed";
+
+const PERIODS: Period[] = ["before", "after", "relayed"];
+
+const PERIOD_LABELS: Record<Period, string> = {
+  before: strings.reportPeriodBefore,
+  after: strings.reportPeriodAfter,
+  relayed: strings.reportPeriodRelayed,
+};
+
+/** The least sessions a before/after comparison needs on each side. */
+const BEHAVIOR_MIN_SESSIONS = 5;
+
+interface BehaviorCounts {
+  sessions: number;
+  trios: number;
+  corrections: number;
+  holdBacks: number;
+}
+
+/** The period a session belongs to, or null on logs that carry no portrait. */
+function periodOf(session: SessionReport, relayedSpecs: boolean): Period | null {
+  if (session.format !== "pi") return null;
+  if (!session.portraitLoaded) return "before";
+  return relayedSpecs ? "relayed" : "after";
+}
+
+/**
+ * The Behavior rows: scored sessions with at least one exchange, counted by
+ * period, with the corrections and hold-backs among their exchanges' codes.
+ */
+function behaviorTable(report: FullReport, joins: SessionJoin[]): Record<Period, BehaviorCounts> {
+  const table: Record<Period, BehaviorCounts> = {
+    before: { sessions: 0, trios: 0, corrections: 0, holdBacks: 0 },
+    after: { sessions: 0, trios: 0, corrections: 0, holdBacks: 0 },
+    relayed: { sessions: 0, trios: 0, corrections: 0, holdBacks: 0 },
+  };
+  report.sessions.forEach((session, position) => {
+    const period = periodOf(session, report.relayedSpecs);
+    if (period === null) return;
+    const join = joins[position];
+    if (join.interventions === null || join.codes.size === 0) return;
+    const row = table[period];
+    row.sessions++;
+    row.trios += join.codes.size;
+    for (const flags of join.codes.values()) {
+      if (flags.correction) row.corrections++;
+      if (flags.holdBack) row.holdBacks++;
+    }
+  });
+  return table;
+}
+
+/** Behavior: rates by period when scores were read, the not-scored or not-applicable text otherwise. */
+function renderBehavior(report: FullReport): string {
+  const heading = strings.reportBehaviorHeading;
+  if (report.format !== "pi") return [heading, strings.reportNotApplicable].join("\n");
+  if (report.scores === null) return [heading, strings.reportNotScored].join("\n");
+  const table = behaviorTable(report, joinReport(report));
+  const rows = PERIODS.map((period) => {
+    const row = table[period];
+    const rate = (k: number): string =>
+      row.trios === 0 ? strings.reportNotApplicable : strings.reportRate(k, row.trios);
+    return tableRow([
+      PERIOD_LABELS[period],
+      strings.reportNumber(row.sessions),
+      strings.reportNumber(row.trios),
+      rate(row.corrections),
+      rate(row.holdBacks),
+    ]);
+  });
+  const sections = [
+    [heading, strings.reportBehaviorColumns, separatorRow(strings.reportBehaviorColumns), ...rows].join("\n"),
+  ];
+  if (table.before.sessions < BEHAVIOR_MIN_SESSIONS || table.after.sessions < BEHAVIOR_MIN_SESSIONS)
+    sections.push(strings.reportTooFew(table.before.sessions, table.after.sessions));
+  return sections.join("\n\n");
+}
+
 /** The report.md body: the approved title and header, the seven sections, the footer. */
 export function renderMarkdown(report: FullReport): string {
   const totalLabel = strings.reportTotalRow;
@@ -1618,10 +1707,7 @@ export function renderMarkdown(report: FullReport): string {
 
   const interventionsSection = renderInterventions(report);
   const lessonsSection = renderLessons(report);
-  const behaviorSection = [
-    strings.reportBehaviorHeading,
-    report.format === "pi" ? strings.reportNotScored : strings.reportNotApplicable,
-  ].join("\n");
+  const behaviorSection = renderBehavior(report);
 
   return `${[
     `${strings.reportTitle(report.inputPath)}\n${strings.reportHeader(
@@ -1662,6 +1748,7 @@ export function renderJsonl(report: FullReport): string {
   const lines: string[] = [];
   const joins = joinReport(report);
   const lessonCountsBySession = sessionLessonCounts(report);
+  const behavior = report.scores === null || report.format !== "pi" ? null : behaviorTable(report, joins);
   report.sessions.forEach((session, position) => {
     const codes = joins[position].codes;
     for (const segment of session.segments) {
@@ -1687,6 +1774,7 @@ export function renderJsonl(report: FullReport): string {
         file: session.file,
         format: session.format,
         skippedLines: session.skippedLines,
+        period: periodOf(session, report.relayedSpecs),
         effort: session.effort,
         tokens: session.tokens,
         costUsd: session.costUsd,
@@ -1709,6 +1797,7 @@ export function renderJsonl(report: FullReport): string {
       questions: report.total.questions,
       interventions: totalInterventions(joins),
       lessons: totalLessonCounts(report),
+      behavior,
     }),
   );
   return `${lines.join("\n")}\n`;
@@ -1761,6 +1850,9 @@ interface Candidate {
 /** Read one session log or a folder of them read-only and write the report files. */
 export async function main(argv: string[]): Promise<number> {
   const args = parseArgv(argv);
+  const relayedArg = args["relayed-specs"];
+  const relayedSpecs = relayedArg === "true";
+  if (relayedArg !== undefined && !relayedSpecs) return refuse(strings.reportUsage);
   const sessionArg = typeof args.session === "string" ? args.session : null;
   const dirArg = typeof args.dir === "string" ? args.dir : null;
   const outputArg = typeof args.output === "string" ? args.output : null;
@@ -1829,6 +1921,7 @@ export async function main(argv: string[]): Promise<number> {
     format: candidates[0].format,
     generatedDate: localDateOf(new Date()),
     skippedFiles,
+    relayedSpecs,
     sessions,
     total,
     exchanges,
