@@ -12,12 +12,16 @@ and what the agent did next.
 
 Decide first: does this sequence reveal a lesson worth extracting? The lesson
 must come from the user's reply: never draw a rule from what the agent did or
-said on its own. Return no rules if the reply is an approval, an
-acknowledgment, the next task step, or a pasted spec or task instructions; if
-the lesson only applies to this one decision; or if the rule would harm output
-in other situations (e.g. favors speed over correctness or skips necessary
-steps). Otherwise extract one rule per independent lesson. Lessons are
-independent when each demands a behavior the others do not.
+said on its own. A lesson needs a gap: the user corrects or pushes back on what
+the agent did, or has to ask for something the agent should have offered. An
+instruction for work the agent has not done yet is not a gap, even when it says
+how to do the work. Return no rules if the reply is an approval, an
+acknowledgment, an answer to the agent's question, the next task step, or a
+pasted spec or task instructions; if the lesson only applies to this one
+decision; or if the rule would harm output in other situations (e.g. favors
+speed over correctness or skips necessary steps). Otherwise extract one rule
+per independent lesson. Lessons are independent when each demands a behavior
+the others do not.
 Each rule must be a single line — no line breaks, no multi-line formatting.
 
 The lesson is the gap between what the agent produced and what the user wanted.
@@ -40,7 +44,7 @@ from specific to generic. Then pick the one that best follows the criteria above
 and refine it if needed. Return only the final rule.
 
 Examples of well-extracted rules:
-"When you notice something outside your instructions that you could change, ask before changing it, because the user decides what is in scope"
+"When you report a change as done, say what you did not verify, because the user relies on your report to decide what to check"
 "When a bug shows up in several consumers, fix the shared source instead of patching each consumer, because separate patches drift apart and hide the cause"
 "When an approach rests on an assumption you have not checked, check it before building on it, because rework after the fact costs the user more"
 
@@ -51,7 +55,8 @@ Produce a summary of the interaction:
 
 Re-validate your rules against the summary before returning them: each rule
 names a situation, a changed action, and a reason, and the user's reply
-supports all three.`;
+supports all three. The reason is the user's concern shown in the reply, not a
+general benefit you supply.`;
 
 export const POST_EXTRACTION_PROMPT = `You review and refine behavior rules that will be permanently injected into
 an AI agent's system prompt. These rules MUST improve the agent's behavior and
@@ -84,7 +89,7 @@ Otherwise return it unchanged. Do not swap synonyms or rephrase for the sake
 of rephrasing.
 
 Examples of well-extracted rules:
-"When you notice something outside your instructions that you could change, ask before changing it, because the user decides what is in scope"
+"When you report a change as done, say what you did not verify, because the user relies on your report to decide what to check"
 "When a bug shows up in several consumers, fix the shared source instead of patching each consumer, because separate patches drift apart and hide the cause"
 "When an approach rests on an assumption you have not checked, check it before building on it, because rework after the fact costs the user more"`;
 

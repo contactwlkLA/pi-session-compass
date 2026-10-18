@@ -1,6 +1,6 @@
 # pi-session-compass — Development Plan
 
-Revision: **0.11.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
+Revision: **0.12.0** · Status: **Draft for review** · Date: **2026-10-11 PDT**
 
 Contract: [Architecture specification](architecture.md)
 
@@ -30,7 +30,8 @@ A **stage** groups related work toward one outcome. A **task** is a checkable un
 | S6 | Settings/diagnostics, operating instructions, acceptance, and handoff | Reviewable release candidate, rollback instructions, and evidence | 3–5 h |
 | S7 | Fix the small open bugs, finish deferred help text and docs, one-place settings, investigate the rest | Bugs fixed or dispositioned in bugs.md; settings reviewable in one place | 3–5 h |
 | S8 | Session report: log analytics, your interventions, lessons and their quality, behavior before and after the portrait | One read-only report command over a session folder ([stage-8-task.md](stage-8-task.md)) | 4–7 h |
-| **Total** | | | **16–27 h** (+0.5–1 h with the optional probe) |
+| S9 | Better lessons: rules state situation, changed action, and reason, and come only from the user's reply | Extraction, building, and maintenance prompts revised and measured on the S8-04 trios ([stage-9-task.md](stage-9-task.md)) | 2–4 h |
+| **Total** | | | **18–31 h** (+0.5–1 h with the optional probe) |
 
 Proceed S1 → S2 → S3 → S4 → S5 → S6. Policy development can use the seed sample without waiting for broader history, but enforce mode cannot pass Stage 5 on that sample alone.
 
@@ -176,6 +177,6 @@ Handoff contents: implementation diff/commit, exact dependency versions, test re
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.9.1 | 2026-10-17 | Private project names and quoted user replies replaced with neutral descriptions. |
 | 0.10.0 | 2026-10-17 | Stage 7 (fixes and deferred cleanup) added; tasks in stage-7-task.md. |
 | 0.11.0 | 2026-10-18 | Stage 8 (session report) added; draft tasks in stage-8-task.md. |
+| 0.12.0 | 2026-10-18 | Stage 9 (better lessons) added and completed. |
