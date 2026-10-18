@@ -1,6 +1,6 @@
 # Stage 8 — Session report
 
-Project: **pi-session-compass** · Revision: **0.6.0** · Status: **Approved (user, 2026-10-18)**
+Project: **pi-session-compass** · Revision: **0.7.0** · Status: **Approved (user, 2026-10-18)**
 
 Date: **2026-10-18**
 
@@ -42,7 +42,7 @@ Parent: [plan.md](plan.md) (parked ideas from 2026-10-14; lesson-quality and beh
 
 - [x] **S8-01** Metric definitions and report text (CC): each metric's counting rule with a real example; the "bugs from reviews" rule checked by CC on a sample from Pi and Claude Code sessions (precision and recall stated); the grading rubric for lessons; the report template. User approves. *Done 2026-10-18: approved by the user (stage-8-specs.md S8-01). Changes: failed checks later fixed move into Checks; review findings are counted under Your interventions as corrections followed by edits; Behavior adds an after (relayed specs) row for this project's Pi sessions.*
 - [x] **S8-02** `report` command, log sections (Pi): `--session <file>` or `--dir <folder>`; Pi and Claude Code log formats; Effort, Tokens and cost, Checks, Agent questions; per session and total; markdown and JSONL; tests on synthetic logs of both formats built in the tests. The ledger switches to it. *Done 2026-10-18: accepted in round 2 (1533b60; B25 fixed in round 2); outputs/s8/handoff/S8-02-r1.md, -r2.md.*
-- [ ] **S8-03** Interventions (Pi, then a CC live run): every prompt after the first is scored from the report's own segments (Pi and Claude Code; long exchanges trimmed to the classifier's 32 KB limit); `score.ts --exchanges` scores them with the reply codes and the report reads them back with `--codes` (user, 2026-10-18; stage-8-specs.md S8-03); run type `evaluate`, limits suggested and user-confirmed at launch.
+- [x] **S8-03** Interventions (Pi, then a CC live run): every prompt after the first is scored from the report's own segments (Pi and Claude Code; long exchanges trimmed to the classifier's 32 KB limit); `score.ts --exchanges` scores them with the reply codes and the report reads them back with `--codes` (user, 2026-10-18; stage-8-specs.md S8-03); run type `evaluate`, limits suggested and user-confirmed at launch. *Done 2026-10-18 (af67f86; B26 fixed in round 2): live runs Pi 91 / 91 and Claude Code 471 / 471 scored, 0 fallbacks (limits 120 / 300000 and 600 / 900000 ms, agent-suggested, user-confirmed); reports outputs/s8/final-pi/, outputs/s8/final-cc/. The Claude Code session that ran the scoring reads not scored (it grew after the exchanges were frozen); a rerun scores only its new prompts from the cache.*
 - [ ] **S8-04** Lessons (CC grades, Pi joins): rules joined to their source trios; CC grades a sample against the S8-01 rubric; the user spot-checks; the report shows grade counts with examples.
 - [ ] **S8-05** Behavior (CC): before/after rates on development sessions only, with counts and the honest-gap rule; written into the report.
 
@@ -52,6 +52,6 @@ Parent: [plan.md](plan.md) (parked ideas from 2026-10-14; lesson-quality and beh
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.4.0 | 2026-10-18 | S8-01 approved; Bugs from reviews folded into Checks and Your interventions; Behavior adds relayed-spec sessions. |
 | 0.5.0 | 2026-10-18 | S8-02 done. |
 | 0.6.0 | 2026-10-18 | S8-03 scores every prompt from the report's segments, Pi and Claude Code (user). |
+| 0.7.0 | 2026-10-18 | S8-03 done. |
