@@ -1,6 +1,6 @@
 # Stage 8 — Task specs (Pi codes, Claude Code reviews)
 
-Project: **pi-session-compass** · Revision: **0.5.0** · Status: **S8-01 approved; S8-02 done; S8-03 ready (design and text approved by the user, 2026-10-18)**
+Project: **pi-session-compass** · Revision: **0.6.0** · Status: **S8-01 approved; S8-02 done; S8-03 ready (design and text approved by the user, 2026-10-18)**
 
 Date: **2026-10-18**
 
@@ -229,6 +229,15 @@ npm run test:compass
 6. **Trim:** as you read it. Room = cap minus the size with both agent texts empty; `agentAfter` at most a quarter; on overshoot shrink `agentAfter` first, then `agentBefore`, re-measuring. An exchange whose prompt fits but leaves no room for either text is still written (`trimmed: true`, both texts empty); only a prompt that does not fit alone is skipped.
 7. **Text-less segments:** track "segment has agent text of its own" separately, as you note, so a text-less segment never borrows its predecessor's text.
 
+**Round 2 (CC review of r1, 2026-10-18):** r1 is close: the strings are exact, corpus mode is unchanged, and the three spot mutants (0.5 threshold, the end kept from the agent text before, the exchanges cache) are killed. One bug blocks the live run, plus three small fixes.
+
+1. **Bug (md/bugs.md B26):** a Claude Code prompt whose `message.content` is a plain string has empty text, because `claudeUser` passes `asArray(message.content)` (a string becomes `[]`) to `contentText`. On this project's Claude Code folder, 466 of 467 exchanges have an empty `userFeedback`, and every Claude Code `promptHead` is empty (since S8-02). Fix: pass the raw `message.content` to `contentText` for the prompt text. Tool results keep reading the array.
+   - Test (fails on r1): a Claude Code session whose prompts are plain strings (`"content": "please fix the test"`), as in real logs, gives the prompt text in `promptHead` and in the exchange's `userFeedback`. Keep the existing array-content fixtures.
+2. **Overshoot direction:** in `trimExchange`, the final loop shrinks the wrong ends: it drops the **start** of `agentAfter` and the **end** of `agentBefore`. It must drop the end of `agentAfter` first, then the start of `agentBefore`. If the loop is hard to reach with the fixed cap, move it into an exported helper that takes the cap as a parameter and test it with a small cap.
+3. **Blank line before the accuracy line:** in markdown, a text line right after a table becomes a table row. Put one blank line between the Your interventions table and the accuracy line; update the byte-exact test.
+4. **Comment:** the comment above `measureSegment` that says "The S8-01 metrics" names a design-doc section; say "The report's metrics" instead.
+5. **Verification:** the S8-03 block; handoff outputs/s8/handoff/S8-03-r2.md (round-2 changes only).
+
 **After acceptance (CC):** two live runs, each with limits suggested by CC and confirmed by the user at launch (run type `evaluate`): this project's Pi folder (about 87 exchanges) and Claude Code folder (about 461). Then the report with `--codes` for each.
 
 ## CC review and gate (not for the coder)
@@ -239,6 +248,6 @@ Review per planner-prompt.md Step 2 with 2–3 spot mutants (in `isFailed`, the 
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.3.0 | 2026-10-18 | S8-02 round 2: Claude Code session start (B25), two format nits. |
 | 0.4.0 | 2026-10-18 | S8-03 spec: score every prompt from the report's segments (user-approved design and text). |
 | 0.5.0 | 2026-10-18 | S8-03 audit answers. |
+| 0.6.0 | 2026-10-18 | S8-03 round 2: Claude Code string prompts (B26), trim overshoot direction, blank line, comment. |

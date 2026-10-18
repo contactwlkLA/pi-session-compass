@@ -1,6 +1,6 @@
 # pi-session-compass — Bug journal
 
-Revision: **0.15.0** · Updated: **2026-10-18**
+Revision: **0.16.0** · Updated: **2026-10-18**
 
 A live record of every bug found while building and running the harness: harness, pipeline, test, or environment. Add an entry when a bug is found; update its status, fix commit, and evidence when it changes. Never delete an entry; a closed bug stays as history. Pipeline behaviors that a stage is meant to change are listed separately under Pipeline findings.
 
@@ -35,6 +35,7 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 | B23 | 2026-10-17 | pipeline | In the S6-03 speed run one building attempt made two requests: the first ended `toolUse` after 77 s with usage 0 / 0, the second returned the result (traces seq 46–47) | Unknown; likely a rejected return call followed by a valid one (allowed), with the provider omitting usage; debug dumps were off | Duplicate of P2 (S7-04): the first request is one of P2's empty provider responses (0 / 0 tokens after 60–80 s) that ended `toolUse`, so the agent loop asked again; the same shape appears once in the S1 baseline. No live run needed | outputs/s6/speed/traces.jsonl; outputs/s6/speed-report.md |
 | B24 | 2026-10-18 | pipeline | After the S7-04 T2 P4 lookahead, a scan that stops at its trio limit leaves the session file's read stream open (CC hand check: 3 open descriptors after 5 limit-stopped scans; 0 before the change) | `streamAndExtract` switched from `for await` to manual `records.next()`; an early return or a thrown error no longer calls the generator's `return()`, so `fs.createReadStream` is never destroyed | FIXED f99e926: `streamAndExtract` closes the record generator in a `finally`; tests/collect-remaining.test.ts checks no session file stays open (Linux) | outputs/s7/handoff/S7-04-T2-r1.md, -r2.md; tests/collect-remaining.test.ts |
 | B25 | 2026-10-18 | harness | `report` (S8-02 r1) labels every Claude Code session `1969-12-31 …` and sorts them as if they started at epoch 0 | `readSegments` takes the session start from the first record; a Claude Code log opens with `mode` and `permission-mode` records that carry no `timestamp` | FIXED 1533b60: the session start is the first record that carries a `timestamp` (tests/compass/report.test.ts) | CC run of the report on this project's Claude Code folder |
+| B26 | 2026-10-18 | harness | `report` reads every Claude Code prompt whose content is a plain string as empty: blank `promptHead` since S8-02, and 466 of 467 exchanges with an empty `userFeedback` in S8-03 r1 (caught before any live run) | `claudeUser` passes `asArray(message.content)` to `contentText`; a string becomes `[]`. The S8-02 tests used array content only, and the S8-02 review did not check Claude Code prompt heads | OPEN: fix in S8-03 round 2 | CC run of the report on this project's Claude Code folder |
 
 ## Pipeline findings (src/, measured in S1; targets of later stages)
 
@@ -66,6 +67,6 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.13.0 | 2026-10-18 | S7-04 investigations: P2 WONTFIX, B23 duplicate of P2; B16, P4, P11 confirmed with causes, fixes in S7-04 T2. |
 | 0.14.0 | 2026-10-18 | B24 (record stream left open after a limit stop) added; B16, B24, P4, P11 fixed (S7-04 T2). |
 | 0.15.0 | 2026-10-18 | B25 (Claude Code session start in the report) added and fixed. |
+| 0.16.0 | 2026-10-18 | B26 (Claude Code string prompts read as empty) added. |
