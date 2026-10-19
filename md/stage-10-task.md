@@ -18,6 +18,7 @@ Parent: [plan.md](plan.md). Finding: [bugs.md](bugs.md) B28. Operating rules: [A
 ## Tasks
 
 - [x] **S10-01** Package metadata: `package.json` and `package-lock.json` name, repository, bugs, homepage, and gallery image point to pi-session-compass. *Done 2026-10-18: npm test 588/588, test:compass 282/282.*
+- [x] **S10-01a** Package version: 1.1.1 (inherited from avtc) replaced by 0.10.0 (user, 2026-10-18): pre-1.0 as AGENTS.md requires, minor number = stage; each later stage that changes the package bumps the minor; 1.0.0 is the user's call.
 - [x] **S10-02** Names table in compass.md; names step in project-init.md.
 - [x] **S10-03** README and settings-screen title (protected text). *Done 2026-10-18: user-approved text applied: README title, "Based on" credit line, install line, sample-portrait link; `src/settings-ui.ts` title.*
 - [ ] **S10-04** Independent audit: another model runs [audit_document_alignment.md](audit_document_alignment.md); CC checks each finding and the user decides the fixes.
