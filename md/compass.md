@@ -1,8 +1,24 @@
 # pi-session-compass
 
-Revision: **0.4.0** · Stage 6 handoff; gate delivered `off`.
+Revision: **0.5.0** · Stage 6 handoff; gate delivered `off`.
 
 pi-session-compass improves session-to-behavioral-rule collection with explicit session-file selection, recoverable work, and a Jev gate before expensive extraction. The gate writes no rules; the existing extractor and builder do that work. Measured results and the delivered mode are in [handoff.md](handoff.md).
+
+## Names
+
+One name for each thing. Documents, prompts, task specs, messages, and commits use these names and no others.
+
+| Thing | Name | Where it appears |
+|---|---|---|
+| This project and its package | **pi-session-compass** | Repository `github.com/contactwlkLA/pi-session-compass`, `package.json` name, README title, every `md/` header |
+| The plugin it is based on | **avtc-pi-portrait** by avtc | Attribution only (README, LICENSE, this file); never as this project's name |
+| The feature | **portrait**: the rules learned from your corrections | `/portrait:*` commands, `~/.pi/portrait/`, `portrait.md` |
+| Kept upstream identifiers | `~/.pi/agent/avtc-pi-portrait-settings.json`, `~/.pi/logs/avtc-pi-portrait/` | Settings file and log folder keep the upstream names so existing settings and logs keep working |
+| Development harness | **compass harness** | `scripts/compass/`, `tests/compass/`, `npm run test:compass`; not part of the package |
+| Working method | **compass document set** | AGENTS.md and `md/`: stage files, task specs, bugs, ledger |
+| Local checkout | `compass-ext4` | The user's working folder; a folder name, never the project's name |
+
+"Compass" on its own is ambiguous. Say which one is meant: the project, the harness, or the document set.
 
 ## Start
 
@@ -49,6 +65,6 @@ See [architecture.md](architecture.md) and [plan.md](plan.md) as needed. Based o
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.2.0 | 2026-10-12 | Added the optional `probe` run type. |
 | 0.3.0 | 2026-10-14 | Rule 7: a capped non-smoke run can stand as the measurement when the user accepts it and the stage documents record it (the S1 baseline). Status line updated. |
 | 0.4.0 | 2026-10-17 | Status line and summary point to the handoff. |
+| 0.5.0 | 2026-10-18 | Names table: one name for each thing; bare "compass" must say which meaning. |

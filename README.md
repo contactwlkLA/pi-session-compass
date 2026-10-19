@@ -1,6 +1,8 @@
-# avtc-pi-portrait
+# pi-session-compass
 
 Builds a behavioral portrait from your session history — learns your corrections and injects them into the system prompt so the agent anticipates them before responding.
+
+Based on [avtc-pi-portrait](https://github.com/avtc/avtc-pi-portrait) by avtc.
 
 ## Features
 
@@ -24,7 +26,7 @@ A manual collect run with the live status widget showing progress:
 ## Installation
 
 ```bash
-pi install npm:avtc-pi-portrait
+pi install git:github.com/contactwlkLA/pi-session-compass
 ```
 
 ## Starter Portrait (optional)
@@ -43,7 +45,7 @@ cp assets/portrait.sample.md ~/.pi/portrait/portrait.md
 Notes:
 
 - The sample is a **static starting point**. As you run collects and maintenance, the extension will rank, evolve, and replace these rules with ones learned from your own sessions.
-- It's **not bundled** with the npm package — grab it from the [GitHub repo](https://github.com/avtc/avtc-pi-portrait/blob/master/assets/portrait.sample.md).
+- It's **not bundled** with the package — grab it from the [GitHub repo](https://github.com/contactwlkLA/pi-session-compass/blob/main/assets/portrait.sample.md).
 - Run `/reload` to pick up the copied portrait if pi is already running.
 
 ## Configuration

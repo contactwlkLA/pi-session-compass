@@ -1,6 +1,6 @@
 # pi-session-compass — Project initialization
 
-Revision: **0.3.0** · State: **Stage 1 complete**
+Revision: **0.4.0** · State: **Stage 1 complete**
 
 Date: **2026-10-11**
 
@@ -35,9 +35,10 @@ Directories under `scripts/`, `fixtures/`, and `outputs/` are created as the sta
 ## Initialize once
 
 1. Identify the intended implementation checkout; inspect installed package/runtime information there before asking for missing materials.
-2. Place AGENTS.md at the checkout root and the other documents in `md/`; leave the upstream README.md alone. Merge AGENTS.md with existing repository rules, preserving unrelated instructions; resolve conflicts before dependent execution.
-3. Verify document links. Read merged rules explicitly for the current session; refresh automatically loaded instructions as appropriate for the installed Pi version.
-4. Read stage.md and the first unfinished stage task. Consult architecture/plan sections only when needed.
+2. Fill the Names table in [compass.md](compass.md) before any other work: the project and package name, the upstream it is based on and its attribution, the feature names, any upstream identifiers that stay, and the local folder. When the package keeps an upstream name, record that as a decision with the stage that renames it.
+3. Place AGENTS.md at the checkout root and the other documents in `md/`; leave the upstream README.md alone. Merge AGENTS.md with existing repository rules, preserving unrelated instructions; resolve conflicts before dependent execution.
+4. Verify document links. Read merged rules explicitly for the current session; refresh automatically loaded instructions as appropriate for the installed Pi version.
+5. Read stage.md and the first unfinished stage task. Consult architecture/plan sections only when needed.
 
 Stage 1 must build and verify the file selector and fully isolated output first, then verify request/deadline controls and the start-of-run confirmation offline, then run a live **smoke test** (confirms the harness runs and shows sample output), then a live **baseline** (the measurement). These capabilities are specified, not yet implemented. The user will identify the live session JSONL; synthetic fixtures can support independent offline work meanwhile. The starting portrait/archive snapshot needs an explicit selection. Limits are suggested at launch and confirmed by the user for every live run.
 
@@ -59,6 +60,6 @@ Expected Stage 1 evidence: source/runtime inventory, isolated selector/harness c
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.1.0 | 2026-10-11 | Initial committed draft. |
 | 0.2.0 | 2026-10-12 | Added timing.md to the file table. |
 | 0.3.0 | 2026-10-14 | State set to Stage 1 complete; noted the accepted capped S1 baseline. |
+| 0.4.0 | 2026-10-18 | Setup step 2 fills the compass.md Names table before any other work. |

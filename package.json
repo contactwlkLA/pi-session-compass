@@ -1,5 +1,5 @@
 {
-  "name": "avtc-pi-portrait",
+  "name": "pi-session-compass",
   "version": "1.1.1",
   "description": "Builds a behavioral portrait from your session history — learns your corrections and injects them into the system prompt so the agent anticipates them before responding.",
   "type": "module",
@@ -19,7 +19,7 @@
       "avtc-pi-logger",
       "avtc-pi-settings-ui"
     ],
-    "image": "https://raw.githubusercontent.com/avtc/avtc-pi-portrait/main/assets/images/cover.png"
+    "image": "https://raw.githubusercontent.com/contactwlkLA/pi-session-compass/main/assets/images/cover.png"
   },
   "files": [
     "index.ts",
@@ -64,12 +64,12 @@
   "author": "avtc <tarasenkov@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/avtc/avtc-pi-portrait.git"
+    "url": "https://github.com/contactwlkLA/pi-session-compass.git"
   },
   "bugs": {
-    "url": "https://github.com/avtc/avtc-pi-portrait/issues"
+    "url": "https://github.com/contactwlkLA/pi-session-compass/issues"
   },
-  "homepage": "https://github.com/avtc/avtc-pi-portrait",
+  "homepage": "https://github.com/contactwlkLA/pi-session-compass",
   "bundleDependencies": [
     "avtc-pi-ui-components"
   ]

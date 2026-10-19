@@ -1,6 +1,6 @@
 # pi-session-compass — Bug journal
 
-Revision: **0.17.0** · Updated: **2026-10-18**
+Revision: **0.18.0** · Updated: **2026-10-18**
 
 A live record of every bug found while building and running the harness: harness, pipeline, test, or environment. Add an entry when a bug is found; update its status, fix commit, and evidence when it changes. Never delete an entry; a closed bug stays as history. Pipeline behaviors that a stage is meant to change are listed separately under Pipeline findings.
 
@@ -37,6 +37,7 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 | B25 | 2026-10-18 | harness | `report` (S8-02 r1) labels every Claude Code session `1969-12-31 …` and sorts them as if they started at epoch 0 | `readSegments` takes the session start from the first record; a Claude Code log opens with `mode` and `permission-mode` records that carry no `timestamp` | FIXED 1533b60: the session start is the first record that carries a `timestamp` (tests/compass/report.test.ts) | CC run of the report on this project's Claude Code folder |
 | B26 | 2026-10-18 | harness | `report` reads every Claude Code prompt whose content is a plain string as empty: blank `promptHead` since S8-02, and 466 of 467 exchanges with an empty `userFeedback` in S8-03 r1 (caught before any live run) | `claudeUser` passes `asArray(message.content)` to `contentText`; a string becomes `[]`. The S8-02 tests used array content only, and the S8-02 review did not check Claude Code prompt heads | FIXED af67f86: the prompt text reads `message.content` as given (string or blocks); tests/compass/report.test.ts | CC run of the report on this project's Claude Code folder |
 | B27 | 2026-10-18 | harness | `labels`, `score`, and `extract` refuse the S5 frozen corpora (fixtures/s5-pilot, fixtures/s5-scale) with "the corpus at … changed after it was frozen", although corpus.json and trios.jsonl still match freeze.json | S7-04 T2 (f99e926) changed trio detection (P11); `loadSelected` re-reads each frozen session and checks every trio key, and 160 of 339 pilot and 412 of 699 scale trios no longer reproduce (a dropped trio shifts every later index in its file). The message blames the corpus, not the reader | OPEN: no S8-04 impact (fixtures/s8-pi frozen with the current reader, 0 of 86 differ); re-running S5 measurements needs a re-freeze, and the misleading message needs approved text | CC check at f99e926^ (0 differ) and f99e926 (160 / 412 differ), S8-04 review |
+| B28 | 2026-10-18 | naming | The project and every `md/` doc say pi-session-compass, but the package, README title, install line, and settings-screen title kept the upstream name avtc-pi-portrait. README's `pi install npm:avtc-pi-portrait` installs avtc's original plugin without this project's changes, and a CC quick-start draft repeated that install | No stage renamed the package, and no document set one name per thing; project-init.md had no names step | OPEN: package metadata renamed (S10-01); Names table and init step added (S10-02); README and settings title renamed with user-approved text (S10-03); external check md/audit_document_alignment.md (S10-04) | CC session 2026-10-18; md/stage-10-task.md |
 
 ## Pipeline findings (src/, measured in S1; targets of later stages)
 
@@ -68,6 +69,6 @@ Status: **OPEN**, **FIXED** (commit), **WORKAROUND**, **WATCH** (seen once, not 
 
 | Revision | Date | Change |
 |---|---|---|
-| 0.15.0 | 2026-10-18 | B25 (Claude Code session start in the report) added and fixed. |
 | 0.16.0 | 2026-10-18 | B26 (Claude Code string prompts read as empty) added and fixed. |
 | 0.17.0 | 2026-10-18 | B27 (S5 frozen corpora no longer load after the trio reader change) added. |
+| 0.18.0 | 2026-10-18 | B28 (package and README kept the upstream name) added. |

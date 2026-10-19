@@ -47,7 +47,7 @@ export function initPortraitSettings(pi: ExtensionAPI): void {
   handle = registerSettingsCommand<PortraitSettings>(pi, PORTRAIT_SCHEMA, {
     commandName: "portrait:settings",
     title: "Portrait Settings",
-    titleRight: "avtc-pi-portrait",
+    titleRight: "pi-session-compass",
     storageLevels: ["global"],
     envVar: PORTRAIT_SETTINGS_ENV_VAR,
   });
